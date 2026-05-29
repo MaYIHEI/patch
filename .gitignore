@@ -1,0 +1,57 @@
+# patch / .gitignore
+# 关键: 防止 cookie 和任何含敏感数据的文件被 commit
+# 同时把本地协作笔记 (Claude Code 用) 排除在公开仓库之外
+
+# ── 本地协作笔记 (Claude Code / 个人草稿, 不公开) ─
+CLAUDE.md
+project.md
+项目笔记.md
+抓 cookie 步骤.md
+.claude/
+
+# ── 敏感凭据 ────────────────────────────────────
+# Cookie / token / 密钥永远不能进 git
+# 项目代码里这些值走 Keychain, 但万一有人手抖建了这种文件…
+*.secret
+*.secrets
+*.credentials
+.env
+.env.*
+secrets.json
+credentials.json
+cookies.txt
+*.cookie
+
+# ── 调试 / 临时文件 ─────────────────────────────
+# Scripting 调试时可能写出抓包 / log
+*.log
+*.tmp
+*.bak
+debug-*
+sample-response*.json
+
+# ── OS / 编辑器垃圾 ─────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/settings.json
+*.swp
+*.swo
+
+# ── Node 残留 (Scripting 不跑 npm) ──────────────
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+.npm/
+
+# ── 文档生成 ────────────────────────────────────
+docs/_build/
+docs/screenshots/.thumbs/
+
+# ── 但保留这些 ──────────────────────────────────
+!.gitignore
+!.gitkeep
