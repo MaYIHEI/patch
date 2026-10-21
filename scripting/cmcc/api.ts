@@ -37,6 +37,7 @@ const P_LOGIN = '/biz-orange/LN/uamrandcodelogin/autoLogin'
 const P_FEE = '/biz-orange/BN/payFeesQuery/getPayFeesQueryInfo'
 const P_REMAIN = '/biz-orange/BH/newPlanRemainQry/getNewPlanRemainQry'
 const P_POINTS = '/biz-orange/BN/scoreQueryService/getScoreQuery'
+const P_USER = '/biz-orange/BN/userInformationService/getUserInformation'
 const UA = 'ChinaMobile/12.5.5 (iPhone; iOS 26.1; Scale/3.00)'
 const SALT = 'Leadeon/SecurityOrganization'
 const LK = 'tVkdaRWRY0ZkV1Vr', LSK = 'RYV0hCV1lV25KYVJ', LIV = 'VjFSQ1ZtVkQxRTlQ'
@@ -52,14 +53,30 @@ export type FlowPart = {
   remainMB: number
 }
 
+export type UserInfo = {
+  /** 品牌, 如 "动感地带" */
+  brand?: string
+  /** 星级, 如 1 */
+  starLevel?: number
+  /** 星级积分 */
+  starScore?: number
+  /** 归属, 如 "北京移动" */
+  channel?: string
+  /** 网龄, 如 "3年2个月" */
+  netAge?: string
+}
+
 export type Account = {
   /** 话费余额, 元 */
   balance: number
+  /** 本月消费, 元 */
+  monthFee?: number
   /** 通用流量 */
   general?: FlowPart
   /** 定向流量 */
   targeted?: FlowPart
   points?: number
+  user?: UserInfo
   /** 尾号 4 位 */
   phoneTail: string
   stale: boolean
@@ -90,12 +107,14 @@ export async function loadAccount(): Promise<Account> {
 
   try {
     const cookie = await renewSession(login)
-    const [fee, remain, points] = await Promise.all([
+    // 话费 / 流量必需; 积分 / 用户信息失败不影响主流程
+    const [fee, remain, points, user] = await Promise.all([
       bizCall(P_FEE, query, cookie),
       bizCall(P_REMAIN, query, cookie),
       bizCall(P_POINTS, query, cookie).catch(() => null),
+      bizCall(P_USER, query, cookie).catch(() => null),
     ])
-    const account = buildAccount(fee, remain, points, query)
+    const account = buildAccount(fee, remain, points, user, query)
     writeCache(account)
     return account
   } catch (err) {
@@ -189,7 +208,15 @@ export function formatFlow(mb: number): string {
   return `${Math.round(mb)}M`
 }
 
-function buildAccount(fee: any, remain: any, points: any, query: string): Account {
+// 品牌码: "03" 已对照套餐名确认, 其余按中国移动通用编码
+const BRANDS: Record<string, string> = { '01': '全球通', '02': '神州行', '03': '动感地带' }
+
+function num(v: unknown): number | undefined {
+  const n = parseFloat(String(v))
+  return Number.isNaN(n) ? undefined : n
+}
+
+function buildAccount(fee: any, remain: any, points: any, user: any, query: string): Account {
   const balance = parseFloat(fee?.balance)
   if (Number.isNaN(balance)) throw new CmccError('schema', 'missing balance')
 
@@ -206,12 +233,20 @@ function buildAccount(fee: any, remain: any, points: any, query: string): Accoun
   }
 
   const tel = String(JSON.parse(query).tel ?? '')
-  const pts = parseFloat(points?.pointValue)
+  const u = user?.userInfo
   return {
     balance,
+    monthFee: num(fee?.payAmount),
     general: part('0'),
     targeted: part('1'),
-    points: Number.isNaN(pts) ? undefined : pts,
+    points: num(points?.pointValue),
+    user: u ? {
+      brand: BRANDS[u.userBrand] ?? u.userBrand,
+      starLevel: num(u.starLevel),
+      starScore: num(u.starScore),
+      channel: u.userChannel || undefined,
+      netAge: u.userAge || undefined,
+    } : undefined,
     phoneTail: tel.slice(-4),
     stale: false,
     fetchedAt: Date.now(),
