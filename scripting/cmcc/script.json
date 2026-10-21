@@ -1,0 +1,26 @@
+{
+  "name": "CMCC",
+  "version": "0.1.0",
+  "description": "China Mobile balance & data widget",
+  "author": {
+    "name": "MaYIHEI",
+    "email": "MaYIHEI@github.com",
+    "homepage": "https://github.com/MaYIHEI"
+  },
+  "entry": "index.tsx",
+  "icon": "antenna.radiowaves.left.and.right",
+  "color": "rgba(0, 133, 208, 1)",
+  "runInApp": false,
+  "contributors": [],
+  "remoteResource": "https://www.imarkr.com/api/github/download/MaYIHEI/patch/scripting/cmcc.zip",
+  "iconImage": null,
+  "intentInputTypes": [],
+  "localizedNames": {
+    "en": "CMCC",
+    "zh": "中国移动"
+  },
+  "localizedDescriptions": {
+    "en": "Shows China Mobile balance and data usage on your home screen.",
+    "zh": "在桌面显示中国移动话费余额和流量剩余。"
+  }
+}
