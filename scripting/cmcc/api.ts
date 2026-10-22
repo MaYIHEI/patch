@@ -73,6 +73,8 @@ export type Account = {
   general?: FlowPart
   /** 定向流量 */
   targeted?: FlowPart
+  /** 语音, 单位分钟; 套餐没有语音时为 undefined */
+  voice?: { total: number; used: number; remain: number }
   points?: number
   user?: UserInfo
   /** 尾号 4 位 */
@@ -236,6 +238,8 @@ function buildAccount(fee: any, remain: any, points: any, user: any, query: stri
     }
   }
 
+  const v = remain?.newPlanRemainQryRes?.planRemianVoiceListRes?.planRemianVoiceInfoRes?.[0]
+
   const tel = String(JSON.parse(query).tel ?? '')
   const u = user?.userInfo
   return {
@@ -243,6 +247,11 @@ function buildAccount(fee: any, remain: any, points: any, user: any, query: stri
     monthFee: num(fee?.payAmount),
     general: part('0'),
     targeted: part('1'),
+    voice: v ? {
+      total: num(v.voiceSumNum) ?? 0,
+      used: num(v.voiceUsdNum) ?? 0,
+      remain: num(v.voiceRemainNum) ?? 0,
+    } : undefined,
     points: num(points?.pointValue),
     user: u ? {
       brand: BRANDS[u.userBrand] ?? u.userBrand,
