@@ -23,7 +23,7 @@ scripting://import_scripts?urls=%5B%22https%3A%2F%2Fwww.imarkr.com%2Fapi%2Fgithu
 ## 🚀 使用步骤
 
 1. 装好 [Scripting](https://apps.apple.com/app/scripting/id6479691128) 和 Loon，Loon 里装好 BoxJS
-2. Loon 导入 [paperclip 中国移动插件](https://github.com/MaYIHEI/paperclip/tree/testing/app/cmcc)，打开「中国移动」App 停留几秒，收到「获取成功」通知
+2. Loon 导入 [paperclip 中国移动插件](https://github.com/MaYIHEI/paperclip/tree/testing/app/cmcc)，先在后台划掉「中国移动」App 再重新打开，收到「获取成功」通知（直接切回已打开的 App 不会触发）
 3. 保持 Loon 开启，在 Scripting 里运行 `cmcc`，点「从 BoxJS 导入」，看到 ✅ 即完成
 4. iPhone 桌面长按空白 → + → 搜 Scripting → 选 `cmcc`
 

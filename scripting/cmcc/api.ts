@@ -20,12 +20,10 @@ const AppStorage = Storage as unknown as {
 // ────────────────────────────────────────────────────────────
 // 配置常量
 // ────────────────────────────────────────────────────────────
-const KEYCHAIN_LOGIN = 'cmcc.login'   // 登录信封
-const KEYCHAIN_QUERY = 'cmcc.query'   // 查询信封 (话费/流量/积分共用一份)
+const KEYCHAIN_LOGIN = 'cmcc.login'   // 登录信封 (查询信封由它合成)
 
 // 与 paperclip 签到脚本的 BoxJS 键一致
 const BOXJS_LOGIN = 'cmcc_login'
-const BOXJS_QUERY = 'cmcc_score'
 
 const CACHE_KEY = 'cmcc.last_response'
 const CACHE_TTL_MS = 5 * 60 * 1000   // 5 分钟内复用缓存
@@ -99,8 +97,8 @@ export class CmccError extends Error {
 // ────────────────────────────────────────────────────────────
 export async function loadAccount(): Promise<Account> {
   const login = Keychain.get(KEYCHAIN_LOGIN)
-  const query = Keychain.get(KEYCHAIN_QUERY)
-  if (!login || !query) throw new CmccError('no_cred', '未导入登录凭证')
+  if (!login) throw new CmccError('no_cred', '未导入登录凭证')
+  const query = queryFromLogin(login)
 
   const cached = readCache()
   if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) return { ...cached, stale: false }
@@ -179,6 +177,12 @@ async function renewSession(J: string): Promise<string> {
     .join('; ')
   if (!cookie.includes('JSESSIONID')) throw new CmccError('schema', 'login returned no session')
   return cookie
+}
+
+// 所有查询共用一份信封: 登录信封的顶层字段 + reqBody {cellNum}
+function queryFromLogin(login: string): string {
+  const lo = JSON.parse(login)
+  return JSON.stringify({ ...lo, reqBody: { cellNum: lo.tel } })
 }
 
 async function bizCall(path: string, J: string, cookie: string): Promise<any> {
@@ -291,16 +295,14 @@ async function readBoxJS(host: string, key: string): Promise<string> {
 }
 
 export async function importFromBoxJS(host: string): Promise<void> {
-  const [login, query] = await Promise.all([readBoxJS(host, BOXJS_LOGIN), readBoxJS(host, BOXJS_QUERY)])
-  if (!JSON.parse(login).xk || !JSON.parse(query).xk) throw new CmccError('schema', 'BoxJS 里的凭证格式不对')
+  const login = await readBoxJS(host, BOXJS_LOGIN)
+  if (!JSON.parse(login).xk) throw new CmccError('schema', 'BoxJS 里的凭证格式不对')
   Keychain.set(KEYCHAIN_LOGIN, login)
-  Keychain.set(KEYCHAIN_QUERY, query)
   AppStorage.remove(CACHE_KEY)
 }
 
 export async function clearCredentials(): Promise<void> {
   Keychain.remove(KEYCHAIN_LOGIN)
-  Keychain.remove(KEYCHAIN_QUERY)
   AppStorage.remove(CACHE_KEY)
 }
 
@@ -309,5 +311,5 @@ export function clearCache(): void {
 }
 
 export async function hasCredentials(): Promise<boolean> {
-  return Boolean(Keychain.get(KEYCHAIN_LOGIN) && Keychain.get(KEYCHAIN_QUERY))
+  return Boolean(Keychain.get(KEYCHAIN_LOGIN))
 }

@@ -62,7 +62,7 @@ function SetupScreen() {
       setConfigured(true)
     } catch (e) {
       const err = e as Error
-      if (e instanceof CmccError && e.kind === 'auth') setStatus('❌ 登录凭证已失效, 打开中国移动 App 重新抓取后再导入')
+      if (e instanceof CmccError && e.kind === 'auth') setStatus('❌ 登录凭证已失效, 划掉中国移动 App 重开以重新抓取, 再导入')
       else setStatus(`❌ ${err.message}`)
     } finally {
       setBusy(false)
