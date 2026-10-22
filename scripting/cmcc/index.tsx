@@ -126,7 +126,8 @@ function SetupScreen() {
           {account?.monthFee !== undefined ? <LabeledContent title="本月消费" value={`¥${account.monthFee.toFixed(2)}`} /> : null}
           {account ? <LabeledContent title="通用流量" value={flowText(account.general)} /> : null}
           {account ? <LabeledContent title="定向流量" value={flowText(account.targeted)} /> : null}
-          {account ? <LabeledContent title="语音" value={`${account.voice ? Math.round(account.voice.remain) : 0} 分钟`} /> : null}
+          {account?.voice?.total ? <LabeledContent title="语音" value={`剩 ${Math.round(account.voice.remain)} / ${Math.round(account.voice.total)} 分钟`} /> : null}
+          {account?.user?.brand ? <LabeledContent title="品牌" value={account.user.brand} /> : null}
           {account ? <LabeledContent title="积分" value={account.points !== undefined ? String(account.points) : '-'} /> : null}
           {account ? null : (
             <Text foregroundStyle="secondaryLabel">

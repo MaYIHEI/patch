@@ -10,12 +10,14 @@ import {
   Spacer,
   Image,
   Widget,
+  Button,
   Capsule,
   RoundedRectangle,
 } from 'scripting'
 import type { Color, DynamicShapeStyle } from 'scripting'
 
 import { loadAccount, formatFlow, type Account, type FlowPart, CmccError } from './api'
+import { RefreshIntent } from './app_intents'
 
 // ─────────────────────────────────────────────────────────────
 // 常量
@@ -93,12 +95,18 @@ function Logo() {
   )
 }
 
+/** 更新时间 + 刷新图标, 点按跳过缓存重新查询 */
 function TimeText(props: { account: Account }) {
   const { account } = props
   return (
-    <Text font={11} foregroundStyle={T3}>
-      {account.stale ? `⚠ ${formatTime(account.fetchedAt)}` : formatTime(account.fetchedAt)}
-    </Text>
+    <Button intent={RefreshIntent(undefined)} buttonStyle="plain">
+      <HStack spacing={3}>
+        <Text font={11} foregroundStyle={T3}>
+          {account.stale ? `⚠ ${formatTime(account.fetchedAt)}` : formatTime(account.fetchedAt)}
+        </Text>
+        <Image systemName="arrow.clockwise" font={9} foregroundStyle={T3} />
+      </HStack>
+    </Button>
   )
 }
 
@@ -204,7 +212,10 @@ function Stat(props: { label: string; value: string }) {
   )
 }
 
-const voiceText = (a: Account) => `${a.voice ? Math.round(a.voice.remain) : 0}分`
+// 套餐没有语音分钟数时不显示语音, 换成品牌 / 星级
+const hasVoice = (a: Account) => (a.voice?.total ?? 0) > 0
+const voiceText = (a: Account) => `${Math.round(a.voice?.remain ?? 0)}分`
+const starText = (a: Account) => (a.user?.starLevel ? '★'.repeat(a.user.starLevel) : '-')
 const pointsText = (a: Account) => (a.points !== undefined ? String(a.points) : '-')
 
 // ─────────────────────────────────────────────────────────────
@@ -279,7 +290,9 @@ function MediumView(props: { account: Account }) {
         {account.general ? <FlowCard label="通用" flow={account.general} /> : null}
         {account.targeted ? <FlowCard label="定向" flow={account.targeted} /> : null}
         <HStack spacing={6}>
-          <Chip icon="phone.fill" label="语音" value={voiceText(account)} />
+          {hasVoice(account)
+            ? <Chip icon="phone.fill" label="语音" value={voiceText(account)} />
+            : <Chip icon="checkmark.seal.fill" label={account.user?.brand ?? '星级'} value={account.user?.brand ? '' : starText(account)} />}
           <Chip icon="star.fill" label="积分" value={pointsText(account)} />
         </HStack>
       </VStack>
@@ -293,7 +306,7 @@ function MediumView(props: { account: Account }) {
 function LargeView(props: { account: Account }) {
   const { account } = props
   const u = account.user
-  const star = u?.starLevel ? '★'.repeat(u.starLevel) : undefined
+  const star = hasVoice(account) && u?.starLevel ? starText(account) : undefined
   const subtitle = [u?.channel?.replace('移动', ''), u?.brand, star].filter(Boolean).join(' · ')
   return (
     <VStack
@@ -328,10 +341,12 @@ function LargeView(props: { account: Account }) {
       </VStack>
       <Spacer />
       <HStack spacing={6}>
-        <Stat label="语音" value={voiceText(account)} />
+        {hasVoice(account)
+          ? <Stat label="语音" value={voiceText(account)} />
+          : <Stat label="星级" value={starText(account)} />}
         <Stat label="积分" value={pointsText(account)} />
         <Stat label="星级分" value={u?.starScore !== undefined ? String(u.starScore) : '-'} />
-        <Stat label="网龄" value={u?.netAge ?? '-'} />
+        <Stat label="网龄" value={u?.netYears !== undefined ? `${u.netYears.toFixed(1)}年` : '-'} />
       </HStack>
     </VStack>
   )
