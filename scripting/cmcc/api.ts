@@ -60,8 +60,8 @@ export type UserInfo = {
   starScore?: number
   /** 归属, 如 "北京移动" */
   channel?: string
-  /** 网龄, 如 "3年2个月" */
-  netAge?: string
+  /** 网龄, 单位年, 如 5.3 */
+  netYears?: number
 }
 
 export type Account = {
@@ -222,6 +222,13 @@ function num(v: unknown): number | undefined {
   return Number.isNaN(n) ? undefined : n
 }
 
+// "5年3个月" / "8个月" → 5.25 / 0.67
+function parseNetYears(v: unknown): number | undefined {
+  const m = String(v ?? '').match(/^(?:(\d+)年)?(?:(\d+)个月)?$/)
+  if (!m || (!m[1] && !m[2])) return undefined
+  return Number(m[1] ?? 0) + Number(m[2] ?? 0) / 12
+}
+
 function buildAccount(fee: any, remain: any, points: any, user: any, query: string): Account {
   const balance = parseFloat(fee?.balance)
   if (Number.isNaN(balance)) throw new CmccError('schema', 'missing balance')
@@ -258,7 +265,7 @@ function buildAccount(fee: any, remain: any, points: any, user: any, query: stri
       starLevel: num(u.starLevel),
       starScore: num(u.starScore),
       channel: u.userChannel || undefined,
-      netAge: u.userAge || undefined,
+      netYears: parseNetYears(u.userAge),
     } : undefined,
     phoneTail: tel.slice(-4),
     stale: false,
