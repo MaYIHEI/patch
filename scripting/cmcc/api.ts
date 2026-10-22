@@ -28,7 +28,7 @@ const BOXJS_LOGIN = 'cmcc_login'
 
 const CACHE_KEY = 'cmcc.last_response'
 const CACHE_TTL_MS = 5 * 60 * 1000   // 5 分钟内复用缓存
-const STALE_OK_MS = 30 * 60 * 1000   // 30 分钟内网络故障可降级到缓存
+const STALE_OK_MS = 6 * 60 * 60 * 1000   // 6 小时内网络故障可降级到缓存 (带 ⚠ 标记)
 
 const HOST_LOGIN = 'client.app.coc.10086.cn'
 const HOST_BIZ = 'clientaccess.10086.cn'

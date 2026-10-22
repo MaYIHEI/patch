@@ -23,7 +23,7 @@ import { RefreshIntent } from './app_intents'
 // 常量
 // ─────────────────────────────────────────────────────────────
 const LOGO_URL = 'https://raw.githubusercontent.com/MaYIHEI/pin/refs/heads/main/app/cmcc.png'
-const REFRESH_MS = 30 * 60 * 1000   // 请求 30 分钟后刷新, 实际由系统决定
+const REFRESH_MS = 2 * 60 * 60 * 1000   // 请求 2 小时后刷新, 实际由系统决定; 要马上看点右上角时间
 
 type Pair = { light: Color; dark: Color }
 
