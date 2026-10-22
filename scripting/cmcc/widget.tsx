@@ -242,7 +242,7 @@ function classifyError(err: Error | null): { title: string; hint: string } {
   if (!err) return { title: '未知错误', hint: '打开 Scripting 查看日志' }
   if (err instanceof CmccError) {
     if (err.kind === 'no_cred') return { title: '未配置', hint: '打开 Scripting → 运行 cmcc 导入凭证' }
-    if (err.kind === 'auth')    return { title: '凭证失效', hint: '打开中国移动 App 重新抓取, 再到 Scripting 导入' }
+    if (err.kind === 'auth')    return { title: '凭证失效', hint: '划掉中国移动 App 重开, 再到 Scripting 导入' }
     if (err.kind === 'network') return { title: '网络错误', hint: '稍后自动重试' }
     if (err.kind === 'schema')  return { title: '接口变化', hint: err.message.slice(0, 60) }
   }
