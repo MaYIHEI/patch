@@ -20,7 +20,8 @@ const AppStorage = Storage as unknown as {
 // ────────────────────────────────────────────────────────────
 // 配置常量
 // ────────────────────────────────────────────────────────────
-const KEYCHAIN_LOGIN = 'cmcc.login'   // 登录信封 (查询信封由它合成)
+const KEYCHAIN_LOGIN = 'cmcc.login'     // 登录信封 (查询信封由它合成)
+const KEYCHAIN_SESSION = 'cmcc.session' // 会话 cookie, 失效才重新续登
 
 // 与 paperclip 签到脚本的 BoxJS 键一致
 const BOXJS_LOGIN = 'cmcc_login'
@@ -106,21 +107,32 @@ export async function loadAccount(): Promise<Account> {
   if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) return { ...cached, stale: false }
 
   try {
-    const cookie = await renewSession(login)
-    // 话费 / 流量必需; 积分 / 用户信息失败不影响主流程
-    const [fee, remain, points, user] = await Promise.all([
-      bizCall(P_FEE, query, cookie),
-      bizCall(P_REMAIN, query, cookie),
-      bizCall(P_POINTS, query, cookie).catch(() => null),
-      bizCall(P_USER, query, cookie).catch(() => null),
-    ])
-    const account = buildAccount(fee, remain, points, user, query)
+    // 先用上次的会话查; 查不动 (过期 / 被踢) 再续登重试一次
+    let account: Account
+    const saved = Keychain.get(KEYCHAIN_SESSION)
+    try {
+      account = await queryAll(saved ?? await renewSession(login), query)
+    } catch (e) {
+      if (!saved) throw e
+      account = await queryAll(await renewSession(login), query)
+    }
     writeCache(account)
     return account
   } catch (err) {
     if (cached && Date.now() - cached.fetchedAt < STALE_OK_MS) return { ...cached, stale: true }
     throw err
   }
+}
+
+// 话费 / 流量必需; 积分 / 用户信息失败不影响主流程
+async function queryAll(cookie: string, query: string): Promise<Account> {
+  const [fee, remain, points, user] = await Promise.all([
+    bizCall(P_FEE, query, cookie),
+    bizCall(P_REMAIN, query, cookie),
+    bizCall(P_POINTS, query, cookie).catch(() => null),
+    bizCall(P_USER, query, cookie).catch(() => null),
+  ])
+  return buildAccount(fee, remain, points, user, query)
 }
 
 // ────────────────────────────────────────────────────────────
@@ -178,6 +190,7 @@ async function renewSession(J: string): Promise<string> {
     .filter(Boolean)
     .join('; ')
   if (!cookie.includes('JSESSIONID')) throw new CmccError('schema', 'login returned no session')
+  Keychain.set(KEYCHAIN_SESSION, cookie)
   return cookie
 }
 
@@ -314,11 +327,13 @@ export async function importFromBoxJS(host: string): Promise<void> {
   const login = await readBoxJS(host, BOXJS_LOGIN)
   if (!JSON.parse(login).xk) throw new CmccError('schema', 'BoxJS 里的凭证格式不对')
   Keychain.set(KEYCHAIN_LOGIN, login)
+  Keychain.remove(KEYCHAIN_SESSION)
   AppStorage.remove(CACHE_KEY)
 }
 
 export async function clearCredentials(): Promise<void> {
   Keychain.remove(KEYCHAIN_LOGIN)
+  Keychain.remove(KEYCHAIN_SESSION)
   AppStorage.remove(CACHE_KEY)
 }
 
