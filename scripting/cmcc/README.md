@@ -29,7 +29,7 @@ scripting://import_scripts?urls=%5B%22https%3A%2F%2Fwww.imarkr.com%2Fapi%2Fgithu
 3. 保持 Loon 开启，在 Scripting 里运行 `cmcc`，点「从 BoxJS 导入」，看到 ✅ 即完成
 4. iPhone 桌面长按空白 → + → 搜 Scripting → 选 `cmcc`
 
-导入一次后小组件每次刷新会自动续期，之后不再需要 Loon。提示「凭证失效」时重复第 2、3 步。
+导入一次后小组件每次刷新会自动续期，之后不再需要 Loon。提示「凭证失效」时重复第 2、3 步。设置页「检查更新」可一键升级到最新版本。
 
 ---
 
@@ -48,3 +48,4 @@ scripting://import_scripts?urls=%5B%22https%3A%2F%2Fwww.imarkr.com%2Fapi%2Fgithu
 | 日期 | 版本 | 变更 |
 |---|---|---|
 | 2026-10-22 | 0.1.0 | 初版 (玻璃风格, 小 / 中 / 大三种尺寸) |
+| 2026-10-22 | 0.2.0 | 素色配色; 新设置页 (账号卡 / 检查更新); 小组件点时间刷新; 网龄按年显示 |
