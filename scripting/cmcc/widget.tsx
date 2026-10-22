@@ -1,6 +1,6 @@
 // cmcc / widget.tsx
 // 运行环境: Scripting (https://scripting.fun)
-// 每次刷新自动续登. 玻璃风格, 浅色 / 深色跟随系统
+// 每次刷新自动续登. 素色卡片, 浅色 / 深色跟随系统
 // Small: 话费 + 两条流量 / Medium: + 流量卡 + 语音 / 积分 / Large: + 本月消费 / 归属 / 品牌 / 星级 / 网龄
 
 import {
@@ -25,38 +25,23 @@ const REFRESH_MS = 30 * 60 * 1000   // 请求 30 分钟后刷新, 实际由系�
 
 type Pair = { light: Color; dark: Color }
 
-// 文字三级: 主数字 / 标签 / 次要信息
-const T1: Pair = { light: '#042C53', dark: '#FFFFFF' }
-const T2: Pair = { light: '#185FA5', dark: '#CECBF6' }
-const T3: Pair = { light: '#378ADD', dark: '#AFA9EC' }
-const CARD: Pair = { light: 'rgba(255,255,255,0.62)', dark: 'rgba(255,255,255,0.09)' }
-const TRACK: Pair = { light: 'rgba(4,44,83,0.10)', dark: 'rgba(255,255,255,0.14)' }
-const LOW: Pair = { light: '#E24B4A', dark: '#F09595' }
+// 素色: 浅色白底, 深色深灰底, 色值取 iOS 系统色
+const T1: Pair = { light: '#1C1C1E', dark: '#FFFFFF' }   // 主数字
+const T2: Pair = { light: '#6E6E73', dark: '#98989F' }   // 标签
+const T3: Pair = { light: '#8E8E93', dark: '#8E8E93' }   // 次要信息
+const CARD: Pair = { light: '#F2F2F7', dark: '#2C2C2E' }
+const TRACK: Pair = { light: '#E5E5EA', dark: '#3A3A3C' }
+const BG: Pair = { light: '#FFFFFF', dark: '#1C1C1E' }
 
-// 分项点缀色
-const GENERAL: Pair = { light: '#1D9E75', dark: '#5DCAA5' }
-const TARGETED: Pair = { light: '#7F77DD', dark: '#AFA9EC' }
-const VOICE: Pair = { light: '#D85A30', dark: '#F0997B' }
-const POINTS: Pair = { light: '#BA7517', dark: '#FAC775' }
+// 进度条按剩余比例: > 50% 绿, 20-50% 橙, < 20% 红
+const GREEN: Pair = { light: '#34C759', dark: '#30D158' }
+const ORANGE: Pair = { light: '#FF9500', dark: '#FF9F0A' }
+const RED: Pair = { light: '#FF3B30', dark: '#FF453A' }
 
-// 小组件底色; iOS 26 透明 / 着色外观下系统会隐藏它, 换成系统玻璃
-const BG: DynamicShapeStyle = {
-  light: {
-    gradient: [
-      { color: '#EAF3FC', location: 0 },
-      { color: '#B5D4F4', location: 1 },
-    ],
-    startPoint: { x: 0, y: 0 },
-    endPoint: { x: 1, y: 1 },
-  },
-  dark: {
-    gradient: [
-      { color: '#1E1A4A', location: 0 },
-      { color: '#26215C', location: 1 },
-    ],
-    startPoint: { x: 0, y: 0 },
-    endPoint: { x: 1, y: 1 },
-  },
+function levelColor(remainPercent: number): Pair {
+  if (remainPercent < 20) return RED
+  if (remainPercent <= 50) return ORANGE
+  return GREEN
 }
 
 function formatTime(epochMs: number): string {
@@ -121,7 +106,7 @@ function Balance(props: { account: Account; size: number }) {
   const { account, size } = props
   return (
     <VStack alignment="leading" spacing={1}>
-      <Text font={size} fontWeight="semibold" fontDesign="rounded" foregroundStyle={account.balance < 10 ? LOW : T1}>
+      <Text font={size} fontWeight="semibold" fontDesign="rounded" foregroundStyle={account.balance < 10 ? RED : T1}>
         {account.balance.toFixed(2)}
       </Text>
       <Text font={11} foregroundStyle={T2}>话费余额 · 元</Text>
@@ -166,8 +151,8 @@ function Bar(props: { percent: number; color: Pair; height: number }) {
   )
 }
 
-function FlowCard(props: { label: string; flow: FlowPart; color: Pair; detail?: boolean }) {
-  const { label, flow, color, detail } = props
+function FlowCard(props: { label: string; flow: FlowPart; detail?: boolean }) {
+  const { label, flow, detail } = props
   const p = remainPercent(flow)
   return (
     <Card>
@@ -179,7 +164,7 @@ function FlowCard(props: { label: string; flow: FlowPart; color: Pair; detail?: 
         </Text>
         <Text font={11} foregroundStyle={T3}>{`/${formatFlow(flow.totalMB)}`}</Text>
       </HStack>
-      <Bar percent={p} color={color} height={detail ? 6 : 5} />
+      <Bar percent={p} color={levelColor(p)} height={detail ? 6 : 5} />
       {detail ? (
         <Text font={11} foregroundStyle={T3}>{`已用 ${formatFlow(flow.usedMB)} · 剩 ${Math.round(p)}%`}</Text>
       ) : null}
@@ -188,7 +173,7 @@ function FlowCard(props: { label: string; flow: FlowPart; color: Pair; detail?: 
 }
 
 /** 中号右下的小胶囊: 图标 + 标签 + 值 */
-function Chip(props: { icon: string; color: Pair; label: string; value: string }) {
+function Chip(props: { icon: string; label: string; value: string }) {
   return (
     <HStack
       spacing={4}
@@ -196,7 +181,7 @@ function Chip(props: { icon: string; color: Pair; label: string; value: string }
       frame={{ maxWidth: 'infinity' }}
       background={<RoundedRectangle cornerRadius={14} fill={CARD} />}
     >
-      <Image systemName={props.icon} font={10} foregroundStyle={props.color} />
+      <Image systemName={props.icon} font={10} foregroundStyle={T2} />
       <Text font={11} foregroundStyle={T2}>{props.label}</Text>
       <Spacer />
       <Text font={11} fontWeight="semibold" fontDesign="rounded" foregroundStyle={T1}>{props.value}</Text>
@@ -234,7 +219,7 @@ function SmallView(props: { account: Account }) {
       spacing={0}
       padding={14}
       frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'topLeading' }}
-      widgetBackground={BG}
+      widgetBackground={BG as DynamicShapeStyle}
     >
       <HStack>
         <Logo />
@@ -256,8 +241,8 @@ function SmallView(props: { account: Account }) {
         ) : null}
       </HStack>
       <HStack spacing={4} padding={{ top: 5 }}>
-        {general ? <Bar percent={remainPercent(general)} color={GENERAL} height={6} /> : null}
-        {targeted ? <Bar percent={remainPercent(targeted)} color={TARGETED} height={6} /> : null}
+        {general ? <Bar percent={remainPercent(general)} color={levelColor(remainPercent(general))} height={6} /> : null}
+        {targeted ? <Bar percent={remainPercent(targeted)} color={levelColor(remainPercent(targeted))} height={6} /> : null}
       </HStack>
     </VStack>
   )
@@ -273,7 +258,7 @@ function MediumView(props: { account: Account }) {
       spacing={14}
       padding={14}
       frame={{ maxWidth: 'infinity', maxHeight: 'infinity' }}
-      widgetBackground={BG}
+      widgetBackground={BG as DynamicShapeStyle}
     >
       <VStack alignment="leading" spacing={0} frame={{ width: 118, maxHeight: 'infinity', alignment: 'topLeading' }}>
         <HStack spacing={6}>
@@ -291,11 +276,11 @@ function MediumView(props: { account: Account }) {
         </HStack>
       </VStack>
       <VStack spacing={6} frame={{ maxWidth: 'infinity' }}>
-        {account.general ? <FlowCard label="通用" flow={account.general} color={GENERAL} /> : null}
-        {account.targeted ? <FlowCard label="定向" flow={account.targeted} color={TARGETED} /> : null}
+        {account.general ? <FlowCard label="通用" flow={account.general} /> : null}
+        {account.targeted ? <FlowCard label="定向" flow={account.targeted} /> : null}
         <HStack spacing={6}>
-          <Chip icon="phone.fill" color={VOICE} label="语音" value={voiceText(account)} />
-          <Chip icon="star.fill" color={POINTS} label="积分" value={pointsText(account)} />
+          <Chip icon="phone.fill" label="语音" value={voiceText(account)} />
+          <Chip icon="star.fill" label="积分" value={pointsText(account)} />
         </HStack>
       </VStack>
     </HStack>
@@ -316,7 +301,7 @@ function LargeView(props: { account: Account }) {
       spacing={14}
       padding={16}
       frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'topLeading' }}
-      widgetBackground={BG}
+      widgetBackground={BG as DynamicShapeStyle}
     >
       <HStack spacing={6}>
         <Logo />
@@ -338,8 +323,8 @@ function LargeView(props: { account: Account }) {
         ) : null}
       </HStack>
       <VStack spacing={6}>
-        {account.general ? <FlowCard label="通用流量" flow={account.general} color={GENERAL} detail /> : null}
-        {account.targeted ? <FlowCard label="定向流量" flow={account.targeted} color={TARGETED} detail /> : null}
+        {account.general ? <FlowCard label="通用流量" flow={account.general} detail /> : null}
+        {account.targeted ? <FlowCard label="定向流量" flow={account.targeted} detail /> : null}
       </VStack>
       <Spacer />
       <HStack spacing={6}>
@@ -358,8 +343,8 @@ function LargeView(props: { account: Account }) {
 function ErrorView(props: { error: Error | null }) {
   const msg = classifyError(props.error)
   return (
-    <VStack spacing={6} padding={14} frame={{ maxWidth: 'infinity', maxHeight: 'infinity' }} widgetBackground={BG}>
-      <Image systemName="exclamationmark.triangle.fill" font={22} foregroundStyle={VOICE} />
+    <VStack spacing={6} padding={14} frame={{ maxWidth: 'infinity', maxHeight: 'infinity' }} widgetBackground={BG as DynamicShapeStyle}>
+      <Image systemName="exclamationmark.triangle.fill" font={22} foregroundStyle={ORANGE} />
       <Text font={12} fontWeight="semibold" foregroundStyle={T1}>{msg.title}</Text>
       <Text font={10} foregroundStyle={T2} multilineTextAlignment="center">{msg.hint}</Text>
     </VStack>
