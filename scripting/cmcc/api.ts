@@ -20,13 +20,16 @@ const AppStorage = Storage as unknown as {
 // ────────────────────────────────────────────────────────────
 // 配置常量
 // ────────────────────────────────────────────────────────────
-const KEYCHAIN_LOGIN = 'cmcc.login'     // 登录信封 (查询信封由它合成)
-const KEYCHAIN_SESSION = 'cmcc.session' // 会话 cookie, 失效才重新续登
+// 多账号: 按手机号分开存, 小组件参数填尾号选账号
+const KEYCHAIN_ACCOUNTS = 'cmcc.accounts'   // 已导入的手机号列表 (JSON)
+const KEYCHAIN_LOGIN = 'cmcc.login.'        // + 手机号: 登录信封 (查询信封由它合成)
+const KEYCHAIN_SESSION = 'cmcc.session.'    // + 手机号: 会话 cookie, 失效才重新续登
+const LEGACY_LOGIN = 'cmcc.login'           // 0.2.0 及以前的单账号凭证, 首次读取时迁移
 
 // 与 paperclip 签到脚本的 BoxJS 键一致
 const BOXJS_LOGIN = 'cmcc_login'
 
-const CACHE_KEY = 'cmcc.last_response'
+const CACHE_KEY = 'cmcc.last_response.'    // + 手机号
 const CACHE_TTL_MS = 5 * 60 * 1000   // 5 分钟内复用缓存
 const STALE_OK_MS = 6 * 60 * 60 * 1000   // 6 小时内网络故障可降级到缓存 (带 ⚠ 标记)
 
@@ -98,25 +101,30 @@ export class CmccError extends Error {
 // ────────────────────────────────────────────────────────────
 // 主入口
 // ────────────────────────────────────────────────────────────
-export async function loadAccount(): Promise<Account> {
-  const login = Keychain.get(KEYCHAIN_LOGIN)
-  if (!login) throw new CmccError('no_cred', '未导入登录凭证')
+/** selector: 手机号或尾号; 空则取第一个账号 */
+export async function loadAccount(selector?: string): Promise<Account> {
+  const tels = listAccounts()
+  if (tels.length === 0) throw new CmccError('no_cred', '未导入登录凭证')
+  const want = selector?.trim()
+  const tel = want ? tels.find(t => t.endsWith(want)) : tels[0]
+  if (!tel) throw new CmccError('no_cred', `没有尾号 ${want} 的账号`)
+  const login = Keychain.get(KEYCHAIN_LOGIN + tel)!
   const query = queryFromLogin(login)
 
-  const cached = readCache()
+  const cached = readCache(tel)
   if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) return { ...cached, stale: false }
 
   try {
     // 先用上次的会话查; 查不动 (过期 / 被踢) 再续登重试一次
     let account: Account
-    const saved = Keychain.get(KEYCHAIN_SESSION)
+    const saved = Keychain.get(KEYCHAIN_SESSION + tel)
     try {
-      account = await queryAll(saved ?? await renewSession(login), query)
+      account = await queryAll(saved ?? await renewSession(login, tel), query)
     } catch (e) {
       if (!saved) throw e
-      account = await queryAll(await renewSession(login), query)
+      account = await queryAll(await renewSession(login, tel), query)
     }
-    writeCache(account)
+    writeCache(tel, account)
     return account
   } catch (err) {
     if (cached && Date.now() - cached.fetchedAt < STALE_OK_MS) return { ...cached, stale: true }
@@ -173,7 +181,7 @@ function parseRsp(text: string, key: string, iv: string): Rsp {
 }
 
 /** 静默续登, 返回会话 cookie (JSESSIONID / UID / ticketID) */
-async function renewSession(J: string): Promise<string> {
+async function renewSession(J: string, tel: string): Promise<string> {
   const res = await post('https://' + HOST_LOGIN + P_LOGIN, signedHeaders(HOST_LOGIN, P_LOGIN, J, 'null', '14'), encB64(J, LK, LIV))
   if (!res.ok) throw new CmccError('network', `HTTP ${res.status}`)
   const out = parseRsp(await res.text(), LSK, LIV)
@@ -190,7 +198,7 @@ async function renewSession(J: string): Promise<string> {
     .filter(Boolean)
     .join('; ')
   if (!cookie.includes('JSESSIONID')) throw new CmccError('schema', 'login returned no session')
-  Keychain.set(KEYCHAIN_SESSION, cookie)
+  Keychain.set(KEYCHAIN_SESSION + tel, cookie)
   return cookie
 }
 
@@ -221,9 +229,9 @@ function toMB(v: string | undefined, unit: string | undefined): number {
   return unit === '04' ? n * 1024 : n
 }
 
-/** 185935 → "181.6G", 512 → "512M" */
+/** 185935 → "181.58G", 512 → "512M" */
 export function formatFlow(mb: number): string {
-  if (mb >= 1024) return `${(mb / 1024).toFixed(mb >= 100 * 1024 ? 0 : 1)}G`
+  if (mb >= 1024) return `${(mb / 1024).toFixed(2)}G`
   return `${Math.round(mb)}M`
 }
 
@@ -290,18 +298,18 @@ function buildAccount(fee: any, remain: any, points: any, user: any, query: stri
 // 缓存层 — Storage (NSUserDefaults 底层, 不进 iCloud, 不同步)
 // 只存查询结果, 不存凭证
 // ────────────────────────────────────────────────────────────
-function readCache(): Account | null {
+function readCache(tel: string): Account | null {
   try {
-    const s = AppStorage.get<string>(CACHE_KEY)
+    const s = AppStorage.get<string>(CACHE_KEY + tel)
     return s ? JSON.parse(s) as Account : null
   } catch {
     return null
   }
 }
 
-function writeCache(account: Account): void {
+function writeCache(tel: string, account: Account): void {
   try {
-    AppStorage.set(CACHE_KEY, JSON.stringify(account))
+    AppStorage.set(CACHE_KEY + tel, JSON.stringify(account))
   } catch {
     // 缓存写失败不影响主流程
   }
@@ -323,24 +331,41 @@ async function readBoxJS(host: string, key: string): Promise<string> {
   return json.val
 }
 
-export async function importFromBoxJS(host: string): Promise<void> {
+/** 已导入的手机号, 按导入顺序 */
+export function listAccounts(): string[] {
+  const raw = Keychain.get(KEYCHAIN_ACCOUNTS)
+  if (raw) return JSON.parse(raw) as string[]
+  const legacy = Keychain.get(LEGACY_LOGIN)
+  if (!legacy) return []
+  const tel = String(JSON.parse(legacy).tel)
+  Keychain.set(KEYCHAIN_LOGIN + tel, legacy)
+  Keychain.set(KEYCHAIN_ACCOUNTS, JSON.stringify([tel]))
+  Keychain.remove(LEGACY_LOGIN)
+  Keychain.remove('cmcc.session')
+  return [tel]
+}
+
+/** 导入当前 BoxJS 里的账号; 同号覆盖, 新号追加. 返回手机号 */
+export async function importFromBoxJS(host: string): Promise<string> {
   const login = await readBoxJS(host, BOXJS_LOGIN)
-  if (!JSON.parse(login).xk) throw new CmccError('schema', 'BoxJS 里的凭证格式不对')
-  Keychain.set(KEYCHAIN_LOGIN, login)
-  Keychain.remove(KEYCHAIN_SESSION)
-  AppStorage.remove(CACHE_KEY)
+  const { xk, tel } = JSON.parse(login)
+  if (!xk || !tel) throw new CmccError('schema', 'BoxJS 里的凭证格式不对')
+  const tels = listAccounts()
+  if (!tels.includes(tel)) Keychain.set(KEYCHAIN_ACCOUNTS, JSON.stringify([...tels, tel]))
+  Keychain.set(KEYCHAIN_LOGIN + tel, login)
+  Keychain.remove(KEYCHAIN_SESSION + tel)
+  AppStorage.remove(CACHE_KEY + tel)
+  return tel
 }
 
-export async function clearCredentials(): Promise<void> {
-  Keychain.remove(KEYCHAIN_LOGIN)
-  Keychain.remove(KEYCHAIN_SESSION)
-  AppStorage.remove(CACHE_KEY)
+export async function removeAccount(tel: string): Promise<void> {
+  Keychain.set(KEYCHAIN_ACCOUNTS, JSON.stringify(listAccounts().filter(t => t !== tel)))
+  Keychain.remove(KEYCHAIN_LOGIN + tel)
+  Keychain.remove(KEYCHAIN_SESSION + tel)
+  AppStorage.remove(CACHE_KEY + tel)
 }
 
+/** 清掉所有账号的查询缓存, 下次刷新实时查询 */
 export function clearCache(): void {
-  AppStorage.remove(CACHE_KEY)
-}
-
-export async function hasCredentials(): Promise<boolean> {
-  return Boolean(Keychain.get(KEYCHAIN_LOGIN))
+  for (const tel of listAccounts()) AppStorage.remove(CACHE_KEY + tel)
 }

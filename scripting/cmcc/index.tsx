@@ -4,7 +4,7 @@
 // 用途:
 // 1) 第一次配置: 从 BoxJS 导入登录凭证, 存到 Keychain
 // 2) 查看当前数据 / 立即刷新
-// 3) 检查脚本更新, 清除配置
+// 3) 多账号切换 / 删除, 检查脚本更新
 
 import {
   Button,
@@ -28,9 +28,9 @@ import {
 import type { Color } from 'scripting'
 import {
   importFromBoxJS,
-  clearCredentials,
+  removeAccount,
   clearCache,
-  hasCredentials,
+  listAccounts,
   loadAccount,
   formatFlow,
   CmccError,
@@ -177,15 +177,16 @@ function SetupScreen() {
   const [account, setAccount] = useState<Account | null>(null)
   const [status, setStatus] = useState('')
   const [busy, setBusy] = useState(false)
-  const [configured, setConfigured] = useState(false)
+  const [tels, setTels] = useState<string[]>([])
+  const [current, setCurrent] = useState('')
   const [updateText, setUpdateText] = useState('')
   const version = Script.metadata.version ?? '-'
+  const configured = tels.length > 0
 
   useEffect(() => {
-    hasCredentials().then(ok => {
-      setConfigured(ok)
-      if (ok) run(async () => loadAccount())
-    })
+    const list = listAccounts()
+    setTels(list)
+    if (list.length > 0) select(list[0])
   }, [])
 
   async function run(task: () => Promise<Account>) {
@@ -193,7 +194,6 @@ function SetupScreen() {
     setStatus('')
     try {
       setAccount(await task())
-      setConfigured(true)
     } catch (e) {
       setStatus(errorText(e))
     } finally {
@@ -201,17 +201,25 @@ function SetupScreen() {
     }
   }
 
+  function select(tel: string) {
+    setCurrent(tel)
+    setAccount(null)
+    run(() => loadAccount(tel))
+  }
+
   function handleImport() {
     run(async () => {
-      await importFromBoxJS(host.trim() || 'boxjs.com')
-      return loadAccount()
+      const tel = await importFromBoxJS(host.trim() || 'boxjs.com')
+      setTels(listAccounts())
+      setCurrent(tel)
+      return loadAccount(tel)
     })
   }
 
   function handleRefresh() {
     run(async () => {
       clearCache()
-      return loadAccount()
+      return loadAccount(current)
     })
   }
 
@@ -237,18 +245,20 @@ function SetupScreen() {
     }
   }
 
-  async function handleClear() {
+  async function handleRemove() {
     const ok = await Dialog.confirm({
-      title: '清除配置?',
-      message: '会删除 Keychain 里的登录凭证',
+      title: `删除尾号 ${current.slice(-4)}?`,
+      message: '会删除 Keychain 里这个号的登录凭证',
       cancelLabel: '取消',
-      confirmLabel: '清除',
+      confirmLabel: '删除',
     })
     if (!ok) return
-    await clearCredentials()
-    setConfigured(false)
-    setAccount(null)
+    await removeAccount(current)
+    const list = listAccounts()
+    setTels(list)
     setStatus('')
+    if (list.length > 0) select(list[0])
+    else { setCurrent(''); setAccount(null) }
   }
 
   const hint = busy ? '查询中...' : configured ? '暂无数据' : '还没有导入凭证'
@@ -288,6 +298,29 @@ function SetupScreen() {
           </Section>
         ) : null}
 
+        {configured ? (
+          <Section
+            header={<Text>账号</Text>}
+            footer={
+              <Text>
+                {'小组件显示哪个号: 长按小组件 → 编辑小组件 → 参数, 填手机尾号 4 位; 不填显示第一个.\n添加另一个号: 在中国移动 App 里用「切换账号」登录该号 (别用「退出登录」), 划掉重开 App 后再点「从 BoxJS 导入」.'}
+              </Text>
+            }
+          >
+            {tels.map(t => (
+              <ActionRow
+                key={t}
+                icon="person.crop.circle.fill"
+                color={t === current ? 'systemBlue' : 'systemGray'}
+                title={`尾号 ${t.slice(-4)}`}
+                detail={t === current ? '当前' : undefined}
+                disabled={busy}
+                action={() => select(t)}
+              />
+            ))}
+          </Section>
+        ) : null}
+
         <Section
           header={<Text>登录凭证</Text>}
           footer={
@@ -320,7 +353,7 @@ function SetupScreen() {
 
         {configured ? (
           <Section footer={<Text>凭证只存本机 Keychain, 导入后小组件每次刷新自动续期, 不再需要 Loon.</Text>}>
-            <Button title="清除配置" role="destructive" action={handleClear} />
+            <Button title={`删除尾号 ${current.slice(-4)}`} role="destructive" action={handleRemove} />
           </Section>
         ) : null}
       </Form>
