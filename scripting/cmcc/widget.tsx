@@ -63,7 +63,7 @@ async function main() {
   let account: Account | null = null
   let lastError: Error | null = null
   try {
-    account = await loadAccount()
+    account = await loadAccount(Widget.parameter)
   } catch (e) {
     lastError = e as Error
   }
@@ -219,7 +219,7 @@ const starText = (a: Account) => (a.user?.starLevel ? '★'.repeat(a.user.starLe
 const pointsText = (a: Account) => (a.points !== undefined ? String(a.points) : '-')
 
 // ─────────────────────────────────────────────────────────────
-// Small — 余额 + 两条流量
+// Small — 余额 + 两行流量
 // ─────────────────────────────────────────────────────────────
 function SmallView(props: { account: Account }) {
   const { account } = props
@@ -238,23 +238,27 @@ function SmallView(props: { account: Account }) {
         <TimeText account={account} />
       </HStack>
       <Spacer />
-      <Balance account={account} size={32} />
+      <Balance account={account} size={30} />
       <Spacer />
-      <HStack spacing={4}>
-        {general ? (
-          <Text font={11} fontWeight="semibold" fontDesign="rounded" foregroundStyle={T1}>{formatFlow(general.remainMB)}</Text>
-        ) : null}
-        <Text font={11} foregroundStyle={T2}>通用</Text>
+      <VStack spacing={6}>
+        {general ? <SmallFlow label="通用" flow={general} /> : null}
+        {targeted ? <SmallFlow label="定向" flow={targeted} /> : null}
+      </VStack>
+    </VStack>
+  )
+}
+
+/** 小号的一行流量: 标签 + 剩余量, 下面一根进度条 */
+function SmallFlow(props: { label: string; flow: FlowPart }) {
+  const p = remainPercent(props.flow)
+  return (
+    <VStack spacing={3}>
+      <HStack>
+        <Text font={11} foregroundStyle={T2}>{props.label}</Text>
         <Spacer />
-        {targeted ? <Text font={11} foregroundStyle={T2}>定向</Text> : null}
-        {targeted ? (
-          <Text font={11} fontWeight="semibold" fontDesign="rounded" foregroundStyle={T1}>{formatFlow(targeted.remainMB)}</Text>
-        ) : null}
+        <Text font={12} fontWeight="semibold" fontDesign="rounded" foregroundStyle={T1}>{formatFlow(props.flow.remainMB)}</Text>
       </HStack>
-      <HStack spacing={4} padding={{ top: 5 }}>
-        {general ? <Bar percent={remainPercent(general)} color={levelColor(remainPercent(general))} height={6} /> : null}
-        {targeted ? <Bar percent={remainPercent(targeted)} color={levelColor(remainPercent(targeted))} height={6} /> : null}
-      </HStack>
+      <Bar percent={p} color={levelColor(p)} height={5} />
     </VStack>
   )
 }
@@ -369,7 +373,11 @@ function ErrorView(props: { error: Error | null }) {
 function classifyError(err: Error | null): { title: string; hint: string } {
   if (!err) return { title: '未知错误', hint: '打开 Scripting 查看日志' }
   if (err instanceof CmccError) {
-    if (err.kind === 'no_cred') return { title: '未配置', hint: '打开 Scripting → 运行 cmcc 导入凭证' }
+    if (err.kind === 'no_cred') {
+      return err.message.startsWith('没有尾号')
+        ? { title: '找不到账号', hint: `${err.message}, 检查小组件参数` }
+        : { title: '未配置', hint: '打开 Scripting → 运行 cmcc 导入凭证' }
+    }
     if (err.kind === 'auth')    return { title: '凭证失效', hint: '划掉中国移动 App 重开, 再到 Scripting 导入' }
     if (err.kind === 'network') return { title: '网络错误', hint: '稍后自动重试' }
     if (err.kind === 'schema')  return { title: '接口变化', hint: err.message.slice(0, 60) }
