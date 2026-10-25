@@ -515,7 +515,8 @@ function LargeView(props: { account: Account }) {
 // ─────────────────────────────────────────────────────────────
 // 双号 — 左右两列, 中间细线
 // ─────────────────────────────────────────────────────────────
-function DualFrame(props: { children?: any; padding: number; header: any; gap: number; columnGap: number }) {
+/** 普通函数而非组件: 让双号视图直接返回带 widgetBackground 的 VStack, 结构同单号 */
+function dualFrame(props: { columns: any[]; padding: number; header: any; gap: number; columnGap: number }) {
   return (
     <VStack
       alignment="leading"
@@ -526,7 +527,9 @@ function DualFrame(props: { children?: any; padding: number; header: any; gap: n
     >
       {props.header}
       <HStack alignment="top" spacing={props.columnGap} frame={{ maxHeight: 'infinity' }}>
-        {props.children}
+        {props.columns[0]}
+        <VLine />
+        {props.columns[1]}
       </HStack>
     </VStack>
   )
@@ -568,19 +571,17 @@ function DualSmall(props: { slots: Slot[]; fetchedAt: number; stale: boolean }) 
       </VStack>
     )
   }
-  return (
-    <DualFrame padding={14} gap={8} columnGap={10} header={
+  return dualFrame({
+    padding: 14, gap: 8, columnGap: 10,
+    columns: [column(props.slots[0]), column(props.slots[1])],
+    header: (
       <HStack>
         <Logo />
         <Spacer />
         <TimeText fetchedAt={props.fetchedAt} stale={props.stale} />
       </HStack>
-    }>
-      {column(props.slots[0])}
-      <VLine />
-      {column(props.slots[1])}
-    </DualFrame>
-  )
+    ),
+  })
 }
 
 function DualMedium(props: { slots: Slot[]; fetchedAt: number; stale: boolean }) {
@@ -600,19 +601,17 @@ function DualMedium(props: { slots: Slot[]; fetchedAt: number; stale: boolean })
       </VStack>
     )
   }
-  return (
-    <DualFrame padding={14} gap={6} columnGap={14} header={
+  return dualFrame({
+    padding: 14, gap: 6, columnGap: 14,
+    columns: [column(props.slots[0]), column(props.slots[1])],
+    header: (
       <HStack>
         <Brand />
         <Spacer />
         <TimeText fetchedAt={props.fetchedAt} stale={props.stale} />
       </HStack>
-    }>
-      {column(props.slots[0])}
-      <VLine />
-      {column(props.slots[1])}
-    </DualFrame>
-  )
+    ),
+  })
 }
 
 function DualLarge(props: { slots: Slot[]; fetchedAt: number; stale: boolean }) {
@@ -652,19 +651,17 @@ function DualLarge(props: { slots: Slot[]; fetchedAt: number; stale: boolean }) 
       </VStack>
     )
   }
-  return (
-    <DualFrame padding={16} gap={12} columnGap={14} header={
+  return dualFrame({
+    padding: 16, gap: 12, columnGap: 14,
+    columns: [column(props.slots[0]), column(props.slots[1])],
+    header: (
       <HStack>
         <Brand />
         <Spacer />
         <TimeText fetchedAt={props.fetchedAt} stale={props.stale} />
       </HStack>
-    }>
-      {column(props.slots[0])}
-      <VLine />
-      {column(props.slots[1])}
-    </DualFrame>
-  )
+    ),
+  })
 }
 
 // ─────────────────────────────────────────────────────────────
