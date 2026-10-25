@@ -305,7 +305,7 @@ function SetupScreen() {
             {account.voice?.total ? (
               <InfoRow icon="phone.fill" color="systemOrange" title="语音" value={`剩 ${Math.round(account.voice.remain)} / ${Math.round(account.voice.total)} 分钟`} />
             ) : null}
-            {u?.starLevel ? <InfoRow icon="star.fill" color="systemYellow" title="星级" value={`${'★'.repeat(u.starLevel)}  ${u.starScore ?? ''}`} /> : null}
+            {u?.starLevel ? <InfoRow icon="star.fill" color="systemYellow" title="星级" value={`${u.starLevel}星 · ${u.starScore ?? '-'}分`} /> : null}
             {u?.netYears !== undefined ? <InfoRow icon="calendar" color="systemIndigo" title="网龄" value={`${u.netYears.toFixed(1)} 年`} /> : null}
             {u?.channel ? <InfoRow icon="mappin.and.ellipse" color="systemPink" title="归属" value={u.channel} /> : null}
           </Section>
