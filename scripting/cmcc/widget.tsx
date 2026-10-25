@@ -80,7 +80,8 @@ function metersOf(a: Account): Meter[] {
   return out
 }
 
-const starText = (a: Account) => (a.user?.starLevel ? '★'.repeat(a.user.starLevel) : '-')
+// "3星" 而不是 "★★★": 五星也只占两个字宽, 不会换行
+const starText = (a: Account) => (a.user?.starLevel ? `${a.user.starLevel}星` : '-')
 const pointsText = (a: Account) => (a.points !== undefined ? String(a.points) : '-')
 const balanceLabel = (a: Account) => (a.balance < 0 ? '已欠费 · 元' : '话费余额 · 元')
 /** 品牌, 未知品牌代码时退回星级 */
@@ -334,7 +335,7 @@ function Chip(props: { icon: string; label: string; value: string }) {
       <Image systemName={props.icon} font={10} foregroundStyle={T2} />
       <Text font={11} foregroundStyle={T2} lineLimit={1}>{props.label}</Text>
       <Spacer />
-      <Text font={11} fontWeight="semibold" fontDesign="rounded" foregroundStyle={T1}>{props.value}</Text>
+      <Text font={11} fontWeight="semibold" fontDesign="rounded" foregroundStyle={T1} lineLimit={1}>{props.value}</Text>
     </HStack>
   )
 }
@@ -357,7 +358,7 @@ function Stat(props: { label: string; value: string; size?: number; tall?: boole
   )
 }
 
-/** 品牌格: 有品牌时 "动感地带 ★★★", 否则 "星级 ★★★" */
+/** 品牌格: 有品牌时显示品牌, 否则 "星级 3星" */
 function BrandChip(props: { account: Account }) {
   const a = props.account
   return a.user?.brand

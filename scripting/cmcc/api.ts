@@ -258,8 +258,8 @@ export function formatFlow(mb: number): string {
   return `${Math.round(mb)}M`
 }
 
-// 品牌码: "03" 已对照套餐名确认, 其余按中国移动通用编码; 未知代码不显示
-const BRANDS: Record<string, string> = { '01': '全球通', '02': '神州行', '03': '动感地带' }
+// 品牌码: "03" "09" 已对照套餐名确认 (都是动感地带), 其余按中国移动通用编码; 未知代码不显示
+const BRANDS: Record<string, string> = { '01': '全球通', '02': '神州行', '03': '动感地带', '09': '动感地带' }
 
 function num(v: unknown): number | undefined {
   const n = parseFloat(String(v))
