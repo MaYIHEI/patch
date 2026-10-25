@@ -87,7 +87,7 @@ export type Account = {
   fetchedAt: number
 }
 
-export type ErrorKind = 'no_cred' | 'auth' | 'network' | 'schema'
+export type ErrorKind = 'no_cred' | 'auth' | 'risk' | 'network' | 'schema'
 
 export class CmccError extends Error {
   kind: ErrorKind
@@ -186,6 +186,8 @@ async function renewSession(J: string, tel: string): Promise<string> {
   if (!res.ok) throw new CmccError('network', `HTTP ${res.status}`)
   const out = parseRsp(await res.text(), LSK, LIV)
   console.log('[cmcc login]', out.retCode, out.retDesc)
+  // 214100: 风控要求验证, 需要在中国移动 App 里完成, 不是凭证失效
+  if (out.retCode === '214100') throw new CmccError('risk', `${out.retDesc ?? ''} [214100]`)
   if (out.retCode !== '000000') throw new CmccError('auth', `${out.retDesc ?? ''} [${out.retCode}]`)
 
   // 服务端把三个 cookie 合在一个 Set-Cookie 头里, 按名字逐个取
@@ -345,17 +347,27 @@ export function listAccounts(): string[] {
   return [tel]
 }
 
-/** 导入当前 BoxJS 里的账号; 同号覆盖, 新号追加. 返回手机号 */
-export async function importFromBoxJS(host: string): Promise<string> {
-  const login = await readBoxJS(host, BOXJS_LOGIN)
-  const { xk, tel } = JSON.parse(login)
-  if (!xk || !tel) throw new CmccError('schema', 'BoxJS 里的凭证格式不对')
+/**
+ * 导入 BoxJS 里的全部账号; 同号覆盖, 新号追加. 返回导入的手机号
+ * cmcc_login 是登录信封数组 (paperclip r5 起); 旧版是单个信封
+ */
+export async function importFromBoxJS(host: string): Promise<string[]> {
+  const raw = await readBoxJS(host, BOXJS_LOGIN)
+  const parsed = JSON.parse(raw)
+  const logins: string[] = Array.isArray(parsed) ? parsed : [raw]
   const tels = listAccounts()
-  if (!tels.includes(tel)) Keychain.set(KEYCHAIN_ACCOUNTS, JSON.stringify([...tels, tel]))
-  Keychain.set(KEYCHAIN_LOGIN + tel, login)
-  Keychain.remove(KEYCHAIN_SESSION + tel)
-  AppStorage.remove(CACHE_KEY + tel)
-  return tel
+  const imported: string[] = []
+  for (const login of logins) {
+    const { xk, tel } = JSON.parse(login)
+    if (!xk || !tel) throw new CmccError('schema', 'BoxJS 里的凭证格式不对')
+    if (!tels.includes(tel)) tels.push(tel)
+    Keychain.set(KEYCHAIN_LOGIN + tel, login)
+    Keychain.remove(KEYCHAIN_SESSION + tel)
+    AppStorage.remove(CACHE_KEY + tel)
+    imported.push(tel)
+  }
+  Keychain.set(KEYCHAIN_ACCOUNTS, JSON.stringify(tels))
+  return imported
 }
 
 export async function removeAccount(tel: string): Promise<void> {
