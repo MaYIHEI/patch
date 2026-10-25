@@ -1,7 +1,8 @@
 // cmcc / widget.tsx
 // 运行环境: Scripting (https://scripting.fun)
 // 每次刷新自动续登. 素色卡片, 浅色 / 深色跟随系统
-// Small: 话费 + 两条流量 / Medium: + 流量卡 + 语音 / 积分 / Large: + 本月消费 / 归属 / 品牌 / 星级 / 网龄
+// 参数: 空 = 第一个号; "1234" = 单号; "主号:1234,副号:5678" = 双号 (备注可省)
+// 通用 / 定向 / 语音统一当"额度条", 版式按条数 1-3 自适应
 
 import {
   VStack,
@@ -12,11 +13,12 @@ import {
   Widget,
   Button,
   Capsule,
+  Rectangle,
   RoundedRectangle,
 } from 'scripting'
 import type { Color, DynamicShapeStyle } from 'scripting'
 
-import { loadAccount, formatFlow, type Account, type FlowPart, CmccError } from './api'
+import { loadAccount, formatFlow, type Account, CmccError } from './api'
 import { RefreshIntent } from './app_intents'
 
 // ─────────────────────────────────────────────────────────────
@@ -52,25 +54,73 @@ function formatTime(epochMs: number): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-function remainPercent(f: FlowPart): number {
-  return f.totalMB > 0 ? (f.remainMB / f.totalMB) * 100 : 0
+/** 一根额度条: 通用 / 定向流量或语音 */
+type Meter = { label: string; remain: string; total: string; used: string; percent: number }
+
+function metersOf(a: Account): Meter[] {
+  const out: Meter[] = []
+  for (const [label, f] of [['通用', a.general], ['定向', a.targeted]] as const) {
+    if (f) out.push({
+      label,
+      remain: formatFlow(f.remainMB),
+      total: formatFlow(f.totalMB),
+      used: formatFlow(f.usedMB),
+      percent: f.totalMB > 0 ? (f.remainMB / f.totalMB) * 100 : 0,
+    })
+  }
+  // 套餐没有语音分钟数时不显示语音
+  const v = a.voice
+  if (v && v.total > 0) out.push({
+    label: '语音',
+    remain: `${Math.round(v.remain)}分`,
+    total: `${Math.round(v.total)}分`,
+    used: `${Math.round(v.used)}分`,
+    percent: (v.remain / v.total) * 100,
+  })
+  return out
 }
+
+const starText = (a: Account) => (a.user?.starLevel ? '★'.repeat(a.user.starLevel) : '-')
+const pointsText = (a: Account) => (a.points !== undefined ? String(a.points) : '-')
+const balanceLabel = (a: Account) => (a.balance < 0 ? '已欠费 · 元' : '话费余额 · 元')
+/** 品牌, 未知品牌代码时退回星级 */
+const tagText = (a: Account) => a.user?.brand ?? starText(a)
 
 // ─────────────────────────────────────────────────────────────
 // 入口
 // ─────────────────────────────────────────────────────────────
+/** 双号里的一格: 备注名 + 账号或错误 */
+type Slot = { name: string; account?: Account; error?: Error }
+
+/** "主号:1234,副号:5678" → [{name, tail}], 中英文逗号 / 冒号都行 */
+function parseParam(p: string | undefined): { name?: string; tail: string }[] {
+  return (p ?? '').split(/[,，]/).map(s => s.trim()).filter(Boolean).map(s => {
+    const [a, b] = s.split(/[:：]/).map(x => x.trim())
+    return b === undefined ? { tail: a } : { name: a, tail: b }
+  })
+}
+
 async function main() {
-  let account: Account | null = null
-  let lastError: Error | null = null
-  try {
-    account = await loadAccount(Widget.parameter)
-  } catch (e) {
-    lastError = e as Error
+  const entries = parseParam(Widget.parameter)
+  let view
+  if (entries.length >= 2) {
+    const slots = await Promise.all(entries.slice(0, 2).map(e =>
+      loadAccount(e.tail).then(
+        (account): Slot => ({ name: e.name ?? `尾号 ${account.phoneTail}`, account }),
+        (error): Slot => ({ name: e.name ?? `尾号 ${e.tail}`, error }),
+      )))
+    view = <DualRoot slots={slots} family={Widget.family} />
+  } else {
+    let account: Account | null = null
+    let lastError: Error | null = null
+    try {
+      account = await loadAccount(entries[0]?.tail)
+    } catch (e) {
+      lastError = e as Error
+    }
+    view = <WidgetRoot account={account} error={lastError} family={Widget.family} />
   }
-  Widget.present(
-    <WidgetRoot account={account} error={lastError} family={Widget.family} />,
-    { policy: 'after', date: new Date(Date.now() + REFRESH_MS) },
-  )
+  Widget.present(view, { policy: 'after', date: new Date(Date.now() + REFRESH_MS) })
 }
 
 function WidgetRoot(props: { account: Account | null; error: Error | null; family: string }) {
@@ -79,6 +129,18 @@ function WidgetRoot(props: { account: Account | null; error: Error | null; famil
   if (family === 'systemSmall') return <SmallView account={account} />
   if (family === 'systemLarge' || family === 'systemExtraLarge') return <LargeView account={account} />
   return <MediumView account={account} />
+}
+
+function DualRoot(props: { slots: Slot[]; family: string }) {
+  const { slots, family } = props
+  const loaded = slots.filter(s => s.account).map(s => s.account!)
+  if (loaded.length === 0) return <ErrorView error={slots[0].error ?? null} />
+  // 两个号取较早的更新时间, 任一降级到缓存就带 ⚠
+  const fetchedAt = Math.min(...loaded.map(a => a.fetchedAt))
+  const stale = loaded.some(a => a.stale)
+  if (family === 'systemSmall') return <DualSmall slots={slots} fetchedAt={fetchedAt} stale={stale} />
+  if (family === 'systemLarge' || family === 'systemExtraLarge') return <DualLarge slots={slots} fetchedAt={fetchedAt} stale={stale} />
+  return <DualMedium slots={slots} fetchedAt={fetchedAt} stale={stale} />
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -95,41 +157,56 @@ function Logo() {
   )
 }
 
+function Brand() {
+  return (
+    <HStack spacing={6}>
+      <Logo />
+      <Text font={11} fontWeight="semibold" foregroundStyle={T1}>中国移动</Text>
+    </HStack>
+  )
+}
+
 /** 更新时间 + 刷新图标, 点按跳过缓存重新查询 */
-function TimeText(props: { account: Account }) {
-  const { account } = props
+function TimeText(props: { fetchedAt: number; stale: boolean }) {
+  const t = formatTime(props.fetchedAt)
   return (
     <Button intent={RefreshIntent(undefined)} buttonStyle="plain">
       <HStack spacing={3}>
-        <Text font={11} foregroundStyle={T3}>
-          {account.stale ? `⚠ ${formatTime(account.fetchedAt)}` : formatTime(account.fetchedAt)}
-        </Text>
+        <Text font={11} foregroundStyle={T3}>{props.stale ? `⚠ ${t}` : t}</Text>
         <Image systemName="arrow.clockwise" font={9} foregroundStyle={T3} />
       </HStack>
     </Button>
   )
 }
 
-function Balance(props: { account: Account; size: number }) {
+/** 余额数字, 低于 10 元 (含欠费负数) 变红, 放不下自动缩小 */
+function BalanceNumber(props: { account: Account; size: number }) {
   const { account, size } = props
   return (
+    <Text font={size} fontWeight="semibold" fontDesign="rounded" lineLimit={1} minScaleFactor={0.6}
+      foregroundStyle={account.balance < 10 ? RED : T1}>
+      {account.balance.toFixed(2)}
+    </Text>
+  )
+}
+
+function Balance(props: { account: Account; size: number }) {
+  return (
     <VStack alignment="leading" spacing={1}>
-      <Text font={size} fontWeight="semibold" fontDesign="rounded" foregroundStyle={account.balance < 10 ? RED : T1}>
-        {account.balance.toFixed(2)}
-      </Text>
-      <Text font={11} foregroundStyle={T2}>话费余额 · 元</Text>
+      <BalanceNumber account={props.account} size={props.size} />
+      <Text font={11} foregroundStyle={T2}>{balanceLabel(props.account)}</Text>
     </VStack>
   )
 }
 
-/** 圆角半透明卡片, 撑满横向 */
-function Card(props: { children?: any }) {
+/** 圆角卡片, 撑满横向; fill 时也撑满纵向 */
+function Card(props: { children?: any; spacing?: number; padding?: number; fill?: boolean }) {
   return (
     <VStack
       alignment="leading"
-      spacing={4}
-      padding={{ horizontal: 10, vertical: 8 }}
-      frame={{ maxWidth: 'infinity', alignment: 'leading' }}
+      spacing={props.spacing ?? 4}
+      padding={props.padding ?? { horizontal: 10, vertical: 8 }}
+      frame={{ maxWidth: 'infinity', maxHeight: props.fill ? 'infinity' : undefined, alignment: 'leading' }}
       background={<RoundedRectangle cornerRadius={14} fill={CARD} />}
     >
       {props.children}
@@ -138,8 +215,9 @@ function Card(props: { children?: any }) {
 }
 
 /** 进度条: 轨道 + 填充, 浅色 / 深色各一套硬停点渐变 */
-function Bar(props: { percent: number; color: Pair; height: number }) {
-  const { percent, color, height } = props
+function Bar(props: { percent: number; height: number }) {
+  const { percent, height } = props
+  const color = levelColor(percent)
   const p = Math.max(0.005, Math.min(0.995, percent / 100))
   const fill = (c: Color, t: Color) => ({
     stops: [
@@ -159,24 +237,88 @@ function Bar(props: { percent: number; color: Pair; height: number }) {
   )
 }
 
-function FlowCard(props: { label: string; flow: FlowPart; detail?: boolean }) {
-  const { label, flow, detail } = props
-  const p = remainPercent(flow)
+/** 0.5pt 竖分隔线 */
+function VLine() {
+  return <Rectangle fill={TRACK} frame={{ width: 0.5, maxHeight: 'infinity' }} />
+}
+
+/** 无卡片的一行额度: 标签 + 剩余 (+ 总量), 下面一根进度条 */
+function MeterLine(props: { m: Meter; font?: number; bar?: number; total?: boolean; caption?: boolean }) {
+  const { m, font = 12, bar = 5, total, caption } = props
   return (
-    <Card>
+    <VStack alignment="leading" spacing={3} frame={{ maxWidth: 'infinity' }}>
       <HStack alignment="lastTextBaseline" spacing={2}>
-        <Text font={11} foregroundStyle={T2}>{label}</Text>
+        <Text font={11} foregroundStyle={T2}>{m.label}</Text>
         <Spacer />
-        <Text font={detail ? 18 : 17} fontWeight="semibold" fontDesign="rounded" foregroundStyle={T1}>
-          {formatFlow(flow.remainMB)}
-        </Text>
-        <Text font={11} foregroundStyle={T3}>{`/${formatFlow(flow.totalMB)}`}</Text>
+        <Text font={font} fontWeight="semibold" fontDesign="rounded" foregroundStyle={T1} lineLimit={1}>{m.remain}</Text>
+        {total ? <Text font={10} foregroundStyle={T3}>{`/${m.total}`}</Text> : null}
       </HStack>
-      <Bar percent={p} color={levelColor(p)} height={detail ? 6 : 5} />
+      <Bar percent={m.percent} height={bar} />
+      {caption ? <Text font={10} foregroundStyle={T3}>{`已用 ${m.used} · 剩 ${Math.round(m.percent)}%`}</Text> : null}
+    </VStack>
+  )
+}
+
+/** 小号 / 双号中号的额度区: 1 条带总量和说明, 2 条两行, 3 条时通用整行 + 定向 / 语音半行 */
+function MeterStack(props: { meters: Meter[]; total?: boolean }) {
+  const { meters, total } = props
+  if (meters.length === 1) return <MeterLine m={meters[0]} total caption bar={6} />
+  if (meters.length === 2) {
+    return (
+      <VStack spacing={6}>
+        {meters.map(m => <MeterLine m={m} total={total} />)}
+      </VStack>
+    )
+  }
+  return (
+    <VStack spacing={6}>
+      <MeterLine m={meters[0]} total={total} />
+      <HStack spacing={8}>
+        <MeterLine m={meters[1]} font={11} bar={4} />
+        <MeterLine m={meters[2]} font={11} bar={4} />
+      </HStack>
+    </VStack>
+  )
+}
+
+/** 卡片里的一条额度; big 用于大号只有一条时 */
+function MeterCard(props: { m: Meter; detail?: boolean; big?: boolean }) {
+  const { m, detail, big } = props
+  return (
+    <Card spacing={big ? 8 : 4} padding={big ? 12 : undefined}>
+      <HStack alignment="lastTextBaseline" spacing={2}>
+        <Text font={11} foregroundStyle={T2}>{m.label}</Text>
+        <Spacer />
+        <Text font={big ? 22 : 17} fontWeight="semibold" fontDesign="rounded" foregroundStyle={T1} lineLimit={1}>{m.remain}</Text>
+        <Text font={11} foregroundStyle={T3}>{`/${m.total}`}</Text>
+      </HStack>
+      <Bar percent={m.percent} height={big ? 8 : 5} />
       {detail ? (
-        <Text font={11} foregroundStyle={T3}>{`已用 ${formatFlow(flow.usedMB)} · 剩 ${Math.round(p)}%`}</Text>
+        <Text font={11} foregroundStyle={T3}>{`已用 ${m.used} · 剩 ${Math.round(m.percent)}%`}</Text>
       ) : null}
     </Card>
+  )
+}
+
+/** 中号右侧三条时用的矮卡 */
+function SlimMeterCard(props: { m: Meter }) {
+  const { m } = props
+  return (
+    <VStack
+      alignment="leading"
+      spacing={3}
+      padding={{ horizontal: 10, vertical: 5 }}
+      frame={{ maxWidth: 'infinity', maxHeight: 'infinity' }}
+      background={<RoundedRectangle cornerRadius={12} fill={CARD} />}
+    >
+      <HStack alignment="lastTextBaseline" spacing={2}>
+        <Text font={11} foregroundStyle={T2}>{m.label}</Text>
+        <Spacer />
+        <Text font={15} fontWeight="semibold" fontDesign="rounded" foregroundStyle={T1} lineLimit={1}>{m.remain}</Text>
+        <Text font={10} foregroundStyle={T3}>{`/${m.total}`}</Text>
+      </HStack>
+      <Bar percent={m.percent} height={4} />
+    </VStack>
   )
 }
 
@@ -190,40 +332,44 @@ function Chip(props: { icon: string; label: string; value: string }) {
       background={<RoundedRectangle cornerRadius={14} fill={CARD} />}
     >
       <Image systemName={props.icon} font={10} foregroundStyle={T2} />
-      <Text font={11} foregroundStyle={T2}>{props.label}</Text>
+      <Text font={11} foregroundStyle={T2} lineLimit={1}>{props.label}</Text>
       <Spacer />
       <Text font={11} fontWeight="semibold" fontDesign="rounded" foregroundStyle={T1}>{props.value}</Text>
     </HStack>
   )
 }
 
-function Stat(props: { label: string; value: string }) {
+/** 统计格; tall 时撑满高度, 标签在上数值在下 */
+function Stat(props: { label: string; value: string; size?: number; tall?: boolean }) {
+  const { label, value, size = 15, tall } = props
   return (
     <VStack
       alignment="leading"
       spacing={1}
-      padding={{ horizontal: 8, vertical: 6 }}
-      frame={{ maxWidth: 'infinity', alignment: 'leading' }}
+      padding={tall ? { horizontal: 12, vertical: 10 } : { horizontal: 8, vertical: 6 }}
+      frame={{ maxWidth: 'infinity', maxHeight: tall ? 'infinity' : undefined, alignment: 'leading' }}
       background={<RoundedRectangle cornerRadius={12} fill={CARD} />}
     >
-      <Text font={11} foregroundStyle={T2}>{props.label}</Text>
-      <Text font={15} fontWeight="semibold" fontDesign="rounded" foregroundStyle={T1} lineLimit={1}>{props.value}</Text>
+      <Text font={11} foregroundStyle={T2} lineLimit={1}>{label}</Text>
+      {tall ? <Spacer /> : null}
+      <Text font={size} fontWeight="semibold" fontDesign="rounded" foregroundStyle={T1} lineLimit={1} minScaleFactor={0.7}>{value}</Text>
     </VStack>
   )
 }
 
-// 套餐没有语音分钟数时不显示语音, 换成品牌 / 星级
-const hasVoice = (a: Account) => (a.voice?.total ?? 0) > 0
-const voiceText = (a: Account) => `${Math.round(a.voice?.remain ?? 0)}分`
-const starText = (a: Account) => (a.user?.starLevel ? '★'.repeat(a.user.starLevel) : '-')
-const pointsText = (a: Account) => (a.points !== undefined ? String(a.points) : '-')
+/** 品牌格: 有品牌时 "动感地带 ★★★", 否则 "星级 ★★★" */
+function BrandChip(props: { account: Account }) {
+  const a = props.account
+  return a.user?.brand
+    ? <Chip icon="checkmark.seal.fill" label={a.user.brand} value="" />
+    : <Chip icon="checkmark.seal.fill" label="星级" value={starText(a)} />
+}
 
 // ─────────────────────────────────────────────────────────────
-// Small — 余额 + 两行流量
+// Small — 余额 + 额度区
 // ─────────────────────────────────────────────────────────────
 function SmallView(props: { account: Account }) {
   const { account } = props
-  const { general, targeted } = account
   return (
     <VStack
       alignment="leading"
@@ -235,39 +381,42 @@ function SmallView(props: { account: Account }) {
       <HStack>
         <Logo />
         <Spacer />
-        <TimeText account={account} />
+        <TimeText fetchedAt={account.fetchedAt} stale={account.stale} />
       </HStack>
       <Spacer />
       <Balance account={account} size={30} />
       <Spacer />
-      <VStack spacing={6}>
-        {general ? <SmallFlow label="通用" flow={general} /> : null}
-        {targeted ? <SmallFlow label="定向" flow={targeted} /> : null}
-      </VStack>
-    </VStack>
-  )
-}
-
-/** 小号的一行流量: 标签 + 剩余量, 下面一根进度条 */
-function SmallFlow(props: { label: string; flow: FlowPart }) {
-  const p = remainPercent(props.flow)
-  return (
-    <VStack spacing={3}>
-      <HStack>
-        <Text font={11} foregroundStyle={T2}>{props.label}</Text>
-        <Spacer />
-        <Text font={12} fontWeight="semibold" fontDesign="rounded" foregroundStyle={T1}>{formatFlow(props.flow.remainMB)}</Text>
-      </HStack>
-      <Bar percent={p} color={levelColor(p)} height={5} />
+      <MeterStack meters={metersOf(account)} />
     </VStack>
   )
 }
 
 // ─────────────────────────────────────────────────────────────
-// Medium — 左: 余额, 右: 流量卡 + 语音 / 积分
+// Medium — 左: 余额, 右: 按条数排 (1 条 + 两格 / 2 条 + 胶囊 / 3 张矮卡)
 // ─────────────────────────────────────────────────────────────
 function MediumView(props: { account: Account }) {
   const { account } = props
+  const meters = metersOf(account)
+  let right
+  if (meters.length === 1) {
+    right = [
+      <MeterCard m={meters[0]} detail />,
+      <HStack spacing={6} frame={{ maxHeight: 'infinity' }}>
+        <Stat label="积分" value={pointsText(account)} size={17} tall />
+        <Stat label={account.user?.brand ?? '星级'} value={starText(account)} size={17} tall />
+      </HStack>,
+    ]
+  } else if (meters.length === 2) {
+    right = [
+      ...meters.map(m => <MeterCard m={m} />),
+      <HStack spacing={6}>
+        <Chip icon="star.fill" label="积分" value={pointsText(account)} />
+        <BrandChip account={account} />
+      </HStack>,
+    ]
+  } else {
+    right = meters.map(m => <SlimMeterCard m={m} />)
+  }
   return (
     <HStack
       spacing={14}
@@ -276,10 +425,7 @@ function MediumView(props: { account: Account }) {
       widgetBackground={BG as DynamicShapeStyle}
     >
       <VStack alignment="leading" spacing={0} frame={{ width: 118, maxHeight: 'infinity', alignment: 'topLeading' }}>
-        <HStack spacing={6}>
-          <Logo />
-          <Text font={11} fontWeight="semibold" foregroundStyle={T1}>中国移动</Text>
-        </HStack>
+        <Brand />
         <Spacer />
         <Balance account={account} size={34} />
         <Spacer />
@@ -287,31 +433,31 @@ function MediumView(props: { account: Account }) {
           {account.monthFee !== undefined ? (
             <Text font={11} foregroundStyle={T3}>{`本月 ¥${account.monthFee.toFixed(2)} ·`}</Text>
           ) : null}
-          <TimeText account={account} />
+          <TimeText fetchedAt={account.fetchedAt} stale={account.stale} />
         </HStack>
       </VStack>
-      <VStack spacing={6} frame={{ maxWidth: 'infinity' }}>
-        {account.general ? <FlowCard label="通用" flow={account.general} /> : null}
-        {account.targeted ? <FlowCard label="定向" flow={account.targeted} /> : null}
-        <HStack spacing={6}>
-          {hasVoice(account)
-            ? <Chip icon="phone.fill" label="语音" value={voiceText(account)} />
-            : <Chip icon="checkmark.seal.fill" label={account.user?.brand ?? '星级'} value={account.user?.brand ? '' : starText(account)} />}
-          <Chip icon="star.fill" label="积分" value={pointsText(account)} />
-        </HStack>
+      <VStack spacing={6} frame={{ maxWidth: 'infinity', maxHeight: 'infinity' }}>
+        {right}
       </VStack>
     </HStack>
   )
 }
 
 // ─────────────────────────────────────────────────────────────
-// Large — 归属 / 品牌 / 星级 + 余额 / 本月消费 + 流量详情 + 账号信息
+// Large — 归属 / 品牌 + 余额 / 本月消费 + 额度卡 + 星级 / 积分 / 星级分 / 网龄
 // ─────────────────────────────────────────────────────────────
 function LargeView(props: { account: Account }) {
   const { account } = props
   const u = account.user
-  const star = hasVoice(account) && u?.starLevel ? starText(account) : undefined
-  const subtitle = [u?.channel?.replace('移动', ''), u?.brand, star].filter(Boolean).join(' · ')
+  const meters = metersOf(account)
+  const subtitle = [u?.channel?.replace('移动', ''), u?.brand].filter(Boolean).join(' · ')
+  const stats: [string, string][] = [
+    ['星级', starText(account)],
+    ['积分', pointsText(account)],
+    ['星级分', u?.starScore !== undefined ? String(u.starScore) : '-'],
+    ['网龄', u?.netYears !== undefined ? `${u.netYears.toFixed(1)}年` : '-'],
+  ]
+  const one = meters.length === 1
   return (
     <VStack
       alignment="leading"
@@ -321,11 +467,10 @@ function LargeView(props: { account: Account }) {
       widgetBackground={BG as DynamicShapeStyle}
     >
       <HStack spacing={6}>
-        <Logo />
-        <Text font={11} fontWeight="semibold" foregroundStyle={T1}>中国移动</Text>
+        <Brand />
         {subtitle ? <Text font={11} foregroundStyle={T3}>{subtitle}</Text> : null}
         <Spacer />
-        <TimeText account={account} />
+        <TimeText fetchedAt={account.fetchedAt} stale={account.stale} />
       </HStack>
       <HStack alignment="bottom">
         <Balance account={account} size={44} />
@@ -339,20 +484,185 @@ function LargeView(props: { account: Account }) {
           </VStack>
         ) : null}
       </HStack>
-      <VStack spacing={6}>
-        {account.general ? <FlowCard label="通用流量" flow={account.general} detail /> : null}
-        {account.targeted ? <FlowCard label="定向流量" flow={account.targeted} detail /> : null}
-      </VStack>
-      <Spacer />
-      <HStack spacing={6}>
-        {hasVoice(account)
-          ? <Stat label="语音" value={voiceText(account)} />
-          : <Stat label="星级" value={starText(account)} />}
-        <Stat label="积分" value={pointsText(account)} />
-        <Stat label="星级分" value={u?.starScore !== undefined ? String(u.starScore) : '-'} />
-        <Stat label="网龄" value={u?.netYears !== undefined ? `${u.netYears.toFixed(1)}年` : '-'} />
+      {one ? (
+        // 只有一条: 大卡 + 2×2 统计格撑满, 中间不留空
+        <MeterCard m={meters[0]} detail big />
+      ) : (
+        <VStack spacing={6}>
+          {meters.map(m => <MeterCard m={m} detail={meters.length < 3} />)}
+        </VStack>
+      )}
+      {one ? (
+        <VStack spacing={6} frame={{ maxHeight: 'infinity' }}>
+          <HStack spacing={6}>
+            {stats.slice(0, 2).map(([l, v]) => <Stat label={l} value={v} size={20} tall />)}
+          </HStack>
+          <HStack spacing={6}>
+            {stats.slice(2).map(([l, v]) => <Stat label={l} value={v} size={20} tall />)}
+          </HStack>
+        </VStack>
+      ) : [
+        <Spacer />,
+        <HStack spacing={6}>
+          {stats.map(([l, v]) => <Stat label={l} value={v} />)}
+        </HStack>,
+      ]}
+    </VStack>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// 双号 — 左右两列, 中间细线
+// ─────────────────────────────────────────────────────────────
+function DualFrame(props: { children?: any; padding: number; header: any; gap: number; columnGap: number }) {
+  return (
+    <VStack
+      alignment="leading"
+      spacing={props.gap}
+      padding={props.padding}
+      frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'topLeading' }}
+      widgetBackground={BG as DynamicShapeStyle}
+    >
+      {props.header}
+      <HStack alignment="top" spacing={props.columnGap} frame={{ maxHeight: 'infinity' }}>
+        {props.children}
       </HStack>
     </VStack>
+  )
+}
+
+/** 某个号查询失败时那一列 */
+function SlotError(props: { slot: Slot }) {
+  const msg = classifyError(props.slot.error ?? null)
+  return (
+    <VStack alignment="leading" spacing={4} frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'topLeading' }}>
+      <Text font={11} foregroundStyle={T2} lineLimit={1}>{props.slot.name}</Text>
+      <Spacer />
+      <Image systemName="exclamationmark.triangle.fill" font={16} foregroundStyle={ORANGE} />
+      <Text font={12} fontWeight="semibold" foregroundStyle={T1}>{msg.title}</Text>
+      <Text font={10} foregroundStyle={T2}>{msg.hint}</Text>
+      <Spacer />
+    </VStack>
+  )
+}
+
+function DualSmall(props: { slots: Slot[]; fetchedAt: number; stale: boolean }) {
+  const column = (s: Slot) => {
+    const a = s.account
+    if (!a) return <SlotError slot={s} />
+    return (
+      <VStack alignment="leading" spacing={2} frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'topLeading' }}>
+        <Text font={11} foregroundStyle={T2} lineLimit={1}>{s.name}</Text>
+        <BalanceNumber account={a} size={19} />
+        <Text font={10} foregroundStyle={a.balance < 0 ? RED : T3}>{a.balance < 0 ? '已欠费' : '余额'}</Text>
+        <Spacer />
+        <VStack alignment="leading" spacing={5}>
+          {metersOf(a).slice(0, 2).map(m => (
+            <VStack alignment="leading" spacing={3}>
+              <Text font={10} foregroundStyle={T2} lineLimit={1} minScaleFactor={0.8}>{`${m.label} ${m.remain}`}</Text>
+              <Bar percent={m.percent} height={4} />
+            </VStack>
+          ))}
+        </VStack>
+      </VStack>
+    )
+  }
+  return (
+    <DualFrame padding={14} gap={8} columnGap={10} header={
+      <HStack>
+        <Logo />
+        <Spacer />
+        <TimeText fetchedAt={props.fetchedAt} stale={props.stale} />
+      </HStack>
+    }>
+      {column(props.slots[0])}
+      <VLine />
+      {column(props.slots[1])}
+    </DualFrame>
+  )
+}
+
+function DualMedium(props: { slots: Slot[]; fetchedAt: number; stale: boolean }) {
+  const column = (s: Slot) => {
+    const a = s.account
+    if (!a) return <SlotError slot={s} />
+    return (
+      <VStack alignment="leading" spacing={1} frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'topLeading' }}>
+        <HStack alignment="lastTextBaseline">
+          <Text font={11} foregroundStyle={T2} lineLimit={1}>{a.balance < 0 ? `${s.name} · 欠费` : s.name}</Text>
+          <Spacer />
+          <Text font={10} foregroundStyle={T3} lineLimit={1}>{tagText(a)}</Text>
+        </HStack>
+        <BalanceNumber account={a} size={28} />
+        <Spacer />
+        <MeterStack meters={metersOf(a)} total />
+      </VStack>
+    )
+  }
+  return (
+    <DualFrame padding={14} gap={6} columnGap={14} header={
+      <HStack>
+        <Brand />
+        <Spacer />
+        <TimeText fetchedAt={props.fetchedAt} stale={props.stale} />
+      </HStack>
+    }>
+      {column(props.slots[0])}
+      <VLine />
+      {column(props.slots[1])}
+    </DualFrame>
+  )
+}
+
+function DualLarge(props: { slots: Slot[]; fetchedAt: number; stale: boolean }) {
+  const column = (s: Slot) => {
+    const a = s.account
+    if (!a) return <SlotError slot={s} />
+    return (
+      <VStack alignment="leading" spacing={0} frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'topLeading' }}>
+        <HStack alignment="lastTextBaseline">
+          <Text font={12} fontWeight="semibold" foregroundStyle={T1} lineLimit={1}>{s.name}</Text>
+          <Spacer />
+          <Text font={10} foregroundStyle={T3} lineLimit={1}>{tagText(a)}</Text>
+        </HStack>
+        <VStack alignment="leading" spacing={1} padding={{ top: 10 }}>
+          <BalanceNumber account={a} size={32} />
+          <Text font={11} foregroundStyle={a.balance < 0 ? RED : T2}>{balanceLabel(a)}</Text>
+        </VStack>
+        <Spacer />
+        <VStack spacing={6}>
+          {metersOf(a).map(m => (
+            <Card>
+              <HStack alignment="lastTextBaseline">
+                <Text font={11} foregroundStyle={T2}>{m.label}</Text>
+                <Spacer />
+                <Text font={15} fontWeight="semibold" fontDesign="rounded" foregroundStyle={T1} lineLimit={1}>{m.remain}</Text>
+              </HStack>
+              <Bar percent={m.percent} height={5} />
+              <Text font={10} foregroundStyle={T3}>{`共 ${m.total} · 剩 ${Math.round(m.percent)}%`}</Text>
+            </Card>
+          ))}
+        </VStack>
+        <Spacer />
+        <HStack spacing={6}>
+          <Stat label="本月" value={a.monthFee !== undefined ? `¥${a.monthFee.toFixed(2)}` : '-'} size={13} />
+          <Stat label="积分" value={pointsText(a)} size={13} />
+        </HStack>
+      </VStack>
+    )
+  }
+  return (
+    <DualFrame padding={16} gap={12} columnGap={14} header={
+      <HStack>
+        <Brand />
+        <Spacer />
+        <TimeText fetchedAt={props.fetchedAt} stale={props.stale} />
+      </HStack>
+    }>
+      {column(props.slots[0])}
+      <VLine />
+      {column(props.slots[1])}
+    </DualFrame>
   )
 }
 
