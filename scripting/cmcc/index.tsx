@@ -32,6 +32,7 @@ import {
   clearCache,
   listAccounts,
   loadAccount,
+  feeRaw,
   formatFlow,
   CmccError,
   type Account,
@@ -181,6 +182,7 @@ function SetupScreen() {
   const [tels, setTels] = useState<string[]>([])
   const [current, setCurrent] = useState('')
   const [updateText, setUpdateText] = useState('')
+  const [raw, setRaw] = useState('')
   const version = Script.metadata.version ?? '-'
   const configured = tels.length > 0
 
@@ -244,6 +246,15 @@ function SetupScreen() {
       if (ok) await Safari.openURL(INSTALL_URL)
     } catch {
       setUpdateText('检查失败')
+    }
+  }
+
+  async function handleFeeRaw() {
+    setRaw('查询中...')
+    try {
+      setRaw(await feeRaw(current))
+    } catch (e) {
+      setRaw(errorText(e))
     }
   }
 
@@ -351,6 +362,10 @@ function SetupScreen() {
           <InfoRow icon="info.circle.fill" color="systemGray" title="版本" value={version} />
           <ActionRow icon="arrow.down.circle.fill" color="systemPurple" title="检查更新" detail={updateText || undefined} action={handleCheckUpdate} />
           <ActionRow icon="link" color="systemGray" title="项目主页" action={() => { Safari.openURL(HOMEPAGE) }} />
+          {configured ? (
+            <ActionRow icon="ladybug.fill" color="systemOrange" title="话费原始数据" detail={`尾号 ${current.slice(-4)}`} action={handleFeeRaw} />
+          ) : null}
+          {raw ? <Text font={12} fontDesign="monospaced" foregroundStyle="secondaryLabel">{raw}</Text> : null}
         </Section>
 
         {configured ? (

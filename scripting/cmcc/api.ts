@@ -115,21 +115,32 @@ export async function loadAccount(selector?: string): Promise<Account> {
   if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) return { ...cached, stale: false }
 
   try {
-    // 先用上次的会话查; 查不动 (过期 / 被踢) 再续登重试一次
-    let account: Account
-    const saved = Keychain.get(KEYCHAIN_SESSION + tel)
-    try {
-      account = await queryAll(saved ?? await renewSession(login, tel), query)
-    } catch (e) {
-      if (!saved) throw e
-      account = await queryAll(await renewSession(login, tel), query)
-    }
+    const account = await withSession(tel, login, cookie => queryAll(cookie, query))
     writeCache(tel, account)
     return account
   } catch (err) {
     if (cached && Date.now() - cached.fetchedAt < STALE_OK_MS) return { ...cached, stale: true }
     throw err
   }
+}
+
+// 先用上次的会话查; 查不动 (过期 / 被踢) 再续登重试一次
+async function withSession<T>(tel: string, login: string, fn: (cookie: string) => Promise<T>): Promise<T> {
+  const saved = Keychain.get(KEYCHAIN_SESSION + tel)
+  try {
+    return await fn(saved ?? await renewSession(login, tel))
+  } catch (e) {
+    if (!saved) throw e
+    return fn(await renewSession(login, tel))
+  }
+}
+
+/** 诊断: 话费接口完整返回 (只有金额字段, 不含个人信息), 跳过缓存实时查询 */
+export async function feeRaw(tel: string): Promise<string> {
+  const login = Keychain.get(KEYCHAIN_LOGIN + tel)
+  if (!login) throw new CmccError('no_cred', '未导入登录凭证')
+  const query = queryFromLogin(login)
+  return JSON.stringify(await withSession(tel, login, cookie => bizCall(P_FEE, query, cookie)), null, 1)
 }
 
 // 话费 / 流量必需; 积分 / 用户信息失败不影响主流程
@@ -217,8 +228,6 @@ async function bizCall(path: string, J: string, cookie: string): Promise<any> {
   if (!res.ok) throw new CmccError('network', `HTTP ${res.status}`)
   const out = parseRsp(await res.text(), BSK, BIV)
   console.log('[cmcc biz]', path.split('/').pop(), out.retCode, out.retDesc)
-  // 诊断: 话费接口完整返回 (只有金额字段, 不含个人信息), 用来核对欠费 / 后付费账号的余额字段
-  if (path === P_FEE) console.log('[cmcc fee raw]', JSON.stringify(out.rspBody))
   if (out.retCode === '410000') throw new CmccError('auth', '会话失效')
   if (out.retCode !== '000000' || !out.rspBody) throw new CmccError('schema', `${out.retDesc ?? ''} [${out.retCode}]`)
   return out.rspBody
