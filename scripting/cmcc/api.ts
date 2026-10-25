@@ -40,6 +40,7 @@ const P_FEE = '/biz-orange/BN/payFeesQuery/getPayFeesQueryInfo'
 const P_REMAIN = '/biz-orange/BH/newPlanRemainQry/getNewPlanRemainQry'
 const P_POINTS = '/biz-orange/BN/scoreQueryService/getScoreQuery'
 const P_USER = '/biz-orange/BN/userInformationService/getUserInformation'
+const P_ACCOUNT = '/biz-orange/BH/accoutQry/getAccoutInfo'   // 账本: 实时余额 (含欠费) / 本月消费
 const UA = 'ChinaMobile/12.5.5 (iPhone; iOS 26.1; Scale/3.00)'
 const SALT = 'Leadeon/SecurityOrganization'
 const LK = 'tVkdaRWRY0ZkV1Vr', LSK = 'RYV0hCV1lV25KYVJ', LIV = 'VjFSQ1ZtVkQxRTlQ'
@@ -145,13 +146,22 @@ export async function feeRaw(tel: string): Promise<string> {
 
 // 话费 / 流量必需; 积分 / 用户信息失败不影响主流程
 async function queryAll(cookie: string, query: string): Promise<Account> {
-  const [fee, remain, points, user] = await Promise.all([
+  const [fee, ledger, remain, points, user] = await Promise.all([
     bizCall(P_FEE, query, cookie),
+    bizCall(P_ACCOUNT, ledgerQuery(query), cookie).catch(() => null),
     bizCall(P_REMAIN, query, cookie),
     bizCall(P_POINTS, query, cookie).catch(() => null),
     bizCall(P_USER, query, cookie).catch(() => null),
   ])
-  return buildAccount(fee, remain, points, user, query)
+  return buildAccount(fee, ledger, remain, points, user, query)
+}
+
+// 账本查询的 reqBody 多了起止月份, 查本月
+function ledgerQuery(query: string): string {
+  const q = JSON.parse(query)
+  const d = new Date()
+  const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  return JSON.stringify({ ...q, reqBody: { ...q.reqBody, beginMonth: month, endMonth: month } })
 }
 
 // ────────────────────────────────────────────────────────────
@@ -248,7 +258,7 @@ export function formatFlow(mb: number): string {
   return `${Math.round(mb)}M`
 }
 
-// 品牌码: "03" 已对照套餐名确认, 其余按中国移动通用编码
+// 品牌码: "03" 已对照套餐名确认, 其余按中国移动通用编码; 未知代码不显示
 const BRANDS: Record<string, string> = { '01': '全球通', '02': '神州行', '03': '动感地带' }
 
 function num(v: unknown): number | undefined {
@@ -263,9 +273,11 @@ function parseNetYears(v: unknown): number | undefined {
   return Number(m[1] ?? 0) + Number(m[2] ?? 0) / 12
 }
 
-function buildAccount(fee: any, remain: any, points: any, user: any, query: string): Account {
-  const balance = parseFloat(fee?.balance)
-  if (Number.isNaN(balance)) throw new CmccError('schema', 'missing balance')
+function buildAccount(fee: any, ledger: any, remain: any, points: any, user: any, query: string): Account {
+  // 余额 / 本月消费优先取账本: 欠费号在话费接口里 balance / payAmount 都是 0, 账本里才是 -27.32 / 16.93
+  const book = ledger?.accoutQryInfoHis?.[0]
+  const balance = num(book?.allThisMonthBill) ?? num(fee?.balance)
+  if (balance === undefined) throw new CmccError('schema', 'missing balance')
 
   // flowtype "0" = 通用, "1" = 定向
   const flows: any[] = remain?.newPlanRemainQryRes?.planRemianFlowListRes?.planRemianFlowRes ?? []
@@ -285,7 +297,7 @@ function buildAccount(fee: any, remain: any, points: any, user: any, query: stri
   const u = user?.userInfo
   return {
     balance,
-    monthFee: num(fee?.payAmount),
+    monthFee: num(book?.allThisMonthOutBill) ?? num(fee?.payAmount),
     general: part('0'),
     targeted: part('1'),
     voice: v ? {
@@ -295,7 +307,7 @@ function buildAccount(fee: any, remain: any, points: any, user: any, query: stri
     } : undefined,
     points: num(points?.pointValue),
     user: u ? {
-      brand: BRANDS[u.userBrand] ?? u.userBrand,
+      brand: BRANDS[u.userBrand],
       starLevel: num(u.starLevel),
       starScore: num(u.starScore),
       channel: u.userChannel || undefined,
