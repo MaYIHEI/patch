@@ -217,6 +217,8 @@ async function bizCall(path: string, J: string, cookie: string): Promise<any> {
   if (!res.ok) throw new CmccError('network', `HTTP ${res.status}`)
   const out = parseRsp(await res.text(), BSK, BIV)
   console.log('[cmcc biz]', path.split('/').pop(), out.retCode, out.retDesc)
+  // 诊断: 话费接口完整返回 (只有金额字段, 不含个人信息), 用来核对欠费 / 后付费账号的余额字段
+  if (path === P_FEE) console.log('[cmcc fee raw]', JSON.stringify(out.rspBody))
   if (out.retCode === '410000') throw new CmccError('auth', '会话失效')
   if (out.retCode !== '000000' || !out.rspBody) throw new CmccError('schema', `${out.retDesc ?? ''} [${out.retCode}]`)
   return out.rspBody
