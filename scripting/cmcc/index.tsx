@@ -69,6 +69,7 @@ function timeText(epochMs: number): string {
 
 function errorText(e: unknown): string {
   if (e instanceof CmccError && e.kind === 'auth') return '登录凭证已失效, 划掉中国移动 App 重开以重新抓取, 再导入'
+  if (e instanceof CmccError && e.kind === 'risk') return '中国移动要求安全验证: 打开中国移动 App 按提示完成验证, 再点「立即刷新」'
   return (e as Error).message
 }
 
@@ -209,7 +210,8 @@ function SetupScreen() {
 
   function handleImport() {
     run(async () => {
-      const tel = await importFromBoxJS(host.trim() || 'boxjs.com')
+      const imported = await importFromBoxJS(host.trim() || 'boxjs.com')
+      const tel = imported[imported.length - 1]
       setTels(listAccounts())
       setCurrent(tel)
       return loadAccount(tel)
@@ -303,7 +305,7 @@ function SetupScreen() {
             header={<Text>账号</Text>}
             footer={
               <Text>
-                {'小组件显示哪个号: 长按小组件 → 编辑小组件 → 参数, 填手机尾号 4 位; 不填显示第一个.\n添加另一个号: 在中国移动 App 里用「切换账号」登录该号 (别用「退出登录」), 划掉重开 App 后再点「从 BoxJS 导入」.'}
+                {'小组件显示哪个号: 长按小组件 → 编辑小组件 → 参数, 填手机尾号 4 位; 不填显示第一个.\n添加另一个号: 在中国移动 App 里用「切换账号」登录该号 (别用「退出登录」), 划掉重开 App 让插件抓取, 再点「从 BoxJS 导入」, 插件里存的号会一次全部导入.'}
               </Text>
             }
           >

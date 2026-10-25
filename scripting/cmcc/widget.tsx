@@ -379,6 +379,7 @@ function classifyError(err: Error | null): { title: string; hint: string } {
         : { title: '未配置', hint: '打开 Scripting → 运行 cmcc 导入凭证' }
     }
     if (err.kind === 'auth')    return { title: '凭证失效', hint: '划掉中国移动 App 重开, 再到 Scripting 导入' }
+    if (err.kind === 'risk')    return { title: '需要验证', hint: '打开中国移动 App 完成安全验证后再刷新' }
     if (err.kind === 'network') return { title: '网络错误', hint: '稍后自动重试' }
     if (err.kind === 'schema')  return { title: '接口变化', hint: err.message.slice(0, 60) }
   }
