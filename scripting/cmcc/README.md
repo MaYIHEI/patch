@@ -25,7 +25,7 @@ scripting://import_scripts?urls=%5B%22https%3A%2F%2Fwww.imarkr.com%2Fapi%2Fgithu
 ## 🚀 使用步骤
 
 1. 装好 [Scripting](https://apps.apple.com/app/scripting/id6479691128) 和 Loon，Loon 里装好 BoxJS
-2. Loon 导入 [paperclip 中国移动插件](https://github.com/MaYIHEI/paperclip/tree/testing/app/cmcc)，先在后台划掉「中国移动」App 再重新打开，收到「获取成功」通知（直接切回已打开的 App 不会触发）
+2. Loon 导入 [paperclip 中国移动插件](https://github.com/MaYIHEI/paperclip/tree/main/app/cmcc)（Loon → 插件 → 添加，地址 `https://raw.githubusercontent.com/MaYIHEI/paperclip/refs/heads/main/loon/cmcc/cmcc.lpx`），先在后台划掉「中国移动」App 再重新打开，收到「获取成功」通知（直接切回已打开的 App 不会触发）
 3. 保持 Loon 开启，在 Scripting 里运行 `cmcc`，点「从 BoxJS 导入」，看到 ✅ 即完成
 4. iPhone 桌面长按空白 → + → 搜 Scripting → 选 `cmcc`
 
@@ -61,3 +61,4 @@ scripting://import_scripts?urls=%5B%22https%3A%2F%2Fwww.imarkr.com%2Fapi%2Fgithu
 | 2026-10-25 | 0.4.0 | 按套餐项自适应排版 (语音也显示进度条); 参数填两个尾号显示双号, 支持备注 |
 | 2026-10-25 | 0.4.1 | 品牌代码 09 对应动感地带; 星级显示为「3星」, 不再换行 |
 | 2026-10-25 | 0.4.2 | 修双号小组件四周黑边 |
+| 2026-10-26 | 1.0.0 | 正式版: 0.3 起支持多账号 (一次导入全部号, 小组件参数填尾号) 和风控提示; 余额 / 本月消费改取账本, 欠费显示负数; 0.4 起按套餐项自适应排版, 一个组件可显示两个号 |
