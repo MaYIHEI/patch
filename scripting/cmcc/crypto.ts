@@ -1,5 +1,5 @@
 // cmcc / crypto.ts
-// 纯 JS 的 md5 / AES-128-CBC / base64 (Scripting 的 Crypto 没有 AES-CBC)
+// 纯 JS 的 md5 / AES-128-CBC / base64 / RSA (Scripting 的 Crypto 没有 AES-CBC)
 // 与 paperclip/app/cmcc/cmcc.js 同一份实现, 已对真实接口验证
 // @ts-nocheck
 function u8(s){if(s instanceof Uint8Array)return s;const o=[];for(let i=0;i<s.length;i++){let c=s.charCodeAt(i);if(c>=0xd800&&c<0xdc00&&i+1<s.length){const d=s.charCodeAt(i+1);if(d>=0xdc00&&d<0xe000){c=0x10000+((c-0xd800)<<10)+(d-0xdc00);i++;}}if(c<0x80)o.push(c);else if(c<0x800)o.push(0xc0|(c>>6),0x80|(c&63));else if(c<0x10000)o.push(0xe0|(c>>12),0x80|((c>>6)&63),0x80|(c&63));else o.push(0xf0|(c>>18),0x80|((c>>12)&63),0x80|((c>>6)&63),0x80|(c&63));}return new Uint8Array(o);}
@@ -27,4 +27,9 @@ const encB64=(plainStr,keyText,ivText)=>b64(aesCbcEnc(u8(plainStr),keyText,ivTex
 const decStr=(b64str,keyText,ivText)=>u8s(aesCbcDec(b64dec(b64str),keyText,ivText));
 function nonce8(){let s='';for(let i=0;i<8;i++)s+=Math.floor(Math.random()*10);return s;}
 
-export { md5hex, encB64, decStr, nonce8 }
+// 续登请求里的 cellNum: 每次按当前时间重新加密手机号 (重放旧值几天后失效), 同 paperclip cmcc.js r10
+const RSA_N=BigInt("0x968e9acf9e59b4e2e1bb24266ee39043788a45f788ecdc5c971f4964c3267cf20afd3b7f029b68a9a9b65d77d0306b8319df0c174f3dd82ef3894a6c38e23634f6095a81901ad7e6650911c0910f12c7de50a6fcee3ae3563cc5985c46a965db2af49e94f69b62f67ff3d5c0f79782572375e5f8b44aa43c0ca6d48e8a969beb");
+function modpow(b,e,m){let r=1n;b%=m;while(e>0n){if(e&1n)r=(r*b)%m;e>>=1n;b=(b*b)%m;}return r;}
+function cellNumFor(tel){const d=new Date(),p=x=>String(x).padStart(2,'0');const m=u8('leadeon'+tel+d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+p(d.getHours())+p(d.getMinutes())+p(d.getSeconds()));const eb=[0,2];while(eb.length<128-m.length-1)eb.push(1+Math.floor(Math.random()*255));eb.push(0,...m);const h=modpow(BigInt('0x'+toHex(eb)),65537n,RSA_N).toString(16).padStart(256,'0');const o=new Uint8Array(128);for(let i=0;i<128;i++)o[i]=parseInt(h.substr(i*2,2),16);return b64(o);}
+
+export { md5hex, encB64, decStr, nonce8, cellNumFor }

@@ -8,7 +8,7 @@
 // - 错误分类: no_cred / auth / network / schema
 
 import { fetch } from 'scripting'
-import { md5hex, encB64, decStr, nonce8 } from './crypto'
+import { md5hex, encB64, decStr, nonce8, cellNumFor } from './crypto'
 
 // DOM 的 Storage class 类型与 Scripting 全局 Storage 冲突，手动 cast
 const AppStorage = Storage as unknown as {
@@ -202,8 +202,15 @@ function parseRsp(text: string, key: string, iv: string): Rsp {
 }
 
 /** 静默续登, 返回会话 cookie (JSESSIONID / UID / ticketID) */
-async function renewSession(J: string, tel: string): Promise<string> {
-  const res = await post('https://' + HOST_LOGIN + P_LOGIN, signedHeaders(HOST_LOGIN, P_LOGIN, J, 'null', '14'), encB64(J, LK, LIV))
+async function renewSession(login: string, tel: string): Promise<string> {
+  // cellNum / sysTime 每次重新生成, 重放抓到的旧值几天后会失效 (同 paperclip cmcc.js r10)
+  const lo = JSON.parse(login)
+  lo.reqBody = { ...lo.reqBody, cellNum: cellNumFor(lo.tel), sysTime: String(Math.floor(Date.now() / 1000)) }
+  const J = JSON.stringify(lo)
+  // 自带一个随机 JSESSIONID 并按它签名: 系统会自动回带上次登录的会话, 服务端按那个会话验签会报 950102 (同 r9)
+  const sid = [8, 4, 4, 4, 12].map(n => Array.from({ length: n }, () => ((Math.random() * 16) | 0).toString(16)).join('')).join('-')
+  const headers = { ...signedHeaders(HOST_LOGIN, P_LOGIN, J, sid, '14'), 'Cookie': 'JSESSIONID=' + sid }
+  const res = await post('https://' + HOST_LOGIN + P_LOGIN, headers, encB64(J, LK, LIV))
   if (!res.ok) throw new CmccError('network', `HTTP ${res.status}`)
   const out = parseRsp(await res.text(), LSK, LIV)
   console.log('[cmcc login]', out.retCode, out.retDesc)
