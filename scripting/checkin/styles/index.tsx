@@ -9,7 +9,7 @@ import { ListStyle, RingStyle, WalletStyle, WalletLockRect, BigStyle, BigLockCir
 import { IconWallStyle, TerminalStyle, TimelineStyle, ReceiptStyle, SpotlightStyle, WeatherStyle } from './fun'
 import { CategoryStyle, MetroStyle, AuthorStyle, BubbleStyle } from './board'
 import { CalendarStyle, EarningsStyle, HeatmapStyle, QuestStyle, GoalStyle, BadgeStyle, HealthStyle, CompareStyle } from './history'
-import { ExpiryStyle, PagerStyle } from './extra'
+import { PagerStyle } from './extra'
 
 type View = (props: { ctx: Ctx }) => any
 
@@ -44,7 +44,6 @@ export const STYLES: StyleDef[] = [
   { id: 'U', name: '地铁线路', icon: 'tram.fill', desc: '今天的签到排成站, 出问题的是故障站', views: { systemMedium: MetroStyle, systemLarge: MetroStyle } },
   { id: 'V', name: '体检评分', icon: 'heart.text.square.fill', desc: '100 分起扣, 和昨天比', views: { systemSmall: HealthStyle, systemMedium: HealthStyle, systemLarge: HealthStyle } },
   { id: 'W', name: '环比对比', icon: 'arrow.left.arrow.right', desc: '今天比昨天、本周比上周', views: { systemSmall: CompareStyle, systemMedium: CompareStyle } },
-  { id: 'X', name: '过期倒计时', icon: 'hourglass', desc: '凭证还有几天过期 (需要脚本提供)', views: { systemSmall: ExpiryStyle, systemMedium: ExpiryStyle, systemLarge: ExpiryStyle } },
   { id: 'Y', name: '作者生态墙', icon: 'person.3.fill', desc: '按脚本作者分组', views: { systemMedium: AuthorStyle, systemLarge: AuthorStyle } },
   { id: 'Z', name: '积分气泡', icon: 'circle.circle.fill', desc: '资产越多气泡越大', views: { systemMedium: BubbleStyle, systemLarge: BubbleStyle } },
 ]

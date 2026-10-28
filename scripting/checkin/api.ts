@@ -2,7 +2,7 @@
 // 数据层 — 按「签到状态协议 v1」读取, 来源: 汇总地址 / BoxJS / 自动 (先汇总后 BoxJS)
 //
 // checkin_registry = { "<状态key>": { name, author, url?, run?, open? } }
-// <状态key>        = { v:1 (旧记录没有), s:"ok"|"cookie"|"fail"|"none", t:毫秒, msg, asset?, exp?, name?, author? }
+// <状态key>        = { v:1 (旧记录没有), s:"ok"|"cookie"|"fail"|"none", t:毫秒, msg, asset?, name?, author? }
 // BoxJS 返回 { key, val }, val 是字符串, 要再 JSON.parse 一次
 // 汇总地址返回 { v:1, t, registry: {...}, status: { "<状态key>": 记录 } }
 
@@ -84,7 +84,6 @@ export type Entry = {
   t: number
   msg: string
   asset?: string
-  exp?: number      // 凭证过期时间 (毫秒), 协议可选字段
   run?: string      // 补签触发 URL (registry 可选字段), GET 后返回最新结果
   open?: string     // 打开 App 的 URL scheme 或 App Store 链接 (registry 可选字段)
   category: string
@@ -129,7 +128,6 @@ function toEntry(key: string, r: any, info: RegInfo): Entry {
     t: Number(r.t) || 0,
     msg: String(r.msg ?? ''),
     asset: r.asset != null && r.asset !== '' ? String(r.asset) : undefined,
-    exp: Number(r.exp) > 0 ? Number(r.exp) : undefined,
     run: info.run || undefined,
     open: info.open || undefined,
     category: CATEGORY.get(key) ?? '其他',
@@ -356,12 +354,12 @@ function mockEntries(): Entry[] {
   }
   const me = 'MaYIHEI'
   const rows: Omit<Entry, 'category'>[] = [
-    { key: 'dreame_status', name: '追觅', author: me, s: 'ok', t: at(8, 2), msg: '+5 积分 · 连签 3 天', asset: '积分 735', exp: Date.now() + 2.4 * 86_400_000 },
-    { key: 'nodeseek_status', name: 'NodeSeek', author: me, s: 'ok', t: at(8, 0), msg: '鸡腿 +4', asset: '鸡腿 212', exp: Date.now() + 6.2 * 86_400_000 },
-    { key: 'cmcc_status', name: '中国移动', author: me, s: 'ok', t: at(7, 30), msg: '+10 积分', asset: '话费 91.90 元', exp: Date.now() + 25 * 86_400_000 },
+    { key: 'dreame_status', name: '追觅', author: me, s: 'ok', t: at(8, 2), msg: '+5 积分 · 连签 3 天', asset: '积分 735' },
+    { key: 'nodeseek_status', name: 'NodeSeek', author: me, s: 'ok', t: at(8, 0), msg: '鸡腿 +4', asset: '鸡腿 212' },
+    { key: 'cmcc_status', name: '中国移动', author: me, s: 'ok', t: at(7, 30), msg: '+10 积分', asset: '话费 91.90 元' },
     { key: 'heybox_status', name: '小黑盒', author: me, s: 'cookie', t: at(8, 10), msg: '凭证失效', open: 'heybox://' },
     { key: 'wps_status', name: 'WPS', author: me, s: 'fail', t: at(8, 15), msg: '请求超时', run: 'mock://run/wps_status' },
-    { key: 'wedome_status', name: '味多美', author: me, s: 'ok', t: at(9, 0), msg: '+2 积分', asset: '积分 120', exp: Date.now() + 12.5 * 86_400_000 },
+    { key: 'wedome_status', name: '味多美', author: me, s: 'ok', t: at(9, 0), msg: '+2 积分', asset: '积分 120' },
     { key: 'mihoyo_status', name: '米游社', author: me, s: 'ok', t: at(8, 30), msg: '原神 · 星铁 已签' },
     { key: 'wanda_status', name: '万达电影', author: me, s: 'ok', t: at(21, 0, -1), msg: '+1 成长值', asset: '成长值 88' },
     { key: 'qqmusic_status', name: 'QQ音乐', author: me, s: 'ok', t: at(7, 45), msg: '+3 成长值' },
@@ -369,7 +367,7 @@ function mockEntries(): Entry[] {
     { key: 'lhtj_status', name: '龙湖天街', author: me, s: 'cookie', t: at(9, 20), msg: 'Token 过期' },
     { key: 'tuhu_status', name: '途虎养车', author: me, s: 'none', t: at(8, 0), msg: '' },
     { key: 'laifen_status', name: '徕芬', author: me, s: 'fail', t: at(9, 0, -12), msg: '请求超时' },
-    { key: 'demo_jd', name: '京东', author: 'Alice', s: 'ok', t: at(6, 30), msg: '+5 京豆', asset: '京豆 1,234', exp: Date.now() + 0.6 * 86_400_000 },
+    { key: 'demo_jd', name: '京东', author: 'Alice', s: 'ok', t: at(6, 30), msg: '+5 京豆', asset: '京豆 1,234' },
     { key: 'demo_smzdm', name: '什么值得买', author: 'Alice', s: 'fail', t: at(6, 35), msg: '签到接口变更' },
     { key: 'demo_v2ex', name: 'V2EX', author: 'Bob', s: 'fail', t: at(7, 20), msg: '网络超时', run: 'mock://run/demo_v2ex' },
     { key: 'demo_bilibili', name: '哔哩哔哩', author: 'Bob', s: 'ok', t: at(7, 0), msg: '+5 经验', asset: '硬币 66' },
