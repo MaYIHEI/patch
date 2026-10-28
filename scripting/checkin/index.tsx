@@ -71,7 +71,7 @@ declare const Safari: { openURL(url: string): Promise<boolean> }
 
 const REMOTE_META = 'https://raw.githubusercontent.com/MaYIHEI/patch/main/scripting/checkin/script.json'
 const INSTALL_URL = 'https://www.scripting.fun/import_scripts/?urls=%5B%22https%3A%2F%2Fwww.imarkr.com%2Fapi%2Fgithub%2Fdownload%2FMaYIHEI%2Fpatch%2Fscripting%2Fcheckin.zip%22%5D'
-const PLUGIN_URL = 'https://raw.githubusercontent.com/MaYIHEI/paperclip/refs/heads/testing/loon/paperclip-checkin/paperclip-checkin.lpx'
+const PLUGIN_URL = 'https://raw.githubusercontent.com/MaYIHEI/paperclip/refs/heads/main/loon/paperclip-checkin/paperclip-checkin.lpx'
 const LOON_IMPORT = `loon://import?plugin=${encodeURIComponent(PLUGIN_URL)}`
 const BG_PATH = () => Path.join(FileManager.appGroupDocumentsDirectory, 'checkin', 'background.jpg')
 
