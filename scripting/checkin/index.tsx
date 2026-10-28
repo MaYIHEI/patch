@@ -43,6 +43,7 @@ import {
   clearCache,
   probe,
   runCheckin,
+  select,
   counts,
   isProblem,
   rewardTotal,
@@ -60,7 +61,10 @@ import { ensureIcons, clearIcons } from './icons'
 import { makeTheme, Ring, AppIcon, hhmm, chunk, OK, BAD, WARN, type Ctx } from './ui'
 import { STYLES, FEATURED, stylesFor, styleById, paramOf, renderStyle, type StyleDef } from './styles/index'
 import { goalsOf } from './styles/history'
-import { liveStateOf, LiveBanner } from './styles/live'
+import {
+  liveStateOf, LiveBanner, LiveCompactLeading, LiveCompactTrailing, LiveMinimal,
+  LiveExpandedLeading, LiveExpandedTrailing, LiveExpandedCenter, LiveExpandedBottom,
+} from './styles/live'
 import { startOrRefresh } from './live_activity'
 
 declare const Safari: { openURL(url: string): Promise<boolean> }
@@ -478,7 +482,6 @@ function ScriptDetail(props: { entry: Entry; hist: Day[]; reload: () => Promise<
         <LabeledContent label={<Text>{e.s === 'ok' ? '今日奖励' : '原因'}</Text>} value={e.msg || '-'} />
         <LabeledContent label={<Text>时间</Text>} value={`${d.getMonth() + 1}月${d.getDate()}日 ${hhmm(e.t)}`} />
         {e.asset ? <LabeledContent label={<Text>资产</Text>} value={e.asset} /> : null}
-        {e.exp ? <LabeledContent label={<Text>凭证过期</Text>} value={`${Math.max(0, Math.floor((e.exp - Date.now()) / 86_400_000))} 天后`} /> : null}
       </Section>
 
       <Section footer={note ? <Text>{note}</Text> : undefined}>
@@ -864,8 +867,8 @@ function SettingsPage(props: Shared & { onChanged: () => void }) {
     const s = props.snap
     if (!s) return setLiveText('还没有数据')
     const d = getDisplay()
-    const entries = d.keys.length ? s.entries.filter(e => d.keys.includes(e.key)) : s.entries
-    setLiveText((await startOrRefresh(liveStateOf(entries))) ? '已开启, 锁屏和灵动岛可见' : '没开起来: 检查 设置 → Scripting → 实时活动 是否允许')
+    const ok = await startOrRefresh(liveStateOf(select(s.entries, d.keys, d.problemsFirst), s.fetchedAt))
+    setLiveText(ok ? '已开启, 锁屏和灵动岛可见' : '没开起来: 检查 设置 → Scripting → 实时活动 是否允许')
   }
 
   async function checkUpdate() {
@@ -881,8 +884,6 @@ function SettingsPage(props: Shared & { onChanged: () => void }) {
       setUpdateText('检查失败')
     }
   }
-
-  const st = props.snap ? liveStateOf(props.snap.entries) : null
 
   return (
     <Form navigationTitle="设置" navigationBarTitleDisplayMode="inline">
@@ -910,12 +911,11 @@ function SettingsPage(props: Shared & { onChanged: () => void }) {
         </Picker>
       </Section>
 
-      <Section header={<Text>实时活动</Text>} footer={<Text>{liveText || '锁屏和灵动岛显示今日进度; 需要手动开启, 系统不允许没人操作时自动弹出。'}</Text>}>
-        {st ? (
-          <VStack padding={{ vertical: 6 }} background={<RoundedRectangle cornerRadius={18} fill="rgba(28,28,30,0.92)" />}>
-            <LiveBanner st={st} />
-          </VStack>
-        ) : null}
+      <Section
+        header={<Text>实时活动</Text>}
+        footer={<Text>{liveText || '适合每天签到后开启, 在锁屏上直接处理问题; 想常驻锁屏请用锁屏小组件。iOS 实时活动最长 8 小时, 到时由系统自动结束; 需要手动开启。'}</Text>}
+      >
+        <NavigationLink destination={<LivePreviewPage />}><Text>预览四种状态</Text></NavigationLink>
         <Button title="开始早间签到实时活动" action={startLive} />
         <Button title="结束实时活动" action={async () => { await LiveActivity.endAllActivities({ dismissTimeInterval: 0 }); setLiveText('已结束') }} />
       </Section>
@@ -958,6 +958,52 @@ function SettingsPage(props: Shared & { onChanged: () => void }) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// 实时活动预览: 锁屏横幅 / 灵动岛收起 / 最小 / 展开, 有问题和全部正常两种数据
+// 灵动岛底色固定黑, 整页用深色外观看效果
+// ─────────────────────────────────────────────────────────────
+function LivePreviewPage() {
+  const [mode, setMode] = useState<'bad' | 'good'>('bad')
+  const base = sampleSnapshot()
+  const st = liveStateOf(mode === 'bad' ? base.entries : base.entries.filter(e => e.s === 'ok'), base.fetchedAt)
+  const island = (child: any, radius: number) => (
+    <HStack frame={{ maxWidth: 'infinity' }}>
+      <Spacer />
+      <VStack padding={{ horizontal: radius > 30 ? 18 : 12, vertical: radius > 30 ? 16 : 8 }} background={<RoundedRectangle cornerRadius={radius} fill="#000000" />}>{child}</VStack>
+      <Spacer />
+    </HStack>
+  )
+  return (
+    <List navigationTitle="实时活动预览" navigationBarTitleDisplayMode="inline" preferredColorScheme="dark">
+      <Section footer={<Text>示例数据; 底色由系统决定, 这里只示意。按钮在预览里不可点。</Text>}>
+        <Picker title="数据" value={mode} onChanged={(v: any) => setMode(v)} pickerStyle="segmented">
+          <Text tag="bad">有问题</Text>
+          <Text tag="good">全部正常</Text>
+        </Picker>
+      </Section>
+      <Section header={<Text>锁屏横幅</Text>} footer={<Text>通知中心、待机模式和没有灵动岛的机型都显示这个。</Text>}>
+        <VStack background={<RoundedRectangle cornerRadius={22} fill="rgba(60,60,67,0.6)" />}><LiveBanner st={st} /></VStack>
+      </Section>
+      <Section header={<Text>灵动岛 · 收起</Text>}>
+        {island(<HStack spacing={0} frame={{ width: 200 }}><LiveCompactLeading st={st} /><Spacer /><LiveCompactTrailing st={st} /></HStack>, 20)}
+      </Section>
+      <Section header={<Text>灵动岛 · 最小</Text>} footer={<Text>同时有别的实时活动时显示。</Text>}>
+        {island(<LiveMinimal st={st} />, 20)}
+      </Section>
+      <Section header={<Text>灵动岛 · 展开</Text>}>
+        {island(
+          <VStack spacing={8} frame={{ width: 320 }}>
+            <HStack><LiveExpandedLeading st={st} /><Spacer /><LiveExpandedTrailing st={st} /></HStack>
+            <HStack><LiveExpandedCenter st={st} /><Spacer /></HStack>
+            <LiveExpandedBottom st={st} />
+          </VStack>,
+          40,
+        )}
+      </Section>
+    </List>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
 // 签到协议
 // ─────────────────────────────────────────────────────────────
 const SAMPLE_REGISTRY = '{"dreame_status":{"name":"追觅","author":"MaYIHEI","run":"http://1.1.1.1/checkin/dreame"}}'
@@ -969,14 +1015,13 @@ function ProtocolPage() {
     <Form navigationTitle="签到协议 v1" navigationBarTitleDisplayMode="inline">
       <Section footer={<Text>{'脚本跑完后把结果写进代理工具的持久化存储 ($persistentStore / $prefs), 本小组件通过汇总地址或 BoxJS 读取。'}</Text>}>
         <Text>{'1. 在 checkin_registry 里登记自己: { "状态key": { name, author, url?, run?, open? } }'}</Text>
-        <Text>{'2. 每次签到后把结果写进状态 key: { v:1, s, t, msg, asset?, exp? }'}</Text>
+        <Text>{'2. 每次签到后把结果写进状态 key: { v:1, s, t, msg, asset? }'}</Text>
       </Section>
       <Section header={<Text>字段</Text>}>
         <LabeledContent label={<Text>s</Text>} value="ok 成功 / cookie 需重抓 / fail 失败 / none 不显示" />
         <LabeledContent label={<Text>t</Text>} value="毫秒时间戳; 超过 7 天算长期未运行" />
         <LabeledContent label={<Text>msg</Text>} value="今日奖励, 如 +5 积分" />
         <LabeledContent label={<Text>asset</Text>} value="资产 (可选), 如 积分 735" />
-        <LabeledContent label={<Text>exp</Text>} value="凭证过期毫秒时间戳 (可选)" />
         <LabeledContent label={<Text>run</Text>} value="登记项里的补签地址 (可选)" />
         <LabeledContent label={<Text>open</Text>} value="登记项里的打开 App 链接 (可选)" />
       </Section>
