@@ -34,7 +34,10 @@ const builder: LiveActivityUIBuilder<LiveState> = st => (
   </LiveActivityUI>
 )
 
-export const CheckinActivity = LiveActivity.register(ACTIVITY_NAME, builder)
+// 只能注册一次: 锁屏渲染时本文件是入口, 又经 app_intents 被当模块引入, 同一环境里会被求值两次
+// 官方没有「已注册就复用」的接口, 第一次注册的结果挂在 globalThis 上, 之后都复用它
+const g = globalThis as { __checkinActivity?: any }
+export const CheckinActivity = g.__checkinActivity ?? (g.__checkinActivity = LiveActivity.register(ACTIVITY_NAME, builder))
 
 const START_OPTS = () => ({ staleDate: Date.now() + 2 * 3_600_000 })
 
