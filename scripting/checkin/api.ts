@@ -1,11 +1,13 @@
 // checkin / api.ts
-// 数据层 — 只读 BoxJS, 按「签到状态协议 v1」解析
+// 数据层 — 按「签到状态协议 v1」读取, 来源: 汇总地址 / BoxJS / 自动 (先汇总后 BoxJS)
 //
-// checkin_registry = { "<状态key>": { name, author, url? } }
-// <状态key>        = { v:1 (旧记录没有), s:"ok"|"cookie"|"fail"|"none", t:毫秒, msg, asset?, name?, author? }
+// checkin_registry = { "<状态key>": { name, author, url?, run?, open? } }
+// <状态key>        = { v:1 (旧记录没有), s:"ok"|"cookie"|"fail"|"none", t:毫秒, msg, asset?, exp?, name?, author? }
 // BoxJS 返回 { key, val }, val 是字符串, 要再 JSON.parse 一次
+// 汇总地址返回 { v:1, t, registry: {...}, status: { "<状态key>": 记录 } }
 
 import { fetch } from 'scripting'
+import { getData, SUMMARY_URL, type Source } from './settings'
 
 // DOM 的 Storage class 类型与 Scripting 全局 Storage 冲突，手动 cast
 const AppStorage = Storage as unknown as {
@@ -15,10 +17,9 @@ const AppStorage = Storage as unknown as {
 }
 
 const REGISTRY_KEY = 'checkin_registry'
-const HOST_KEY = 'checkin.host'
-const MOCK_KEY = 'checkin.mock'
 const CACHE_KEY = 'checkin.cache'
-export const DEFAULT_HOST = 'https://boxjs.com'
+const IDLE_MS = 7 * 86_400_000   // 超过 7 天没更新算「长期未运行」, 不算需要处理
+const OWN_AUTHOR = 'MaYIHEI'
 
 // paperclip 的签到脚本 [显示名, 状态key, 类别]; 前两列照抄 paperclip app/summary/summary.js 的 SCRIPTS
 // 类别先写死在这里, 以后放进协议
@@ -85,34 +86,17 @@ export type Entry = {
   asset?: string
   exp?: number      // 凭证过期时间 (毫秒), 协议可选字段
   run?: string      // 补签触发 URL (registry 可选字段), GET 后返回最新结果
+  open?: string     // 打开 App 的 URL scheme 或 App Store 链接 (registry 可选字段)
   category: string
 }
 
 export type Snapshot = {
-  entries: Entry[]   // 已去掉 s:"none" 和没有结果的, 保持登记顺序
+  entries: Entry[]   // 已去掉 s:"none"、没有结果的和长期未运行的, 保持登记顺序
+  idle: Entry[]      // 超过 7 天没更新
   fetchedAt: number
-  stale?: boolean    // BoxJS 连不上, 显示的是上次成功读到的
-  mock?: boolean
-}
-
-// ────────────────────────────────────────────────────────────
-// 配置
-// ────────────────────────────────────────────────────────────
-export function getHost(): string {
-  return AppStorage.get<string>(HOST_KEY) || DEFAULT_HOST
-}
-
-export function setHost(host: string): void {
-  AppStorage.set(HOST_KEY, host.trim() || DEFAULT_HOST)
-}
-
-/** 真实数据到位前默认用演示数据 */
-export function getMock(): boolean {
-  return AppStorage.get<boolean>(MOCK_KEY) ?? true
-}
-
-export function setMock(on: boolean): void {
-  AppStorage.set(MOCK_KEY, on)
+  source: 'summary' | 'boxjs' | 'sample'
+  stale?: boolean    // 连不上, 显示的是上次成功读到的
+  mock?: boolean     // 示例预览
 }
 
 // ────────────────────────────────────────────────────────────
@@ -132,14 +116,14 @@ async function readKey(base: string, key: string): Promise<any> {
   return val ? JSON.parse(val) : null
 }
 
-type RegInfo = { name?: string; author?: string; url?: string; run?: string }
+type RegInfo = { name?: string; author?: string; url?: string; run?: string; open?: string }
 
 /** 一条结果 → Entry; 旧记录只有 {s, t, msg}, 没有 v 也按 v1 处理 */
 function toEntry(key: string, r: any, info: RegInfo): Entry {
   return {
     key,
     name: info.name || r.name || OWN.get(key) || key,
-    author: info.author || r.author || '',
+    author: info.author || r.author || (OWN.has(key) ? OWN_AUTHOR : ''),
     url: info.url,
     s: r.s,
     t: Number(r.t) || 0,
@@ -147,8 +131,26 @@ function toEntry(key: string, r: any, info: RegInfo): Entry {
     asset: r.asset != null && r.asset !== '' ? String(r.asset) : undefined,
     exp: Number(r.exp) > 0 ? Number(r.exp) : undefined,
     run: info.run || undefined,
+    open: info.open || undefined,
     category: CATEGORY.get(key) ?? '其他',
   }
+}
+
+/** 索引优先, paperclip 自带列表兜底 (同 paperclip summary.js) */
+const allKeys = (reg: Record<string, RegInfo>) => [...new Set([...OWN.keys(), ...Object.keys(reg)])]
+
+/** 汇总地址: 一次拿到索引和全部结果; 是 Loon 内网明文地址, 要显式允许 http */
+async function readSummary(): Promise<Entry[]> {
+  const res = await fetch(SUMMARY_URL, { allowInsecureRequest: true, timeout: 8 })
+  if (!res.ok) throw new Error(`汇总地址 HTTP ${res.status}`)
+  const body = await res.json() as { registry?: Record<string, RegInfo>; status?: Record<string, any> }
+  if (!body || typeof body.status !== 'object') throw new Error('汇总地址返回的不是签到汇总')
+  const reg = body.registry ?? {}
+  const parse = (r: any) => { try { return typeof r === 'string' ? (r ? JSON.parse(r) : null) : r } catch { return null } }
+  return allKeys(reg)
+    .map(key => ({ key, r: parse(body.status![key]) }))
+    .filter(x => x.r && typeof x.r === 'object')
+    .map(x => toEntry(x.key, x.r, reg[x.key] ?? {}))
 }
 
 async function readBoxJS(host: string): Promise<Entry[]> {
@@ -160,8 +162,7 @@ async function readBoxJS(host: string): Promise<Entry[]> {
     throw new Error(`连不上 BoxJS (${base}), 确认代理工具已开启: ${(e as Error).message}`)
   }
   const reg = registry ?? {}
-  // 索引优先, paperclip 自带列表兜底 (同 paperclip summary.js)
-  const keys = [...new Set([...OWN.keys(), ...Object.keys(reg)])]
+  const keys = allKeys(reg)
   // 单个结果读失败或解析不了当作没记录, 不影响其他行
   const results = await Promise.all(keys.map(k => readKey(base, k).catch(() => null)))
   return keys
@@ -169,8 +170,26 @@ async function readBoxJS(host: string): Promise<Entry[]> {
     .filter((e): e is Entry => e !== null)
 }
 
-function tidy(entries: Entry[]): Entry[] {
-  return entries.filter(e => e.s === 'ok' || e.s === 'cookie' || e.s === 'fail')   // none 和无法识别的不显示
+/** 去掉 none 和无法识别的, 再把超过 7 天没更新的分出去 */
+function tidy(list: Entry[]): { entries: Entry[]; idle: Entry[] } {
+  const valid = applyPatches(list.filter(e => e.s === 'ok' || e.s === 'cookie' || e.s === 'fail'))
+  const cut = Date.now() - IDLE_MS
+  return { entries: valid.filter(e => e.t >= cut), idle: valid.filter(e => e.t < cut) }
+}
+
+/** 按设置的来源读; 自动 = 先汇总地址, 失败再 BoxJS */
+async function readSource(source: Source, host: string): Promise<{ list: Entry[]; source: 'summary' | 'boxjs' }> {
+  if (source === 'summary') return { list: await readSummary(), source: 'summary' }
+  if (source === 'boxjs') return { list: await readBoxJS(host), source: 'boxjs' }
+  try {
+    return { list: await readSummary(), source: 'summary' }
+  } catch (e) {
+    try {
+      return { list: await readBoxJS(host), source: 'boxjs' }
+    } catch (e2) {
+      throw new Error(`汇总地址和 BoxJS 都连不上, 确认 Loon 已开启并装了签到合集插件 (${(e2 as Error).message})`)
+    }
+  }
 }
 
 // ────────────────────────────────────────────────────────────
@@ -229,11 +248,12 @@ export function isRetrying(e: Entry): boolean {
   return since !== undefined && since > e.t && Date.now() - since < 10 * 60_000
 }
 
-/** 读全部结果; BoxJS 连不上时退回上次缓存, 没缓存才抛错 */
+/** 读全部结果; 连不上时退回上次缓存, 没缓存才抛错 */
 export async function loadSnapshot(): Promise<Snapshot> {
-  if (getMock()) return { entries: applyPatches(tidy(mockEntries())), fetchedAt: Date.now(), mock: true }
+  const d = getData()
   try {
-    const snap: Snapshot = { entries: applyPatches(tidy(await readBoxJS(getHost()))), fetchedAt: Date.now() }
+    const r = await readSource(d.source, d.host)
+    const snap: Snapshot = { ...tidy(r.list), fetchedAt: Date.now(), source: r.source }
     AppStorage.set(CACHE_KEY, JSON.stringify(snap))
     return snap
   } catch (e) {
@@ -243,14 +263,19 @@ export async function loadSnapshot(): Promise<Snapshot> {
   }
 }
 
-/** 新手引导用: 不管演示开关, 直接试读 BoxJS */
-export async function probe(): Promise<{ connected: boolean; count: number; error?: string }> {
+/** 设置页「测试连接」: 按指定来源读一次, 不写缓存 */
+export async function probe(source: Source, host: string): Promise<{ ok: boolean; via?: string; count: number; error?: string }> {
   try {
-    const entries = tidy(await readBoxJS(getHost()))
-    return { connected: true, count: entries.length }
+    const r = await readSource(source, host)
+    return { ok: true, via: r.source === 'summary' ? '汇总地址' : 'BoxJS', count: tidy(r.list).entries.length }
   } catch (e) {
-    return { connected: false, count: 0, error: (e as Error).message }
+    return { ok: false, count: 0, error: (e as Error).message }
   }
+}
+
+/** 示例预览: 只给样式库 / 外观预览用 */
+export function sampleSnapshot(): Snapshot {
+  return { ...tidy(mockEntries()), fetchedAt: Date.now(), source: 'sample', mock: true }
 }
 
 const RANK: Record<Status, number> = { cookie: 0, fail: 1, ok: 2, none: 3 }
@@ -264,6 +289,7 @@ export function select(entries: Entry[], keys: string[], problemsFirst: boolean)
 
 export function clearCache(): void {
   AppStorage.remove(CACHE_KEY)
+  AppStorage.remove(PATCH_KEY)
 }
 
 export function counts(entries: Entry[]) {
@@ -333,7 +359,7 @@ function mockEntries(): Entry[] {
     { key: 'dreame_status', name: '追觅', author: me, s: 'ok', t: at(8, 2), msg: '+5 积分 · 连签 3 天', asset: '积分 735', exp: Date.now() + 2.4 * 86_400_000 },
     { key: 'nodeseek_status', name: 'NodeSeek', author: me, s: 'ok', t: at(8, 0), msg: '鸡腿 +4', asset: '鸡腿 212', exp: Date.now() + 6.2 * 86_400_000 },
     { key: 'cmcc_status', name: '中国移动', author: me, s: 'ok', t: at(7, 30), msg: '+10 积分', asset: '话费 91.90 元', exp: Date.now() + 25 * 86_400_000 },
-    { key: 'heybox_status', name: '小黑盒', author: me, s: 'cookie', t: at(8, 10), msg: '凭证失效' },
+    { key: 'heybox_status', name: '小黑盒', author: me, s: 'cookie', t: at(8, 10), msg: '凭证失效', open: 'heybox://' },
     { key: 'wps_status', name: 'WPS', author: me, s: 'fail', t: at(8, 15), msg: '请求超时', run: 'mock://run/wps_status' },
     { key: 'wedome_status', name: '味多美', author: me, s: 'ok', t: at(9, 0), msg: '+2 积分', asset: '积分 120', exp: Date.now() + 12.5 * 86_400_000 },
     { key: 'mihoyo_status', name: '米游社', author: me, s: 'ok', t: at(8, 30), msg: '原神 · 星铁 已签' },
@@ -342,6 +368,7 @@ function mockEntries(): Entry[] {
     { key: 'bhg_status', name: '北京华联', author: me, s: 'ok', t: at(10, 5), msg: '+1 积分', asset: '积分 56' },
     { key: 'lhtj_status', name: '龙湖天街', author: me, s: 'cookie', t: at(9, 20), msg: 'Token 过期' },
     { key: 'tuhu_status', name: '途虎养车', author: me, s: 'none', t: at(8, 0), msg: '' },
+    { key: 'laifen_status', name: '徕芬', author: me, s: 'fail', t: at(9, 0, -12), msg: '请求超时' },
     { key: 'demo_jd', name: '京东', author: 'Alice', s: 'ok', t: at(6, 30), msg: '+5 京豆', asset: '京豆 1,234', exp: Date.now() + 0.6 * 86_400_000 },
     { key: 'demo_smzdm', name: '什么值得买', author: 'Alice', s: 'fail', t: at(6, 35), msg: '签到接口变更' },
     { key: 'demo_v2ex', name: 'V2EX', author: 'Bob', s: 'fail', t: at(7, 20), msg: '网络超时', run: 'mock://run/demo_v2ex' },

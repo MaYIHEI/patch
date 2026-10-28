@@ -1,12 +1,14 @@
 // checkin / ui.tsx
-// 两套皮肤的配色 + 各样式共用的部件. 小组件和 App 内预览共用同一套视图
+// 外观 (素净 / 自定义) + 各样式共用的部件. 小组件和 App 内预览共用同一套视图
+// 背景图、色调只放在背景层 (background), 不参与内容布局
 
-import { VStack, HStack, ZStack, Text, Spacer, Image, Button, Circle, Capsule, RoundedRectangle, Link, Script } from 'scripting'
+import { VStack, HStack, ZStack, Text, Spacer, Image, Button, Circle, Capsule, Rectangle, RoundedRectangle, Link, Script } from 'scripting'
 import type { Color, DynamicShapeStyle } from 'scripting'
 
 import { counts, initials, brand, timeLabel, splitAsset, isRetrying, type Entry, type Snapshot } from './api'
 import { RetryIntent } from './app_intents'
-import type { Preset } from './presets'
+import { iconPath } from './icons'
+import type { Look } from './settings'
 import type { Day } from './history'
 
 // ─────────────────────────────────────────────────────────────
@@ -34,55 +36,60 @@ const PLAIN = {
   badFg: { light: '#D70015', dark: '#FF6961' },
   goodBg: { light: '#E6F8EC', dark: '#0F3B24' },
   goodFg: { light: '#248A3D', dark: '#6EE7A0' },
-  paper: { light: '#FFFFFF', dark: '#2C2C2E' },
-  ink: { light: '#1C1C1E', dark: '#F2F2F7' },
 }
-
-const COLOR = {
-  bg: { light: '#EEF1F8', dark: '#0A0E1A' },
-  card: { light: 'rgba(255,255,255,0.82)', dark: 'rgba(30,32,40,0.82)' },
-  border: { light: 'rgba(0,0,0,0.06)', dark: 'rgba(255,255,255,0.1)' },
-  t1: { light: '#111318', dark: '#F2F2F7' },
-  t2: { light: '#5B5F6B', dark: 'rgba(235,235,245,0.6)' },
-  t3: { light: '#8A8F9C', dark: 'rgba(235,235,245,0.45)' },
-  track: { light: 'rgba(0,0,0,0.08)', dark: 'rgba(255,255,255,0.12)' },
-  badBg: { light: '#FFE1DE', dark: '#3A1214' },
-  badFg: { light: '#C4180C', dark: '#FF6961' },
-  goodBg: { light: '#DDF5E5', dark: '#0F3B24' },
-  goodFg: { light: '#1E7A36', dark: '#6EE7A0' },
-  paper: { light: '#FFFDF7', dark: '#F5F0E6' },
-  ink: { light: '#2B2620', dark: '#2B2620' },
-}
-
-const BLOBS: Pair[] = [
-  { light: '#D9E0FF', dark: '#1B2350' },
-  { light: '#EBDDF7', dark: '#2A1640' },
-  { light: '#D5F0EE', dark: '#0F3A3A' },
-]
 
 export type Theme = {
-  color: boolean
+  custom: boolean
+  dark: boolean        // 自定义背景是深色 (文字用白)
   bg: Paint; card: Paint; border: Paint; t1: Paint; t2: Paint; t3: Paint; track: Paint
   badBg: Paint; badFg: Paint; goodBg: Paint; goodFg: Paint; paper: Paint; ink: Paint
-  blobs: Paint[]
+  accent: string
+  image?: { path: string; blur: number; dim: number }
   /** 硬停点渐变要分别给浅色 / 深色 */
   trackPair: Pair
 }
 
-export function makeTheme(p: Preset): Theme {
-  const set = p.skin === 'color' ? COLOR : PLAIN
-  // 素净 auto 跟随系统; 彩色 auto 固定深色
-  const mode = p.bg === 'auto' ? (p.skin === 'color' ? 'dark' : 'system') : p.bg
-  const r = (x: Pair): Paint => (mode === 'system' ? x as DynamicShapeStyle : x[mode])
-  const trackPair = mode === 'system' ? set.track : { light: set.track[mode], dark: set.track[mode] }
+/** 相对亮度 0-1, 只认 #RGB / #RRGGBB / rgba() */
+export function luminance(c: string): number {
+  let r = 0, g = 0, b = 0
+  const hex = c.match(/^#([0-9a-f]{3}|[0-9a-f]{6})/i)
+  const rgb = c.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i)
+  if (hex) {
+    const h = hex[1].length === 3 ? hex[1].split('').map(x => x + x).join('') : hex[1]
+    r = parseInt(h.slice(0, 2), 16); g = parseInt(h.slice(2, 4), 16); b = parseInt(h.slice(4, 6), 16)
+  } else if (rgb) {
+    r = Number(rgb[1]); g = Number(rgb[2]); b = Number(rgb[3])
+  }
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255
+}
+
+export function makeTheme(look: Look): Theme {
+  if (look.mode === 'plain') {
+    const r = (x: Pair) => x as DynamicShapeStyle
+    return {
+      custom: false, dark: false,
+      bg: r(PLAIN.bg), card: r(PLAIN.card), border: r(PLAIN.border), t1: r(PLAIN.t1), t2: r(PLAIN.t2), t3: r(PLAIN.t3),
+      track: r(PLAIN.track), badBg: r(PLAIN.badBg), badFg: r(PLAIN.badFg), goodBg: r(PLAIN.goodBg), goodFg: r(PLAIN.goodFg),
+      paper: r(PLAIN.card), ink: r(PLAIN.t1), accent: '#0A84FF', trackPair: PLAIN.track,
+    }
+  }
+  const image = look.bgType === 'image' && look.image ? { path: look.image, blur: look.blur, dim: look.dim } : undefined
+  // 图片背景亮度没法读, 统一按深色处理 (暗化层保证白字可读)
+  const dark = image ? true : luminance(look.color) < 0.55
+  const ink = (a: number) => (dark ? `rgba(255,255,255,${a})` : `rgba(0,0,0,${a})`)
+  const track = dark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.1)'
   return {
-    color: p.skin === 'color',
-    bg: r(set.bg), card: r(set.card), border: r(set.border),
-    t1: r(set.t1), t2: r(set.t2), t3: r(set.t3), track: r(set.track),
-    badBg: r(set.badBg), badFg: r(set.badFg), goodBg: r(set.goodBg), goodFg: r(set.goodFg),
-    paper: r(set.paper), ink: r(set.ink),
-    blobs: p.skin === 'color' ? BLOBS.map(r) : [],
-    trackPair,
+    custom: true, dark,
+    bg: image ? '#000000' : look.color,
+    card: dark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.6)',
+    border: ink(dark ? 0.14 : 0.08),
+    t1: dark ? '#FFFFFF' : '#111318', t2: ink(dark ? 0.72 : 0.62), t3: ink(dark ? 0.5 : 0.42), track,
+    badBg: 'rgba(255,69,58,0.3)', badFg: dark ? '#FF8A82' : '#C4180C',
+    goodBg: 'rgba(48,209,88,0.26)', goodFg: dark ? '#7EF0A8' : '#1E7A36',
+    paper: dark ? 'rgba(255,255,255,0.92)' : '#FFFFFF', ink: '#2B2620',
+    accent: look.accent,
+    image,
+    trackPair: { light: track, dark: track },
   }
 }
 
@@ -94,13 +101,13 @@ export type Size = 's' | 'm' | 'l'
 export type Ctx = {
   th: Theme
   size: Size
-  entries: Entry[]     // 预设挑选 + 排序后的
+  entries: Entry[]     // 按「显示哪些」挑选 + 排序后的
   snap: Snapshot
   inApp: boolean       // App 内预览: 不用 widgetBackground, 按钮不跳转
   spot: number         // 聚光灯轮换序号
   hist: Day[]          // 本机历史, 日期升序
   keys: Set<string>    // entries 的 key, 历史统计只算这些
-  preset: Preset
+  goals: Record<string, number>
   page: number         // Q 翻页页码
 }
 
@@ -109,55 +116,64 @@ export const hhmm = (t: number) => {
   return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
 }
 
+/** 小组件上统一的数据时间 */
 export function syncText(snap: Snapshot): string {
-  return snap.mock ? `演示 ${hhmm(snap.fetchedAt)}` : snap.stale ? `⚠ ${hhmm(snap.fetchedAt)}` : `${hhmm(snap.fetchedAt)} 更新`
+  return snap.mock ? `示例 ${hhmm(snap.fetchedAt)}` : snap.stale ? `⚠ ${hhmm(snap.fetchedAt)}` : `${hhmm(snap.fetchedAt)} 更新`
 }
 
 export const statusColor = (e: Entry) => (e.s === 'cookie' ? BAD : e.s === 'fail' ? WARN : OK)
 export const statusWord = (e: Entry) => (e.s === 'cookie' ? '需重抓' : e.s === 'fail' ? '失败' : '成功')
+
+/** 小组件里点一行: 打开 App 里这个脚本的详情 */
+export const detailURL = (key: string) => Script.createRunURLScheme(Script.name, { detail: key })
 
 // ─────────────────────────────────────────────────────────────
 // 外框
 // ─────────────────────────────────────────────────────────────
 const PAD: Record<Size, number> = { s: 14, m: 14, l: 16 }
 
-/** 小组件根视图; tone 让整张卡变红 / 变绿 */
+/**
+ * 小组件根视图; tone 让整张卡变红 / 变绿 (素净换底色, 自定义叠一层色调)
+ * 背景图和色调都放在 background 里, 不会把内容挤出去
+ */
 export function Root(props: { ctx: Ctx; tone?: 'bad' | 'good'; bg?: Paint; spacing?: number; padding?: number; children?: any }) {
   const { ctx, tone } = props
   const { th } = ctx
-  const bg = props.bg ?? (tone === 'bad' ? th.badBg : tone === 'good' ? th.goodBg : th.bg)
-  const blobs = tone || props.bg ? [] : th.blobs
+  const base = props.bg ?? (!th.custom && tone === 'bad' ? th.badBg : !th.custom && tone === 'good' ? th.goodBg : th.bg)
+  const img = props.bg ? undefined : th.image
+  const tint = th.custom && tone && !props.bg ? (tone === 'bad' ? th.badBg : th.goodBg) : undefined
+  const backdrop = img || tint ? (
+    <ZStack>
+      {img ? <Image filePath={img.path} resizable scaleToFill blur={img.blur} /> : null}
+      {img && img.dim > 0 ? <Rectangle fill={`rgba(0,0,0,${img.dim})`} /> : null}
+      {tint ? <Rectangle fill={tint} /> : null}
+    </ZStack>
+  ) : undefined
   const content = (
     <VStack
       alignment="leading"
       spacing={props.spacing ?? 8}
       padding={props.padding ?? PAD[ctx.size]}
       frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'topLeading' }}
+      background={backdrop}
+      clipped
     >
       {props.children}
     </VStack>
-  )
-  const layers = (
-    <ZStack frame={{ maxWidth: 'infinity', maxHeight: 'infinity' }}>
-      {blobs.length ? <Circle fill={blobs[0]} frame={{ width: 300, height: 300 }} offset={{ x: -140, y: -120 }} /> : null}
-      {blobs.length ? <Circle fill={blobs[1]} frame={{ width: 260, height: 260 }} offset={{ x: 150, y: 130 }} /> : null}
-      {blobs.length ? <Circle fill={blobs[2]} frame={{ width: 140, height: 140 }} offset={{ x: 40, y: 90 }} /> : null}
-      {content}
-    </ZStack>
   )
   if (ctx.inApp) {
     return (
       <ZStack
         frame={{ maxWidth: 'infinity', maxHeight: 'infinity' }}
-        background={<RoundedRectangle cornerRadius={22} fill={bg} />}
+        background={<RoundedRectangle cornerRadius={22} fill={base} />}
         clipShape={{ type: 'rect', cornerRadius: 22 }}
         overlay={<RoundedRectangle cornerRadius={22} stroke={{ shapeStyle: th.border, strokeStyle: { lineWidth: 0.5 } }} />}
       >
-        {layers}
+        {content}
       </ZStack>
     )
   }
-  return <ZStack frame={{ maxWidth: 'infinity', maxHeight: 'infinity' }} widgetBackground={bg}>{layers}</ZStack>
+  return <ZStack frame={{ maxWidth: 'infinity', maxHeight: 'infinity' }} widgetBackground={base}>{content}</ZStack>
 }
 
 /** 行内卡片: 0.5pt 细边框, 圆角 12 */
@@ -180,9 +196,17 @@ export function Card(props: { ctx: Ctx; fill?: Paint; padding?: any; spacing?: n
 // ─────────────────────────────────────────────────────────────
 // 小部件
 // ─────────────────────────────────────────────────────────────
-/** App 图标占位: 品牌深色圆角方块 + 首字. 以后换 pin 仓库的图标 */
+/** App 图标: 有缓存的 pin 图标就用, 没有用品牌深色圆角方块 + 首字 */
 export function AppIcon(props: { entry: Entry; size: number; ring?: boolean }) {
   const { entry, size } = props
+  const r = size * 0.26
+  const ring = props.ring && entry.s !== 'ok'
+    ? <RoundedRectangle cornerRadius={r} stroke={{ shapeStyle: statusColor(entry), strokeStyle: { lineWidth: 2 } }} />
+    : undefined
+  const path = iconPath(entry.key)
+  if (path) {
+    return <Image filePath={path} resizable frame={{ width: size, height: size }} clipShape={{ type: 'rect', cornerRadius: r }} overlay={ring} />
+  }
   const b = brand(entry.key)
   const text = initials(entry.name)
   return (
@@ -192,10 +216,8 @@ export function AppIcon(props: { entry: Entry; size: number; ring?: boolean }) {
       foregroundStyle={b.fg}
       lineLimit={1}
       frame={{ width: size, height: size }}
-      background={<RoundedRectangle cornerRadius={size * 0.26} fill={b.bg} />}
-      overlay={props.ring && entry.s !== 'ok'
-        ? <RoundedRectangle cornerRadius={size * 0.26} stroke={{ shapeStyle: statusColor(entry), strokeStyle: { lineWidth: 2 } }} />
-        : undefined}
+      background={<RoundedRectangle cornerRadius={r} fill={b.bg} />}
+      overlay={ring}
     >
       {text}
     </Text>
@@ -282,7 +304,7 @@ export function ProblemPills(props: { ctx: Ctx; entries?: Entry[] }) {
 }
 
 /**
- * 处理按钮: 需重抓 → 红色实心「打开 App」(打开本脚本的 App 页面);
+ * 处理按钮: 需重抓 → 红色实心「打开 App」(有 open 直接跳 App, 没有打开脚本详情);
  * 失败 → 灰色「补签」, 脚本登记了 run 才能点, 没有显示「不支持补签」; 超时后显示「补签中, 稍后刷新」
  */
 export function ActionPill(props: { ctx: Ctx; entry: Entry }) {
@@ -303,7 +325,7 @@ export function ActionPill(props: { ctx: Ctx; entry: Entry }) {
     </Text>
   )
   if (ctx.inApp || retrying) return pill
-  if (cookie) return <Link url={Script.createRunURLScheme(Script.name, { key: entry.key })}>{pill}</Link>
+  if (cookie) return <Link url={entry.open ?? detailURL(entry.key)}>{pill}</Link>
   if (!entry.run) return pill
   return <Button intent={RetryIntent({ key: entry.key })} buttonStyle="plain">{pill}</Button>
 }

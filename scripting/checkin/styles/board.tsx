@@ -4,7 +4,7 @@
 import { VStack, HStack, ZStack, Text, Spacer, Circle, Capsule } from 'scripting'
 
 import { counts, isProblem, isToday, splitAsset, brand, CATEGORIES, type Entry } from '../api'
-import { Root, Card, SegBar, Header, Num, Empty, Dot, ActionPill, syncText, statusColor, hhmm, chunk, OK, BAD, WARN, type Ctx } from '../ui'
+import { Root, Card, SegBar, Header, Empty, Dot, ActionPill, syncText, statusColor, hhmm, chunk, OK, BAD, WARN, type Ctx } from '../ui'
 
 // ─────────────────────────────────────────────────────────────
 // O 分类看板: 每类「完成数 / 总数」
@@ -13,50 +13,40 @@ function byCategory(entries: Entry[]): { cat: string; list: Entry[] }[] {
   return CATEGORIES.map(cat => ({ cat, list: entries.filter(e => e.category === cat) })).filter(g => g.list.length)
 }
 
-function CatTile(props: { ctx: Ctx; cat: string; list: Entry[] }) {
-  const { ctx, list } = props
-  const c = counts(list)
-  const bad = c.cookie + c.fail
-  return (
-    <Card ctx={ctx} spacing={3} padding={{ horizontal: 9, vertical: 7 }}>
-      <HStack spacing={4}>
-        <Text font={11} foregroundStyle={ctx.th.t2} lineLimit={1}>{props.cat}</Text>
-        <Spacer minLength={0} />
-        {bad ? <Dot color={c.cookie ? BAD : WARN} size={6} /> : null}
-      </HStack>
-      <HStack spacing={1} alignment="lastTextBaseline">
-        <Num value={c.ok} size={18} color={ctx.th.t1} />
-        <Text font={11} monospacedDigit foregroundStyle={ctx.th.t3}>{`/${list.length}`}</Text>
-      </HStack>
-      <SegBar ctx={ctx} entries={list} height={3} />
-    </Card>
-  )
-}
-
 export function CategoryStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, size, entries } = ctx
   if (!entries.length) return <Root ctx={ctx}><Empty ctx={ctx} text="还没有签到结果" /></Root>
   const groups = byCategory(entries)
-  if (size !== 'l') {
-    const cols = size === 's' ? 2 : 3
-    const tiles = groups.slice(0, cols * 2)
+  if (size === 'm') {
+    // 中号放 6 类: 一行「类别 完成/总数」+ 细进度条, 3 列 2 行
     return (
-      <Root ctx={ctx} spacing={8}>
-        {size === 'm' ? <Header ctx={ctx} title="分类看板" right={syncText(ctx.snap)} /> : null}
-        <VStack spacing={8} frame={{ maxHeight: 'infinity' }}>
-          {chunk(tiles, cols).map(row => (
-            <HStack spacing={8}>
-              {row.map(g => <CatTile ctx={ctx} cat={g.cat} list={g.list} />)}
-              {row.length < cols ? <VStack frame={{ maxWidth: 'infinity' }} /> : null}
-            </HStack>
-          ))}
-        </VStack>
+      <Root ctx={ctx} spacing={6}>
+        <Header ctx={ctx} title="分类看板" right={syncText(ctx.snap)} font={12} />
+        {chunk(groups.slice(0, 6), 3).map(row => (
+          <HStack spacing={6}>
+            {row.map(g => {
+              const c = counts(g.list)
+              return (
+                <Card ctx={ctx} spacing={3} padding={{ horizontal: 8, vertical: 5 }}>
+                  <HStack spacing={3}>
+                    <Text font={11} foregroundStyle={th.t2} lineLimit={1}>{g.cat}</Text>
+                    <Spacer minLength={0} />
+                    <Text font={12} fontWeight="semibold" monospacedDigit foregroundStyle={th.t1}>{`${c.ok}/${g.list.length}`}</Text>
+                  </HStack>
+                  <SegBar ctx={ctx} entries={g.list} height={3} />
+                </Card>
+              )
+            })}
+            {row.length < 3 ? Array(3 - row.length).fill(0).map(() => <VStack frame={{ maxWidth: 'infinity' }} />) : null}
+          </HStack>
+        ))}
+        <Spacer minLength={0} />
       </Root>
     )
   }
   return (
-    <Root ctx={ctx} spacing={10}>
+    <Root ctx={ctx} spacing={8}>
       <Header ctx={ctx} title="分类看板" right={syncText(ctx.snap)} />
       {groups.map(g => {
         const c = counts(g.list)
@@ -121,29 +111,8 @@ export function MetroStyle(props: { ctx: Ctx }) {
   if (!today.length) return <Root ctx={ctx}><Empty ctx={ctx} text="今天还没有签到" /></Root>
   const current = today[today.length - 1]
   const faults = today.filter(isProblem)
-  if (size === 's') {
-    const list = today.slice(-4)
-    return (
-      <Root ctx={ctx} spacing={0}>
-        <Header ctx={ctx} title="签到线" right={`${today.length} 站`} font={12} />
-        <Spacer minLength={4} />
-        {list.map((e, i) => (
-          <HStack spacing={8} frame={{ height: 24 }}>
-            <ZStack frame={{ width: 12, height: 24 }}>
-              {i < list.length - 1 ? <Capsule fill={OK} opacity={0.55} frame={{ width: 3, height: 24 }} offset={{ x: 0, y: 12 }} /> : null}
-              <Station ctx={ctx} entry={e} current={e === current} size={11} />
-            </ZStack>
-            <Text font={12} fontWeight={e === current ? 'bold' : 'regular'} foregroundStyle={e.s === 'ok' ? th.t1 : statusColor(e)} lineLimit={1}>{e.name}</Text>
-            <Spacer minLength={0} />
-            <Text font={10} monospacedDigit foregroundStyle={th.t3}>{hhmm(e.t)}</Text>
-          </HStack>
-        ))}
-        <Spacer minLength={0} />
-      </Root>
-    )
-  }
   const head = (
-    <Header ctx={ctx} title={`签到线 · 现在：${current.name}`} right={faults.length ? `${faults.length} 个故障站` : '全线正常'} rightColor={faults.length ? BAD : OK} />
+    <Header ctx={ctx} title={`签到线 · 现在：${current.name}`} right={`${faults.length ? `${faults.length} 个故障站` : '全线正常'} · ${hhmm(ctx.snap.fetchedAt)}`} rightColor={faults.length ? BAD : OK} />
   )
   if (size === 'm') {
     return (
@@ -213,26 +182,10 @@ export function AuthorStyle(props: { ctx: Ctx }) {
     const bad = list.filter(isProblem).length
     return bad ? `${list.length} 个 · ${bad} 需处理` : `${list.length} 个 · 正常`
   }
-  if (size === 's') {
-    return (
-      <Root ctx={ctx} spacing={8}>
-        <Header ctx={ctx} title={`${groups.length} 位作者`} font={12} />
-        {groups.slice(0, 3).map(g => (
-          <HStack spacing={7}>
-            <Avatar name={g.author} size={24} />
-            <VStack alignment="leading" spacing={2}>
-              <Text font={12} fontWeight="medium" foregroundStyle={th.t1} lineLimit={1}>{g.author}</Text>
-              <Dots list={g.list} max={9} size={5} />
-            </VStack>
-          </HStack>
-        ))}
-      </Root>
-    )
-  }
   if (size === 'm') {
     return (
       <Root ctx={ctx} spacing={10}>
-        <Header ctx={ctx} title={`作者生态 · ${groups.length} 位`} right={`${entries.length} 个脚本`} />
+        <Header ctx={ctx} title={`作者生态 · ${groups.length} 位`} right={`${entries.length} 个脚本 · ${hhmm(ctx.snap.fetchedAt)}`} />
         <HStack spacing={8} frame={{ maxHeight: 'infinity' }}>
           {groups.slice(0, 3).map(g => (
             <Card ctx={ctx} spacing={4}>
@@ -249,7 +202,7 @@ export function AuthorStyle(props: { ctx: Ctx }) {
   }
   return (
     <Root ctx={ctx} spacing={12}>
-      <Header ctx={ctx} title={`作者生态 · ${groups.length} 位`} right={`${entries.length} 个脚本`} />
+      <Header ctx={ctx} title={`作者生态 · ${groups.length} 位`} right={`${entries.length} 个脚本 · ${hhmm(ctx.snap.fetchedAt)}`} />
       {groups.slice(0, 6).map(g => (
         <HStack spacing={10}>
           <Avatar name={g.author} size={32} />
@@ -308,20 +261,9 @@ function Bubble(props: { ctx: Ctx; b: Bub }) {
 export function BubbleStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { size } = ctx
-  const conf = size === 's' ? { n: 3, min: 36, max: 78, w: 125, per: 3 } : size === 'm' ? { n: 5, min: 40, max: 96, w: 300, per: 5 } : { n: 6, min: 54, max: 120, w: 300, per: 3 }
+  const conf = size === 'm' ? { n: 5, min: 36, max: 88, w: 290, per: 5 } : { n: 6, min: 54, max: 120, w: 290, per: 3 }
   const list = bubbles(ctx.entries, conf.n, conf.min, conf.max, conf.w, conf.per)
   if (!list.length) return <Root ctx={ctx}><Empty ctx={ctx} text="选中的脚本都没有数字资产" /></Root>
-  if (size === 's') {
-    // 大的在左, 其余竖排
-    return (
-      <Root ctx={ctx} spacing={6}>
-        <HStack spacing={6} frame={{ maxHeight: 'infinity' }}>
-          <Bubble ctx={ctx} b={list[0]} />
-          <VStack spacing={6}>{list.slice(1).map(b => <Bubble ctx={ctx} b={b} />)}</VStack>
-        </HStack>
-      </Root>
-    )
-  }
   return (
     <Root ctx={ctx} spacing={10}>
       <Header ctx={ctx} title="积分气泡" right={syncText(ctx.snap)} />
