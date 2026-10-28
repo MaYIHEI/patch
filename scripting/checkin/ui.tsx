@@ -52,7 +52,7 @@ export type Theme = {
 /** 相对亮度 0-1, 只认 #RGB / #RRGGBB / rgba() */
 export function luminance(c: string): number {
   let r = 0, g = 0, b = 0
-  const hex = c.match(/^#([0-9a-f]{3}|[0-9a-f]{6})/i)
+  const hex = c.match(/^#([0-9a-f]{6}|[0-9a-f]{3})([0-9a-f]{2})?$/i)
   const rgb = c.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i)
   if (hex) {
     const h = hex[1].length === 3 ? hex[1].split('').map(x => x + x).join('') : hex[1]
@@ -61,6 +61,18 @@ export function luminance(c: string): number {
     r = Number(rgb[1]); g = Number(rgb[2]); b = Number(rgb[3])
   }
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255
+}
+
+/** "#RRGGBB" / "#RGB" / rgba() → 指定透明度的 rgba, 次要文字用 */
+export function withAlpha(c: string, a: number): string {
+  const hex = c.match(/^#([0-9a-f]{6}|[0-9a-f]{3})([0-9a-f]{2})?$/i)
+  const rgb = c.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i)
+  if (hex) {
+    const h = hex[1].length === 3 ? hex[1].split('').map(x => x + x).join('') : hex[1]
+    return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`
+  }
+  if (rgb) return `rgba(${rgb[1]},${rgb[2]},${rgb[3]},${a})`
+  return c
 }
 
 export function makeTheme(look: Look): Theme {
@@ -74,16 +86,19 @@ export function makeTheme(look: Look): Theme {
     }
   }
   const image = look.bgType === 'image' && look.image ? { path: look.image, blur: look.blur, dim: look.dim } : undefined
-  // 图片背景亮度没法读, 统一按深色处理 (暗化层保证白字可读)
-  const dark = image ? true : luminance(look.color) < 0.55
-  const ink = (a: number) => (dark ? `rgba(255,255,255,${a})` : `rgba(0,0,0,${a})`)
+  // 文字色: 自动时纯色按亮度选黑白, 图片背景亮度读不到, 默认白字
+  const text = look.text === 'white' ? '#FFFFFF' : look.text === 'black' ? '#000000' : look.text === 'custom' ? look.textColor
+    : image || luminance(look.color) < 0.55 ? '#FFFFFF' : '#000000'
+  // 浅色字 = 深色底: 卡片、分隔线、轨道跟着字色走
+  const dark = luminance(text) >= 0.5
+  const ink = (a: number) => withAlpha(text, a)
   const track = dark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.1)'
   return {
     custom: true, dark,
     bg: image ? '#000000' : look.color,
     card: dark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.6)',
     border: ink(dark ? 0.14 : 0.08),
-    t1: dark ? '#FFFFFF' : '#111318', t2: ink(dark ? 0.72 : 0.62), t3: ink(dark ? 0.5 : 0.42), track,
+    t1: text, t2: ink(dark ? 0.72 : 0.62), t3: ink(dark ? 0.5 : 0.42), track,
     badBg: 'rgba(255,69,58,0.3)', badFg: dark ? '#FF8A82' : '#C4180C',
     goodBg: 'rgba(48,209,88,0.26)', goodFg: dark ? '#7EF0A8' : '#1E7A36',
     paper: dark ? 'rgba(255,255,255,0.92)' : '#FFFFFF', ink: '#2B2620',

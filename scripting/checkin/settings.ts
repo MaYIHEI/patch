@@ -45,9 +45,11 @@ export type Look = {
   blur: number         // 0-20
   dim: number          // 0-0.7, 叠一层黑
   accent: string
+  text: 'auto' | 'white' | 'black' | 'custom'   // 自动: 纯色按亮度选黑白, 图片用白
+  textColor: string    // text 为 custom 时用
 }
 const LOOK_KEY = 'checkin.look'
-export const DEFAULT_LOOK: Look = { mode: 'plain', bgType: 'color', color: '#1E2028', image: '', blur: 6, dim: 0.3, accent: '#0A84FF' }
+export const DEFAULT_LOOK: Look = { mode: 'plain', bgType: 'color', color: '#1E2028', image: '', blur: 6, dim: 0.3, accent: '#0A84FF', text: 'auto', textColor: '#FFFFFF' }
 export const getLook = () => read<Look>(LOOK_KEY, DEFAULT_LOOK)
 export const setLook = (l: Look) => write(LOOK_KEY, l)
 
