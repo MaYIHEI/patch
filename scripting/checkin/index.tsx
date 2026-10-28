@@ -705,7 +705,7 @@ function AppearancePage(props: Shared & { onChanged: () => void }) {
         </VStack>
       </Section>
 
-      <Section footer={<Text>{look.mode === 'plain' ? '扁平卡片, 跟随系统深浅色。' : '文字颜色按背景亮度自动切换黑白; 用图片时按深色处理, 可调暗化保证文字清楚。'}</Text>}>
+      <Section footer={<Text>{look.mode === 'plain' ? '扁平卡片, 跟随系统深浅色。' : '背景可选纯色或相册图片, 文字颜色可自动或手动选; 用图片时可调暗化保证文字清楚。'}</Text>}>
         <Picker title="外观" value={look.mode} onChanged={(v: any) => update({ mode: v })} pickerStyle="segmented">
           <Text tag="plain">素净</Text>
           <Text tag="custom">自定义</Text>
@@ -736,6 +736,20 @@ function AppearancePage(props: Shared & { onChanged: () => void }) {
               ) : null}
             </VStack>
           )}
+        </Section>
+      ) : null}
+
+      {look.mode === 'custom' ? (
+        <Section header={<Text>文字颜色</Text>} footer={<Text>自动: 纯色背景按亮度在黑白之间选, 图片背景用白色。灰字由文字色调淡得到, 红绿橙状态色不变。</Text>}>
+          <Picker title="文字颜色" value={look.text} onChanged={(v: any) => update({ text: v })} pickerStyle="segmented">
+            <Text tag="auto">自动</Text>
+            <Text tag="white">白色</Text>
+            <Text tag="black">黑色</Text>
+            <Text tag="custom">自选</Text>
+          </Picker>
+          {look.text === 'custom' ? (
+            <ColorPicker title="自选文字颜色" value={look.textColor} onChanged={(c: any) => update({ textColor: String(c) })} supportsOpacity={false} />
+          ) : null}
         </Section>
       ) : null}
 
