@@ -1,0 +1,26 @@
+{
+  "name": "Checkin",
+  "version": "0.3.0",
+  "description": "Check-in results overview widget, reads BoxJS",
+  "author": {
+    "name": "MaYIHEI",
+    "email": "MaYIHEI@github.com",
+    "homepage": "https://github.com/MaYIHEI"
+  },
+  "entry": "index.tsx",
+  "icon": "checklist.checked",
+  "color": "rgba(52, 199, 89, 1)",
+  "runInApp": false,
+  "contributors": [],
+  "remoteResource": "https://www.imarkr.com/api/github/download/MaYIHEI/patch/scripting/checkin.zip",
+  "iconImage": null,
+  "intentInputTypes": [],
+  "localizedNames": {
+    "en": "Checkin",
+    "zh": "签到总览"
+  },
+  "localizedDescriptions": {
+    "en": "Shows today's check-in results and assets from BoxJS on your home screen.",
+    "zh": "在桌面显示各签到脚本今天的结果和资产, 数据来自 BoxJS。"
+  }
+}
