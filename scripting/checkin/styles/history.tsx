@@ -3,11 +3,11 @@
 
 import { VStack, HStack, ZStack, Text, Spacer, Image, Circle, RoundedRectangle } from 'scripting'
 
-import { counts, isToday, reward, rewardTotal, splitAsset, type Entry } from '../api'
+import { counts, isToday, rewardTotal, splitAsset, type Entry } from '../api'
 import {
   byDate, dayStats, streak, noFailRun, rewardOn, totalReward, lastDays, dailyGain, todayStr, shiftDay, type Day,
 } from '../history'
-import { Root, Card, Header, Num, Empty, Bar, HistEmpty, AppIcon, signed, round, chunk, OK, BAD, WARN, type Ctx } from '../ui'
+import { Root, Card, Header, Num, Empty, Bar, HistEmpty, AppIcon, signed, round, chunk, syncText, hhmm, OK, BAD, WARN, type Ctx } from '../ui'
 
 const okShade = (rate: number) => `rgba(48,209,88,${(0.25 + 0.75 * rate).toFixed(2)})`
 const monthOf = (d: string) => d.slice(0, 7)
@@ -48,7 +48,7 @@ export function CalendarStyle(props: { ctx: Ctx }) {
   const monthDays = hist.filter(d => monthOf(d.d) === monthOf(t))
   const full = monthDays.filter(d => { const s = dayStats(d, keys); return s.total > 0 && s.ok === s.total }).length
   const avg = monthDays.length ? monthDays.reduce((n, d) => n + dayStats(d, keys).rate, 0) / monthDays.length : 0
-  const cell = size === 'l' ? 36 : size === 'm' ? 15 : 12
+  const cell = size === 'l' ? 36 : size === 'm' ? 15 : 11
   const gap = size === 'l' ? 6 : 3
   const Cell = (d: string | null) => {
     if (!d) return <VStack frame={{ width: cell, height: size === 'l' ? 32 : cell }} />
@@ -76,6 +76,8 @@ export function CalendarStyle(props: { ctx: Ctx }) {
       <Root ctx={ctx} spacing={6}>
         <Header ctx={ctx} title={`连签 ${run} 天`} right={month} font={12} />
         {grid}
+        <Spacer minLength={0} />
+        <Text font={10} foregroundStyle={th.t3}>{syncText(ctx.snap)}</Text>
       </Root>
     )
   }
@@ -92,6 +94,7 @@ export function CalendarStyle(props: { ctx: Ctx }) {
             <Spacer minLength={0} />
             <Text font={11} foregroundStyle={th.t2}>{`本月全勤 ${full} 天`}</Text>
             <Text font={11} foregroundStyle={th.t2}>{`平均成功率 ${Math.round(avg * 100)}%`}</Text>
+            <Text font={10} foregroundStyle={th.t3}>{syncText(ctx.snap)}</Text>
           </VStack>
           {grid}
         </HStack>
@@ -107,7 +110,7 @@ export function CalendarStyle(props: { ctx: Ctx }) {
       </HStack>
       {grid}
       <Spacer minLength={0} />
-      <Text font={11} foregroundStyle={th.t2}>{`本月全勤 ${full} 天 · 平均成功率 ${Math.round(avg * 100)}% · 已记录 ${hist.length} 天`}</Text>
+      <Text font={11} foregroundStyle={th.t2}>{`本月全勤 ${full} 天 · 平均成功率 ${Math.round(avg * 100)}% · ${syncText(ctx.snap)}`}</Text>
     </Root>
   )
 }
@@ -153,7 +156,7 @@ export function EarningsStyle(props: { ctx: Ctx }) {
       <Root ctx={ctx} spacing={2}>
         <Text font={12} foregroundStyle={th.t2}>本月收益</Text>
         <Num value={`+${month}`} size={28} weight="bold" color={th.t1} />
-        <Text font={11} foregroundStyle={th.t2}>{`今日 +${today}`}</Text>
+        <Text font={11} foregroundStyle={th.t2}>{`今日 +${today} · ${hhmm(ctx.snap.fetchedAt)}`}</Text>
         <Spacer minLength={4} />
         <Bars ctx={ctx} days={week} height={36} />
       </Root>
@@ -169,6 +172,7 @@ export function EarningsStyle(props: { ctx: Ctx }) {
             <Spacer minLength={0} />
             <Text font={11} foregroundStyle={th.t2}>{`今日 +${today}`}</Text>
             <Text font={11} foregroundStyle={th.t2}>{`近 7 天日均 +${avg}`}</Text>
+            <Text font={10} foregroundStyle={th.t3}>{syncText(ctx.snap)}</Text>
           </VStack>
           <Bars ctx={ctx} days={week} height={90} labels />
         </HStack>
@@ -185,7 +189,7 @@ export function EarningsStyle(props: { ctx: Ctx }) {
   const nameOf = (k: string) => ctx.entries.find(e => e.key === k)
   return (
     <Root ctx={ctx} spacing={12}>
-      <Header ctx={ctx} title="收益统计" right="近 30 天" />
+      <Header ctx={ctx} title="收益统计 · 近 30 天" right={syncText(ctx.snap)} />
       <HStack spacing={18}>
         <Stat ctx={ctx} label="本月" value={`+${month}`} />
         <Stat ctx={ctx} label="今日" value={`+${today}`} />
@@ -227,7 +231,7 @@ export function HeatmapStyle(props: { ctx: Ctx }) {
   const { th, size, hist, entries } = ctx
   if (hist.length < 3) return <HistEmpty ctx={ctx} need={3} title="热力图" icon="square.grid.4x3.fill" />
   if (!entries.length) return <Root ctx={ctx}><Empty ctx={ctx} text="还没有签到结果" /></Root>
-  const conf = size === 'l' ? { n: 21, rows: 11, cell: 9, gap: 2, name: 64 } : size === 'm' ? { n: 14, rows: 4, cell: 14, gap: 3, name: 56 } : { n: 7, rows: 4, cell: 10, gap: 2, name: 38 }
+  const conf = size === 'l' ? { n: 18, rows: 14, cell: 9, gap: 2, name: 56 } : { n: 14, rows: 4, cell: 14, gap: 3, name: 56 }
   const days = lastDays(conf.n)
   const map = byDate(hist)
   const bad = (k: string) => days.filter(d => { const s = map.get(d)?.items[k]?.s; return s === 'cookie' || s === 'fail' }).length
@@ -236,11 +240,11 @@ export function HeatmapStyle(props: { ctx: Ctx }) {
   const worst = rows[0]
   return (
     <Root ctx={ctx} spacing={size === 'l' ? 6 : 4}>
-      <Header ctx={ctx} title={size === 's' ? '热力图' : `热力图 · 近 ${conf.n} 天`} font={size === 's' ? 12 : 13}
-        right={size === 'l' && worst?.bad ? `老出问题: ${worst.e.name}` : undefined} rightColor={BAD} />
+      <Header ctx={ctx} title={`热力图 · 近 ${conf.n} 天`}
+        right={size === 'l' && worst?.bad ? `老出问题: ${worst.e.name}` : syncText(ctx.snap)} rightColor={size === 'l' && worst?.bad ? BAD : th.t3} />
       {rows.map(r => (
         <HStack spacing={4}>
-          <Text font={size === 'l' ? 11 : 10} foregroundStyle={th.t1} lineLimit={1} frame={{ width: conf.name, alignment: 'leading' }}>{r.e.name}</Text>
+          <Text font={10} foregroundStyle={th.t1} lineLimit={1} frame={{ width: conf.name, alignment: 'leading' }}>{r.e.name}</Text>
           <HStack spacing={conf.gap}>
             {days.map(d => <RoundedRectangle cornerRadius={2} fill={color(map.get(d)?.items[r.e.key]?.s)} frame={{ width: conf.cell, height: conf.cell }} />)}
           </HStack>
@@ -284,10 +288,10 @@ export function QuestStyle(props: { ctx: Ctx }) {
   const Task = (x: typeof tasks[0], bar: boolean) => (
     <VStack alignment="leading" spacing={3}>
       <HStack spacing={6}>
-        <Image systemName={x.done ? 'checkmark.circle.fill' : 'circle'} font={size === 's' ? 11 : 14} foregroundStyle={x.done ? OK : th.t3} />
-        <Text font={size === 's' ? 11 : 13} foregroundStyle={x.done ? th.t2 : th.t1} lineLimit={1}>{x.title}</Text>
+        <Image systemName={x.done ? 'checkmark.circle.fill' : 'circle'} font={14} foregroundStyle={x.done ? OK : th.t3} />
+        <Text font={13} foregroundStyle={x.done ? th.t2 : th.t1} lineLimit={1}>{x.title}</Text>
       </HStack>
-      {bar ? <Bar ctx={ctx} value={x.p} color={x.done ? OK : '#64D2FF'} height={4} /> : null}
+      {bar ? <Bar ctx={ctx} value={x.p} color={x.done ? OK : th.accent} height={4} /> : null}
     </VStack>
   )
   const lvBlock = (big: number) => (
@@ -296,11 +300,10 @@ export function QuestStyle(props: { ctx: Ctx }) {
         <Text font={big} fontWeight="bold" fontDesign="rounded" foregroundStyle={th.t1}>{`Lv.${L.lv}`}</Text>
         <Text font={11} foregroundStyle={OK}>{`今日 +${gain}`}</Text>
       </HStack>
-      <Bar ctx={ctx} value={L.cur / L.need} color="#BF5AF2" height={6} />
-      <Text font={10} monospacedDigit foregroundStyle={th.t3}>{`${L.cur} / ${L.need} 经验`}</Text>
+      <Bar ctx={ctx} value={L.cur / L.need} color={th.accent} height={6} />
+      <Text font={10} monospacedDigit foregroundStyle={th.t3}>{`${L.cur} / ${L.need} 经验 · ${hhmm(ctx.snap.fetchedAt)}`}</Text>
     </VStack>
   )
-  if (size === 's') return <Root ctx={ctx} spacing={7}>{lvBlock(22)}{tasks.map(x => Task(x, false))}</Root>
   if (size === 'm') {
     return (
       <Root ctx={ctx}>
@@ -341,7 +344,7 @@ export function autoGoal(v: number): number {
 type Goal = { e: Entry; v: number; num: string; unit: string; goal: number; auto: boolean; eta: string }
 
 export function goalsOf(ctx: Ctx): Goal[] {
-  const goals = ctx.preset.goals ?? {}
+  const goals = ctx.goals
   const list = ctx.entries
     .filter(e => e.asset)
     .map(e => ({ e, ...splitAsset(e.asset!) }))
@@ -369,7 +372,7 @@ export function GoalStyle(props: { ctx: Ctx }) {
         <Spacer minLength={2} />
         <Text font={font - 1} monospacedDigit foregroundStyle={th.t2} lineLimit={1}>{`${g.num} / ${g.goal}`}</Text>
       </HStack>
-      <Bar ctx={ctx} value={g.v / g.goal} color={g.v >= g.goal ? OK : '#64D2FF'} height={5} />
+      <Bar ctx={ctx} value={g.v / g.goal} color={g.v >= g.goal ? OK : th.accent} height={5} />
       <Text font={10} foregroundStyle={g.v >= g.goal ? OK : th.t3} lineLimit={1}>
         {g.v >= g.goal ? '可兑换' : `还差 ${round(g.goal - g.v)}${g.unit ? ` ${g.unit}` : ''} · ${g.eta}`}
       </Text>
@@ -379,19 +382,19 @@ export function GoalStyle(props: { ctx: Ctx }) {
     const g = list[0]
     return (
       <Root ctx={ctx} spacing={4}>
-        <Header ctx={ctx} title="兑换目标" font={12} />
+        <Header ctx={ctx} title="兑换目标" right={hhmm(ctx.snap.fetchedAt)} font={12} />
         <Spacer minLength={0} />
         <Text font={12} foregroundStyle={th.t2} lineLimit={1}>{`${g.e.name} · ${g.unit}`}</Text>
         <Num value={`${Math.min(100, Math.floor((g.v / g.goal) * 100))}%`} size={32} weight="bold" color={th.t1} />
-        <Bar ctx={ctx} value={g.v / g.goal} color={g.v >= g.goal ? OK : '#64D2FF'} height={6} />
+        <Bar ctx={ctx} value={g.v / g.goal} color={g.v >= g.goal ? OK : th.accent} height={6} />
         <Text font={10} foregroundStyle={th.t3} lineLimit={1}>{g.v >= g.goal ? '可兑换' : `${g.num}/${g.goal} · ${g.eta}`}</Text>
       </Root>
     )
   }
   return (
     <Root ctx={ctx} spacing={size === 'l' ? 12 : 7}>
-      <Header ctx={ctx} title="兑换目标" right={size === 'l' ? '按近 7 天日均估算' : undefined} />
-      {list.slice(0, size === 'l' ? 6 : 3).map(g => Row(g, size === 'l' ? 13 : 12))}
+      <Header ctx={ctx} title={size === 'l' ? '兑换目标 · 按近 7 天日均估算' : '兑换目标'} right={syncText(ctx.snap)} />
+      {list.slice(0, size === 'l' ? 5 : 2).map(g => Row(g, size === 'l' ? 13 : 12))}
       <Spacer minLength={0} />
     </Root>
   )
@@ -445,7 +448,7 @@ export function BadgeStyle(props: { ctx: Ctx }) {
   if (size === 's') {
     return (
       <Root ctx={ctx} spacing={4}>
-        <Header ctx={ctx} title={`成就 ${got.length}/${all.length}`} font={12} />
+        <Header ctx={ctx} title={`成就 ${got.length}/${all.length}`} right={hhmm(ctx.snap.fetchedAt)} font={12} />
         <Spacer minLength={0} />
         {next ? <BadgeIcon ctx={ctx} b={next} size={48} /> : null}
         <Text font={13} fontWeight="semibold" foregroundStyle={th.t1} lineLimit={1}>{next ? next.name : '全部解锁'}</Text>
@@ -457,7 +460,7 @@ export function BadgeStyle(props: { ctx: Ctx }) {
   const shown = size === 'm' ? [...got, ...locked].slice(0, 5) : all
   return (
     <Root ctx={ctx} spacing={size === 'l' ? 14 : 10}>
-      <Header ctx={ctx} title={`成就徽章 · ${got.length}/${all.length}`} />
+      <Header ctx={ctx} title={`成就徽章 · ${got.length}/${all.length}`} right={syncText(ctx.snap)} />
       {chunk(shown, size === 'l' ? 4 : 5).map(row => (
         <HStack spacing={0}>
           {row.map(b => (
@@ -536,9 +539,9 @@ export function HealthStyle(props: { ctx: Ctx }) {
   if (size === 's') {
     return (
       <Root ctx={ctx} spacing={4}>
-        <Header ctx={ctx} title="签到体检" font={12} />
+        <Header ctx={ctx} title="签到体检" right={hhmm(ctx.snap.fetchedAt)} font={12} />
         <Spacer minLength={0} />
-        <HStack><Spacer />{ring(84, 9, 28)}<Spacer /></HStack>
+        <HStack><Spacer />{ring(70, 8, 24)}<Spacer /></HStack>
         <Spacer minLength={0} />
         <HStack><Spacer /><Text font={11} foregroundStyle={th.t2}>{delta}</Text><Spacer /></HStack>
       </Root>
@@ -548,8 +551,11 @@ export function HealthStyle(props: { ctx: Ctx }) {
     return (
       <Root ctx={ctx}>
         <HStack spacing={16} frame={{ maxHeight: 'infinity' }}>
-          <VStack spacing={4}>{ring(88, 10, 28)}<Text font={11} foregroundStyle={th.t2}>{delta}</Text></VStack>
-          <VStack spacing={8} frame={{ maxWidth: 'infinity' }}>{subRows(12)}</VStack>
+          <VStack spacing={4}>{ring(84, 10, 28)}<Text font={11} foregroundStyle={th.t2}>{delta}</Text></VStack>
+          <VStack spacing={7} frame={{ maxWidth: 'infinity' }}>
+            <Text font={10} foregroundStyle={th.t3} frame={{ maxWidth: 'infinity', alignment: 'trailing' }}>{syncText(ctx.snap)}</Text>
+            {subRows(12)}
+          </VStack>
         </HStack>
       </Root>
     )
@@ -562,12 +568,12 @@ export function HealthStyle(props: { ctx: Ctx }) {
       <HStack spacing={18}>
         {ring(100, 11, 32)}
         <VStack alignment="leading" spacing={8} frame={{ maxWidth: 'infinity' }}>
-          <Text font={12} foregroundStyle={th.t2}>{delta}</Text>
+          <Text font={12} foregroundStyle={th.t2}>{`${delta} · ${hhmm(ctx.snap.fetchedAt)}`}</Text>
           {subRows(12)}
         </VStack>
       </HStack>
       <Text font={12} foregroundStyle={th.t2}>{deductions.length ? '扣分项' : '没有扣分项'}</Text>
-      {deductions.slice(0, 6).map(x => (
+      {deductions.slice(0, 5).map(x => (
         <HStack spacing={8}>
           <AppIcon entry={x.e} size={20} />
           <Text font={12} foregroundStyle={th.t1} lineLimit={1}>{x.e.name}</Text>
@@ -603,7 +609,7 @@ function Compare(props: { ctx: Ctx; label: string; a: number; b: number; aName: 
   const max = Math.max(a, b, 1)
   const d = a - b
   return (
-    <VStack alignment="leading" spacing={4}>
+    <VStack alignment="leading" spacing={3}>
       <HStack>
         <Text font={12} foregroundStyle={ctx.th.t2}>{props.label}</Text>
         <Spacer />
@@ -611,12 +617,12 @@ function Compare(props: { ctx: Ctx; label: string; a: number; b: number; aName: 
       </HStack>
       <HStack spacing={6}>
         <Text font={10} foregroundStyle={ctx.th.t2} frame={{ width: 28, alignment: 'leading' }}>{props.aName}</Text>
-        <Bar ctx={ctx} value={a / max} color={OK} height={8} />
+        <Bar ctx={ctx} value={a / max} color={OK} height={6} />
         <Text font={10} monospacedDigit foregroundStyle={ctx.th.t1} frame={{ width: 40, alignment: 'trailing' }}>{`+${round(a)}`}</Text>
       </HStack>
       <HStack spacing={6}>
         <Text font={10} foregroundStyle={ctx.th.t2} frame={{ width: 28, alignment: 'leading' }}>{props.bName}</Text>
-        <Bar ctx={ctx} value={b / max} color="#8E8E93" height={8} />
+        <Bar ctx={ctx} value={b / max} color="#8E8E93" height={6} />
         <Text font={10} monospacedDigit foregroundStyle={ctx.th.t2} frame={{ width: 40, alignment: 'trailing' }}>{`+${round(b)}`}</Text>
       </HStack>
     </VStack>
@@ -625,7 +631,7 @@ function Compare(props: { ctx: Ctx; label: string; a: number; b: number; aName: 
 
 export function CompareStyle(props: { ctx: Ctx }) {
   const { ctx } = props
-  const { th, size, hist, keys } = ctx
+  const { th, size, hist } = ctx
   if (hist.length < 2) return <HistEmpty ctx={ctx} need={2} title="环比对比" icon="arrow.left.arrow.right" />
   const x = compareData(ctx)
   if (size === 's') {
@@ -638,38 +644,15 @@ export function CompareStyle(props: { ctx: Ctx }) {
         <Spacer minLength={0} />
         <Text font={11} foregroundStyle={th.t2}>{`本周 +${round(x.week)}`}</Text>
         <Text font={11} foregroundStyle={th.t2}>{`比上周 ${signed(x.week - x.lastWeek)}`}</Text>
+        <Text font={10} foregroundStyle={th.t3}>{syncText(ctx.snap)}</Text>
       </Root>
     )
   }
-  const rows = (
-    <VStack spacing={size === 'l' ? 14 : 10}>
+  return (
+    <Root ctx={ctx} spacing={6}>
+      <Header ctx={ctx} title="环比对比" right={syncText(ctx.snap)} font={12} />
       <Compare ctx={ctx} label="今天比昨天" a={x.today} b={x.yesterday} aName="今天" bName="昨天" />
       <Compare ctx={ctx} label="本周比上周" a={x.week} b={x.lastWeek} aName="本周" bName="上周" />
-    </VStack>
-  )
-  if (size === 'm') return <Root ctx={ctx} spacing={8}>{rows}</Root>
-  // 大号: 各脚本今天比昨天的变化
-  const yDay = byDate(hist).get(shiftDay(todayStr(), -1))
-  const changes = ctx.entries
-    .filter(e => keys.has(e.key))
-    .map(e => ({ e, d: reward(e) - (yDay?.items[e.key]?.s === 'ok' ? yDay.items[e.key].r : 0) }))
-    .filter(x => x.d !== 0)
-    .sort((a, b) => Math.abs(b.d) - Math.abs(a.d))
-    .slice(0, 6)
-  return (
-    <Root ctx={ctx} spacing={12}>
-      <Header ctx={ctx} title="环比对比" />
-      {rows}
-      <Text font={12} foregroundStyle={th.t2}>{changes.length ? '变化最大' : '各脚本和昨天持平'}</Text>
-      {changes.map(c => (
-        <HStack spacing={8}>
-          <AppIcon entry={c.e} size={20} />
-          <Text font={12} foregroundStyle={th.t1} lineLimit={1}>{c.e.name}</Text>
-          <Spacer />
-          <Text font={12} fontWeight="semibold" monospacedDigit foregroundStyle={c.d > 0 ? OK : BAD}>{signed(c.d)}</Text>
-        </HStack>
-      ))}
-      <Spacer minLength={0} />
     </Root>
   )
 }

@@ -1,10 +1,12 @@
 // checkin / index.tsx
-// 配置脚本 — 在 Scripting app 里跑, 不是 widget
+// App 页面 — 在 Scripting 里运行, 不是 widget
 //
-// 首页: 今日完成度 / 需要处理 / 我的预设; 编辑预设 (实时预览); 更多设置; 签到协议
+// 首页: 状态卡 + 四个入口 (样式库 / 外观 / 显示哪些 / 设置) + 需要处理
+// 小组件里点某一行 → scripting://run/checkin?detail=<key> → 打开该脚本详情
 
 import {
   Button,
+  ColorPicker,
   EditButton,
   ForEach,
   Form,
@@ -12,14 +14,17 @@ import {
   Image,
   LabeledContent,
   List,
+  LiveActivity,
   Navigation,
   NavigationLink,
   NavigationStack,
   Picker,
   RoundedRectangle,
+  Circle,
   Script,
   ScrollView,
   Section,
+  Slider,
   Spacer,
   Text,
   TextField,
@@ -27,50 +32,44 @@ import {
   VStack,
   ZStack,
   Widget,
-  LiveActivity,
+  Path,
   fetch,
   useEffect,
   useState,
 } from 'scripting'
 import {
-  DEFAULT_HOST,
-  getHost,
-  setHost,
-  getMock,
-  setMock,
   loadSnapshot,
+  sampleSnapshot,
   clearCache,
   probe,
   runCheckin,
   counts,
   isProblem,
   rewardTotal,
+  timeLabel,
   type Entry,
   type Snapshot,
 } from './api'
 import {
-  STYLES,
-  DEFAULT_PRESET,
-  listPresets,
-  savePreset,
-  deletePreset,
-  styleName,
-  type Preset,
-  type StyleId,
-  type Skin,
-  type Bg,
-} from './presets'
+  getData, setData, getDisplay, setDisplay, getLook, setLook, getDefaults, setDefault,
+  DEFAULT_LOOK, DEFAULT_HOST, RECOMMENDED_BG, RECOMMENDED_ACCENT, SUMMARY_URL,
+  type DataPrefs, type Look, type Family, type Source,
+} from './settings'
+import { recordSnapshot, loadHistory, getKeepDays, setKeepDays, clearHistory, recordedDays, lastDays, byDate, type Day } from './history'
+import { ensureIcons, clearIcons } from './icons'
 import { makeTheme, Ring, AppIcon, hhmm, chunk, OK, BAD, WARN, type Ctx } from './ui'
-import { renderPreset } from './styles/index'
-import { recordSnapshot, loadHistory, getKeepDays, setKeepDays, clearHistory, recordedDays, type Day } from './history'
+import { STYLES, FEATURED, stylesFor, styleById, paramOf, renderStyle, type StyleDef } from './styles/index'
 import { goalsOf } from './styles/history'
-import { liveStateOf } from './styles/live'
+import { liveStateOf, LiveBanner } from './styles/live'
 import { startOrRefresh } from './live_activity'
 
 declare const Safari: { openURL(url: string): Promise<boolean> }
 
 const REMOTE_META = 'https://raw.githubusercontent.com/MaYIHEI/patch/main/scripting/checkin/script.json'
 const INSTALL_URL = 'https://www.scripting.fun/import_scripts/?urls=%5B%22https%3A%2F%2Fwww.imarkr.com%2Fapi%2Fgithub%2Fdownload%2FMaYIHEI%2Fpatch%2Fscripting%2Fcheckin.zip%22%5D'
+const PLUGIN_URL = 'https://raw.githubusercontent.com/MaYIHEI/paperclip/refs/heads/testing/loon/paperclip-checkin/paperclip-checkin.lpx'
+const LOON_IMPORT = `loon://import?plugin=${encodeURIComponent(PLUGIN_URL)}`
+const BG_PATH = () => Path.join(FileManager.appGroupDocumentsDirectory, 'checkin', 'background.jpg')
 
 async function main() {
   await Navigation.present({ element: <Home /> })
@@ -78,20 +77,65 @@ async function main() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// 工具
+// 共用
 // ─────────────────────────────────────────────────────────────
-const CARD_BG = 'secondarySystemGroupedBackground'
+const CARD = 'secondarySystemGroupedBackground'
 
-async function cookieHint(e: Entry) {
-  await Dialog.alert({ title: `${e.name} 需要重抓`, message: `保持代理工具开启, 打开「${e.name}」App, 签到脚本会重新抓取凭证。` })
+type Shared = { snap: Snapshot | null; hist: Day[]; reload: () => Promise<void> }
+
+const BOX: Record<Family, { width: number; height: number }> = {
+  systemSmall: { width: 158, height: 158 },
+  systemMedium: { width: 338, height: 158 },
+  systemLarge: { width: 338, height: 354 },
+  accessoryCircular: { width: 76, height: 76 },
+  accessoryRectangular: { width: 172, height: 76 },
 }
 
-function connText(snap: Snapshot | null, error: string): { text: string; color: string } {
-  if (error) return { text: error, color: BAD }
-  if (!snap) return { text: '读取中...', color: 'secondaryLabel' }
-  if (snap.mock) return { text: '演示数据 · 更多设置里关闭', color: 'secondaryLabel' }
-  if (snap.stale) return { text: 'BoxJS 连不上 · 显示上次结果', color: WARN }
-  return { text: 'BoxJS 已连接', color: OK }
+const FAMILY_NAME: Record<Family, string> = {
+  systemSmall: '小号', systemMedium: '中号', systemLarge: '大号', accessoryCircular: '锁屏圆形', accessoryRectangular: '锁屏长条',
+}
+
+/** 按真实尺寸渲染一个小组件; scale < 1 时整体缩小 (外框也跟着缩) */
+function Preview(props: { style: StyleDef; family: Family; snap: Snapshot; hist: Day[]; look?: Look; scale?: number }) {
+  const box = BOX[props.family]
+  const k = props.scale ?? 1
+  const d = getDisplay()
+  const view = renderStyle(props.style, props.snap, props.family, {
+    inApp: true, spot: 0, hist: props.hist, page: 0, look: props.look ?? getLook(), keys: d.keys, problemsFirst: d.problemsFirst, goals: d.goals,
+  })
+  return (
+    <ZStack frame={{ width: box.width * k, height: box.height * k }} clipped>
+      <VStack frame={box} scaleEffect={k}>{view}</VStack>
+    </ZStack>
+  )
+}
+
+function appCtx(snap: Snapshot): Ctx {
+  return { th: makeTheme(DEFAULT_LOOK), size: 'm', entries: snap.entries, snap, inApp: true, spot: 0, hist: [], keys: new Set(snap.entries.map(e => e.key)), goals: {}, page: 0 }
+}
+
+function SectionTitle(props: { title: string }) {
+  return <Text font={13} fontWeight="medium" foregroundStyle="secondaryLabel" padding={{ horizontal: 16 }}>{props.title}</Text>
+}
+
+/** 打开 App: 有 open 就跳过去, 没有就说明怎么重抓 */
+async function openApp(e: Entry) {
+  if (e.open && (await Safari.openURL(e.open))) return
+  await Dialog.alert({ title: `${e.name} 需要重抓`, message: `保持 Loon 开启, 打开「${e.name}」App, Cookie 抓取插件会重新抓取凭证。` })
+}
+
+/** 补签: 有 run 就现跑, 返回提示文字 */
+async function retry(e: Entry): Promise<string> {
+  if (!e.run) {
+    await Dialog.alert({ title: e.name, message: '该脚本不支持补签' })
+    return ''
+  }
+  try {
+    const n = await runCheckin(e)
+    return `${e.name}: ${n.s === 'ok' ? '补签成功' : n.msg || '仍然失败'}`
+  } catch (err) {
+    return `${e.name}: ${(err as Error).message}`
+  }
 }
 
 function isNewer(remote: string, local: string): boolean {
@@ -102,11 +146,10 @@ function isNewer(remote: string, local: string): boolean {
   return false
 }
 
-function appCtx(snap: Snapshot): Ctx {
-  return {
-    th: makeTheme(DEFAULT_PRESET), size: 'm', entries: snap.entries, snap, inApp: true, spot: 0,
-    hist: [], keys: new Set(snap.entries.map(e => e.key)), preset: DEFAULT_PRESET, page: 0,
-  }
+function sourceText(snap: Snapshot | null, error: string): { text: string; color: string } {
+  if (!snap) return error ? { text: '读不到数据', color: BAD } : { text: '读取中...', color: 'secondaryLabel' }
+  if (snap.stale) return { text: `连不上 · 显示 ${hhmm(snap.fetchedAt)} 的结果`, color: WARN }
+  return { text: `${snap.source === 'summary' ? '汇总地址' : 'BoxJS'}已连接`, color: OK }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -117,57 +160,44 @@ function Home() {
   const [snap, setSnap] = useState<Snapshot | null>(null)
   const [hist, setHist] = useState<Day[]>([])
   const [error, setError] = useState('')
-  const [presets, setPresets] = useState<Preset[]>(listPresets())
-  const [liveText, setLiveText] = useState('')
-  const [busy, setBusy] = useState('')            // 正在补签的 key
-  const [retryText, setRetryText] = useState('')
+  const [busy, setBusy] = useState('')
+  const [note, setNote] = useState('')
+  const [tick, setTick] = useState(0)   // 子页面改了设置后刷新入口卡的副标题
 
-  useEffect(() => { refresh(true) }, [])
+  useEffect(() => { reload(true) }, [])
 
-  async function refresh(first = false) {
+  async function reload(first = false) {
     setError('')
     try {
       const s = await loadSnapshot()
       recordSnapshot(s)
+      await ensureIcons([...s.entries, ...s.idle].map(e => e.key))
+      const h = loadHistory(s)
       setSnap(s)
-      setHist(loadHistory(s))
+      setHist(h)
       Widget.reloadAll()
-      // 从小组件的处理按钮点进来: 直接弹出这个脚本的处理说明
-      const key = first ? Script.queryParameters?.key : undefined
-      const hit = key ? s.entries.find(e => e.key === key) : undefined
-      if (hit && isProblem(hit)) act(hit)
+      // 从小组件点进来: 打开这个脚本的详情
+      const key = first ? (Script.queryParameters?.detail ?? Script.queryParameters?.key) : undefined
+      const hit = key ? [...s.entries, ...s.idle].find(e => e.key === key) : undefined
+      if (hit) await Navigation.present({ element: <NavigationStack><ScriptDetail entry={hit} hist={h} reload={() => reload()} /></NavigationStack> })
     } catch (e) {
       setError((e as Error).message)
     }
+    setTick(tick + 1)
   }
 
-  async function act(e: Entry) {
-    if (e.s === 'cookie') return cookieHint(e)
-    if (!e.run) return Dialog.alert({ title: e.name, message: '该脚本不支持补签' })
-    setBusy(e.key)
-    setRetryText(`补签中: ${e.name}`)
-    try {
-      const n = await runCheckin(e)
-      setRetryText(`${e.name}: ${n.s === 'ok' ? '补签成功' : n.msg || '仍然失败'}`)
-    } catch (err) {
-      setRetryText(`${e.name}: ${(err as Error).message}`)
-    }
-    setBusy('')
-    await refresh()
-  }
+  const shared: Shared = { snap, hist, reload: () => reload() }
+  const problems = snap ? snap.entries.filter(isProblem) : []
+  const fails = problems.filter(e => e.s === 'fail')
 
-  /** 一键补签: 按顺序逐个请求, 显示进度 */
   async function retryAll() {
-    if (!snap) return
-    const fails = snap.entries.filter(e => e.s === 'fail')
     const can = fails.filter(e => e.run)
-    const skip = fails.length - can.length
     if (!can.length) return Dialog.alert({ message: '失败项都不支持补签' })
     let ok = 0
     const failed: string[] = []
     for (let i = 0; i < can.length; i++) {
       setBusy(can[i].key)
-      setRetryText(`补签中 ${i + 1}/${can.length}: ${can[i].name}`)
+      setNote(`补签中 ${i + 1}/${can.length}: ${can[i].name}`)
       try {
         if ((await runCheckin(can[i])).s === 'ok') ok++
         else failed.push(can[i].name)
@@ -176,43 +206,21 @@ function Home() {
       }
     }
     setBusy('')
-    setRetryText([`补签完成: 成功 ${ok}/${can.length}`, failed.length ? `仍失败: ${failed.join('、')}` : '', skip ? `${skip} 个不支持补签` : ''].filter(Boolean).join(' · '))
-    await refresh()
+    setNote([`补签完成: 成功 ${ok}/${can.length}`, failed.length ? `仍失败: ${failed.join('、')}` : '', fails.length - can.length ? `${fails.length - can.length} 个不支持补签` : ''].filter(Boolean).join(' · '))
+    await reload()
   }
 
-  async function edit(p: Preset, isNew: boolean) {
-    if (!snap) return
-    await Navigation.present({ element: <PresetEditor preset={p} snap={snap} hist={hist} isNew={isNew} /> })
-    setPresets(listPresets())
+  async function act(e: Entry) {
+    if (e.s === 'cookie') return openApp(e)
+    setBusy(e.key)
+    const t = await retry(e)
+    setBusy('')
+    if (t) { setNote(t); await reload() }
   }
 
-  async function create() {
-    const name = await Dialog.prompt({ title: '新建预设', message: '小组件参数里填这个名字', placeholder: '比如 钱包' })
-    const n = name?.trim()
-    if (!n) return
-    if (presets.some(p => p.name === n)) {
-      await Dialog.alert({ message: `已经有叫「${n}」的预设了` })
-      return
-    }
-    await edit({ ...DEFAULT_PRESET, name: n }, true)
-  }
-
-  async function startLive() {
-    if (!snap) return
-    setLiveText('启动中...')
-    const ok = await startOrRefresh(liveStateOf(snap.entries))
-    setLiveText(ok ? '已开启, 锁屏和灵动岛可见' : '没开起来: 检查 设置 → Scripting → 实时活动 是否允许')
-  }
-
-  async function endLive() {
-    await LiveActivity.endAllActivities({ dismissTimeInterval: 0 })
-    setLiveText('已结束')
-  }
-
-  const conn = connText(snap, error)
-  const problems = snap ? snap.entries.filter(isProblem) : []
-  const c = snap ? counts(snap.entries) : null
-  const cells: (Preset | null)[] = [...presets, null]
+  const d = getDisplay()
+  const look = getLook()
+  const data = getData()
 
   return (
     <NavigationStack>
@@ -221,188 +229,374 @@ function Home() {
         background="systemGroupedBackground"
         toolbar={{
           cancellationAction: <Button title="关闭" action={dismiss} />,
-          topBarTrailing: <Button title="刷新" systemImage="arrow.clockwise" action={() => refresh()} />,
+          topBarTrailing: <Button title="刷新" systemImage="arrow.clockwise" action={() => reload()} />,
         }}
       >
-        <VStack alignment="leading" spacing={18} padding={16}>
-          {/* 今日完成度 */}
-          <HStack spacing={16} padding={16} frame={{ maxWidth: 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={20} fill={CARD_BG} />}>
-            {snap ? (
-              <Ring ctx={appCtx(snap)} size={74} line={9}>
-                <Text font={20} fontWeight="semibold" monospacedDigit>{String(c!.ok)}</Text>
-              </Ring>
-            ) : null}
-            <VStack alignment="leading" spacing={4}>
-              <Text font={17} fontWeight="semibold">{c ? `今日 ${c.ok} / ${snap!.entries.length}` : '今日签到'}</Text>
-              {snap ? <Text font={13} foregroundStyle="secondaryLabel">{`今日奖励 +${rewardTotal(snap.entries)} · ${hhmm(snap.fetchedAt)} 同步`}</Text> : null}
-              {snap ? <Text font={12} foregroundStyle="tertiaryLabel">{snap.mock ? '演示历史 30 天' : `已记录 ${hist.length} 天历史`}</Text> : null}
-              <HStack spacing={6}>
-                <RoundedRectangle cornerRadius={3} fill={conn.color} frame={{ width: 6, height: 6 }} />
-                <Text font={12} foregroundStyle={conn.color} lineLimit={2}>{conn.text}</Text>
-              </HStack>
-            </VStack>
-            <Spacer />
-          </HStack>
+        <VStack alignment="leading" spacing={20} padding={16}>
+          {!snap && error ? <Guide error={error} reload={() => reload()} /> : null}
+
+          <StatusCard snap={snap} error={error} />
+
+          {/* 四个大入口 */}
+          <VStack spacing={12}>
+            <HStack spacing={12}>
+              <NavigationLink destination={<StyleLibrary {...shared} onChanged={() => setTick(tick + 1)} />}>
+                <EntryCard icon="square.grid.2x2.fill" color="systemBlue" title="样式库" sub={`${STYLES.length} 种样式`} />
+              </NavigationLink>
+              <NavigationLink destination={<AppearancePage {...shared} onChanged={() => setTick(tick + 1)} />}>
+                <EntryCard icon="paintpalette.fill" color="systemOrange" title="外观" sub={look.mode === 'plain' ? '素净' : look.bgType === 'image' ? '自定义 · 图片' : '自定义 · 纯色'} />
+              </NavigationLink>
+            </HStack>
+            <HStack spacing={12}>
+              <NavigationLink destination={<DisplayPage {...shared} onChanged={() => setTick(tick + 1)} />}>
+                <EntryCard icon="checklist" color="systemGreen" title="显示哪些" sub={d.keys.length ? `已选 ${d.keys.length} 个` : '全部脚本'} />
+              </NavigationLink>
+              <NavigationLink destination={<SettingsPage {...shared} onChanged={() => reload()} />}>
+                <EntryCard icon="gearshape.fill" color="systemGray" title="设置" sub={data.source === 'auto' ? '数据来源 自动' : data.source === 'summary' ? '数据来源 汇总地址' : '数据来源 BoxJS'} />
+              </NavigationLink>
+            </HStack>
+          </VStack>
 
           {/* 需要处理 */}
           {problems.length ? (
-            <VStack alignment="leading" spacing={6}>
-              <Text font={13} foregroundStyle="secondaryLabel" padding={{ horizontal: 16 }}>需要处理</Text>
-              <VStack spacing={0} background={<RoundedRectangle cornerRadius={14} fill={CARD_BG} />}>
-                {problems.map(e => (
-                  <HStack spacing={12} padding={{ horizontal: 14, vertical: 10 }}>
-                    <AppIcon entry={e} size={30} />
-                    <VStack alignment="leading" spacing={1}>
-                      <Text font={15}>{e.name}</Text>
-                      <Text font={12} foregroundStyle={e.s === 'cookie' ? BAD : WARN} lineLimit={1}>{e.msg || (e.s === 'cookie' ? '凭证失效' : '失败')}</Text>
-                    </VStack>
-                    <Spacer />
-                    <Button action={() => { act(e) }} buttonStyle="plain" disabled={!!busy}>
-                      <Text font={13} fontWeight="medium" foregroundStyle={e.s === 'cookie' ? 'white' : e.run ? 'label' : 'tertiaryLabel'}
-                        padding={{ horizontal: 12, vertical: 6 }}
-                        background={<RoundedRectangle cornerRadius={14} fill={e.s === 'cookie' ? BAD : 'tertiarySystemFill'} />}>
-                        {e.s === 'cookie' ? '打开 App' : busy === e.key ? '补签中...' : e.run ? '补签' : '不支持补签'}
-                      </Text>
-                    </Button>
-                  </HStack>
-                ))}
-                {problems.some(e => e.s === 'fail') ? (
+            <VStack alignment="leading" spacing={8}>
+              <SectionTitle title={`需要处理 · ${problems.length}`} />
+              <VStack spacing={0} background={<RoundedRectangle cornerRadius={14} fill={CARD} />}>
+                {problems.slice(0, 3).map(e => <ProblemRow entry={e} busy={busy} act={act} hist={hist} reload={() => reload()} />)}
+                {problems.length > 3 ? (
+                  <NavigationLink destination={<ProblemsPage {...shared} />}>
+                    <LinkLine title={`查看全部 ${problems.length} 条`} />
+                  </NavigationLink>
+                ) : null}
+                {fails.length ? (
                   <Button action={retryAll} buttonStyle="plain" disabled={!!busy}>
-                    <HStack padding={{ horizontal: 14, vertical: 12 }}>
-                      <Text font={15} foregroundStyle={busy ? 'tertiaryLabel' : 'systemBlue'}>全部失败项一键补签</Text>
-                      <Spacer />
-                    </HStack>
+                    <LinkLine title="全部失败项一键补签" color={busy ? 'tertiaryLabel' : 'systemBlue'} chevron={false} />
                   </Button>
                 ) : null}
               </VStack>
-              {retryText ? <Text font={12} foregroundStyle="secondaryLabel" padding={{ horizontal: 16 }}>{retryText}</Text> : null}
+              {note ? <Text font={12} foregroundStyle="secondaryLabel" padding={{ horizontal: 16 }}>{note}</Text> : null}
             </VStack>
           ) : null}
 
-          {/* 我的预设 */}
-          <VStack alignment="leading" spacing={6}>
-            <HStack padding={{ horizontal: 16 }}>
-              <Text font={13} foregroundStyle="secondaryLabel">我的预设</Text>
-              <Spacer />
-              <Button title="新建" action={create} />
-            </HStack>
-            <VStack spacing={10}>
-              {chunk(cells, 2).map(row => (
-                <HStack spacing={10}>
-                  {row.map(p => p ? <PresetCard preset={p} action={() => edit(p, false)} /> : <NewCard action={create} />)}
-                  {row.length < 2 ? <VStack frame={{ maxWidth: 'infinity' }} /> : null}
-                </HStack>
-              ))}
+          {/* 长期未运行: 不算需要处理, 收起来 */}
+          {snap && snap.idle.length ? (
+            <VStack spacing={0} background={<RoundedRectangle cornerRadius={14} fill={CARD} />}>
+              <NavigationLink destination={<IdlePage {...shared} />}>
+                <LinkLine title={`长期未运行 · ${snap.idle.length} 个`} detail="超过 7 天没有新结果" />
+              </NavigationLink>
             </VStack>
-            <Text font={12} foregroundStyle="secondaryLabel" padding={{ horizontal: 16, top: 4 }}>
-              长按桌面小组件 › 编辑小组件, 在参数里填预设名就能套用; 不填用「A 列表 · 素净」。
-            </Text>
-          </VStack>
-
-          {/* 实时活动 */}
-          <VStack alignment="leading" spacing={6}>
-            <Text font={13} foregroundStyle="secondaryLabel" padding={{ horizontal: 16 }}>实时活动</Text>
-            <VStack spacing={0} background={<RoundedRectangle cornerRadius={14} fill={CARD_BG} />}>
-              <Button action={startLive} buttonStyle="plain"><EntryLine title="开始早间签到实时活动" /></Button>
-              <Button action={endLive} buttonStyle="plain"><EntryLine title="结束实时活动" /></Button>
-            </VStack>
-            <Text font={12} foregroundStyle="secondaryLabel" padding={{ horizontal: 16 }}>
-              {liveText || '锁屏和灵动岛显示今日进度。也可以在控制中心添加 checkin 按钮, 点一下开启或刷新。'}
-            </Text>
-          </VStack>
-
-          {/* 入口 */}
-          <VStack spacing={0} background={<RoundedRectangle cornerRadius={14} fill={CARD_BG} />}>
-            <NavigationLink destination={<MoreSettings onChanged={() => refresh()} />}>
-              <EntryLine title="更多设置" />
-            </NavigationLink>
-            <NavigationLink destination={<ProtocolPage />}>
-              <EntryLine title="签到协议" detail="给脚本作者" />
-            </NavigationLink>
-          </VStack>
+          ) : null}
         </VStack>
       </ScrollView>
     </NavigationStack>
   )
 }
 
-function EntryLine(props: { title: string; detail?: string }) {
+function StatusCard(props: { snap: Snapshot | null; error: string }) {
+  const { snap } = props
+  const c = snap ? counts(snap.entries) : null
+  const src = sourceText(snap, props.error)
   return (
-    <HStack padding={{ horizontal: 14, vertical: 12 }}>
-      <Text font={15} foregroundStyle="label">{props.title}</Text>
-      {props.detail ? <Text font={12} foregroundStyle="secondaryLabel">{` · ${props.detail}`}</Text> : null}
+    <HStack spacing={16} padding={18} frame={{ maxWidth: 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={22} fill={CARD} />}>
+      {snap ? (
+        <Ring ctx={appCtx(snap)} size={78} line={10}>
+          <VStack spacing={0}>
+            <Text font={22} fontWeight="bold" fontDesign="rounded" monospacedDigit>{String(c!.ok)}</Text>
+            <Text font={11} monospacedDigit foregroundStyle="secondaryLabel">{`/ ${snap.entries.length}`}</Text>
+          </VStack>
+        </Ring>
+      ) : (
+        <ZStack frame={{ width: 88, height: 88 }}>
+          <Circle stroke={{ shapeStyle: 'tertiarySystemFill', strokeStyle: { lineWidth: 10 } }} frame={{ width: 78, height: 78 }} />
+          <Image systemName="questionmark" font={22} foregroundStyle="tertiaryLabel" />
+        </ZStack>
+      )}
+      <VStack alignment="leading" spacing={5}>
+        <Text font={20} fontWeight="bold">{c ? (c.cookie + c.fail ? `${c.cookie + c.fail} 个需要处理` : '今天全部正常') : '今日签到'}</Text>
+        {snap ? <Text font={14} foregroundStyle="secondaryLabel">{`今日奖励 +${rewardTotal(snap.entries)}`}</Text> : null}
+        {snap ? <Text font={13} foregroundStyle="secondaryLabel">{`数据时间 ${hhmm(snap.fetchedAt)}`}</Text> : null}
+        <HStack spacing={6}>
+          <Circle fill={src.color} frame={{ width: 7, height: 7 }} />
+          <Text font={12} foregroundStyle={src.color} lineLimit={2}>{src.text}</Text>
+        </HStack>
+      </VStack>
       <Spacer />
-      <Image systemName="chevron.right" font={13} foregroundStyle="tertiaryLabel" />
     </HStack>
   )
 }
 
-/** 预设卡: 缩略图 (皮肤底色 + 样式图标) + 名称 + 样式 */
-function PresetCard(props: { preset: Preset; action: () => void }) {
-  const p = props.preset
-  const color = p.skin === 'color'
+function EntryCard(props: { icon: string; color: string; title: string; sub: string }) {
   return (
-    <Button action={props.action} buttonStyle="plain">
-      <VStack alignment="leading" spacing={10} padding={12} frame={{ maxWidth: 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={16} fill={CARD_BG} />}>
-        <ZStack frame={{ maxWidth: 'infinity', height: 56 }} background={<RoundedRectangle cornerRadius={10} fill={color ? '#0A0E1A' : 'systemGroupedBackground'} />}>
-          <Image systemName={STYLES.find(s => s.id === p.style)?.icon ?? 'square'} font={24} foregroundStyle={color ? '#64D2FF' : OK} />
-        </ZStack>
+    <VStack alignment="leading" spacing={14} padding={14} frame={{ maxWidth: 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={18} fill={CARD} />}>
+      <Image systemName={props.icon} font={17} fontWeight="semibold" foregroundStyle="white" frame={{ width: 34, height: 34 }} background={<RoundedRectangle cornerRadius={9} fill={props.color} />} />
+      <VStack alignment="leading" spacing={2}>
+        <Text font={17} fontWeight="semibold" foregroundStyle="label">{props.title}</Text>
+        <Text font={12} foregroundStyle="secondaryLabel" lineLimit={1}>{props.sub}</Text>
+      </VStack>
+    </VStack>
+  )
+}
+
+function LinkLine(props: { title: string; detail?: string; color?: string; chevron?: boolean }) {
+  return (
+    <HStack padding={{ horizontal: 14, vertical: 13 }}>
+      <Text font={15} foregroundStyle={props.color ?? 'label'}>{props.title}</Text>
+      {props.detail ? <Text font={12} foregroundStyle="secondaryLabel">{` · ${props.detail}`}</Text> : null}
+      <Spacer />
+      {props.chevron === false ? null : <Image systemName="chevron.right" font={13} foregroundStyle="tertiaryLabel" />}
+    </HStack>
+  )
+}
+
+function ActionText(props: { entry: Entry; busy: string }) {
+  const e = props.entry
+  const cookie = e.s === 'cookie'
+  return (
+    <Text font={13} fontWeight="medium" foregroundStyle={cookie ? 'white' : e.run ? 'label' : 'tertiaryLabel'}
+      padding={{ horizontal: 12, vertical: 6 }}
+      background={<RoundedRectangle cornerRadius={14} fill={cookie ? BAD : 'tertiarySystemFill'} />}>
+      {cookie ? '打开 App' : props.busy === e.key ? '补签中...' : e.run ? '补签' : '不支持补签'}
+    </Text>
+  )
+}
+
+function ProblemRow(props: { entry: Entry; busy: string; act: (e: Entry) => void; hist: Day[]; reload: () => Promise<void> }) {
+  const e = props.entry
+  return (
+    <HStack spacing={12} padding={{ horizontal: 14, vertical: 10 }}>
+      <NavigationLink destination={<ScriptDetail entry={e} hist={props.hist} reload={props.reload} />}>
+        <HStack spacing={12}>
+          <AppIcon entry={e} size={32} />
+          <VStack alignment="leading" spacing={1}>
+            <Text font={15} foregroundStyle="label">{e.name}</Text>
+            <Text font={12} foregroundStyle={e.s === 'cookie' ? BAD : WARN} lineLimit={1}>{e.msg || (e.s === 'cookie' ? '凭证失效' : '失败')}</Text>
+          </VStack>
+        </HStack>
+      </NavigationLink>
+      <Spacer />
+      <Button action={() => { props.act(e) }} buttonStyle="plain" disabled={!!props.busy}>
+        <ActionText entry={e} busy={props.busy} />
+      </Button>
+    </HStack>
+  )
+}
+
+/** 读不到数据时的三步引导 */
+function Guide(props: { error: string; reload: () => void }) {
+  const step = (n: number, title: string, sub: string, button: string, action: () => void) => (
+    <HStack spacing={12} padding={{ horizontal: 14, vertical: 12 }}>
+      <Text font={15} fontWeight="bold" foregroundStyle="white" frame={{ width: 28, height: 28 }} background={<Circle fill="systemBlue" />}>{String(n)}</Text>
+      <VStack alignment="leading" spacing={2}>
+        <Text font={15} fontWeight="medium">{title}</Text>
+        <Text font={12} foregroundStyle="secondaryLabel">{sub}</Text>
+      </VStack>
+      <Spacer />
+      <Button title={button} buttonStyle="bordered" controlSize="small" action={action} />
+    </HStack>
+  )
+  return (
+    <VStack alignment="leading" spacing={8}>
+      <SectionTitle title="开始使用" />
+      <VStack spacing={0} background={<RoundedRectangle cornerRadius={14} fill={CARD} />}>
+        {step(1, '导入签到合集插件', 'Loon 里一键添加 paperclip 签到合集', '导入', () => { Safari.openURL(LOON_IMPORT) })}
+        {step(2, '去 Loon 跑一次', '脚本 → 任选一个签到手动运行, 或等定时任务', '打开 Loon', () => { Safari.openURL('loon://') })}
+        {step(3, '回来刷新', '保持 Loon 开启, 这里就能读到结果', '刷新', props.reload)}
+      </VStack>
+      <Text font={12} foregroundStyle="secondaryLabel" padding={{ horizontal: 16 }}>{props.error}</Text>
+    </VStack>
+  )
+}
+
+function ProblemsPage(props: Shared) {
+  const list = props.snap ? props.snap.entries.filter(isProblem) : []
+  return (
+    <List navigationTitle="需要处理" navigationBarTitleDisplayMode="inline">
+      {list.map(e => <ScriptLink entry={e} hist={props.hist} reload={props.reload} />)}
+    </List>
+  )
+}
+
+function IdlePage(props: Shared) {
+  return (
+    <List navigationTitle="长期未运行" navigationBarTitleDisplayMode="inline">
+      <Section footer={<Text>超过 7 天没有新结果, 不算需要处理, 小组件里也不显示。可能是插件里关掉了这个脚本, 或者很久没抓 Cookie。</Text>}>
+        {(props.snap?.idle ?? []).map(e => <ScriptLink entry={e} hist={props.hist} reload={props.reload} />)}
+      </Section>
+    </List>
+  )
+}
+
+function ScriptLink(props: { entry: Entry; hist: Day[]; reload: () => Promise<void> }) {
+  const e = props.entry
+  return (
+    <NavigationLink destination={<ScriptDetail entry={e} hist={props.hist} reload={props.reload} />}>
+      <HStack spacing={12}>
+        <AppIcon entry={e} size={30} />
         <VStack alignment="leading" spacing={1}>
-          <Text font={15} fontWeight="semibold" foregroundStyle="label" lineLimit={1}>{p.name}</Text>
-          <Text font={12} foregroundStyle="secondaryLabel" lineLimit={1}>{`${p.style} · ${styleName(p.style)} · ${color ? '彩色' : '素净'}`}</Text>
+          <Text>{e.name}</Text>
+          <Text font={12} foregroundStyle={e.s === 'ok' ? 'secondaryLabel' : e.s === 'cookie' ? BAD : WARN} lineLimit={1}>{`${timeLabel(e.t)} · ${e.msg}`}</Text>
         </VStack>
-      </VStack>
-    </Button>
-  )
-}
-
-function NewCard(props: { action: () => void }) {
-  return (
-    <Button action={props.action} buttonStyle="plain">
-      <VStack spacing={6} frame={{ maxWidth: 'infinity', height: 118 }}
-        overlay={<RoundedRectangle cornerRadius={16} stroke={{ shapeStyle: 'separator', strokeStyle: { lineWidth: 1, dash: [5, 4] } }} />}>
-        <Image systemName="plus" font={22} foregroundStyle="accentColor" />
-        <Text font={14} foregroundStyle="accentColor">新建预设</Text>
-      </VStack>
-    </Button>
+      </HStack>
+    </NavigationLink>
   )
 }
 
 // ─────────────────────────────────────────────────────────────
-// 编辑预设
+// 脚本详情: 最近 7 天、失败原因、补签 / 打开 App
 // ─────────────────────────────────────────────────────────────
-type PreviewFamily = 'systemSmall' | 'systemMedium' | 'systemLarge' | 'lock'
-
-const BOX: Record<string, { width: number; height: number }> = {
-  systemSmall: { width: 170, height: 170 },
-  systemMedium: { width: 345, height: 162 },
-  systemLarge: { width: 345, height: 362 },
-  accessoryCircular: { width: 76, height: 76 },
-  accessoryRectangular: { width: 172, height: 76 },
-}
-
-function PresetEditor(props: { preset: Preset; snap: Snapshot; hist: Day[]; isNew: boolean }) {
-  const dismiss = Navigation.useDismiss()
-  const p = props.preset
-  const allKeys = props.snap.entries.map(e => e.key)
-  const [name, setName] = useState(p.name)
-  const [style, setStyle] = useState<StyleId>(p.style)
-  const [skin, setSkin] = useState<Skin>(p.skin)
-  const [bg, setBg] = useState<Bg>(p.bg)
-  const [problemsFirst, setProblemsFirst] = useState(p.problemsFirst)
-  // 显示内容: order 是全部脚本的排列, selected 是勾上的; 空 keys = 全部
-  const [order, setOrder] = useState<string[]>(p.keys.length ? [...p.keys, ...allKeys.filter(k => !p.keys.includes(k))] : allKeys)
-  const [selected, setSelected] = useState<string[]>(p.keys.length ? p.keys : allKeys)
-  const [family, setFamily] = useState<PreviewFamily>(p.style === 'I' ? 'lock' : 'systemMedium')
+function ScriptDetail(props: { entry: Entry; hist: Day[]; reload: () => Promise<void> }) {
+  const [e, setE] = useState(props.entry)
   const [note, setNote] = useState('')
-  const [goals, setGoals] = useState<Record<string, number>>(p.goals ?? {})
+  const map = byDate(props.hist)
+  const days = lastDays(7).reverse()
+  const word = (s?: string) => (s === 'ok' ? '成功' : s === 'cookie' ? '需重抓' : s === 'fail' ? '失败' : '没有记录')
+  const color = (s?: string) => (s === 'ok' ? OK : s === 'cookie' ? BAD : s === 'fail' ? WARN : 'tertiaryLabel')
+  const d = new Date(e.t)
 
-  function keys(): string[] {
-    const all = selected.length === order.length && order.join() === allKeys.join()
-    return all ? [] : order.filter(k => selected.includes(k))
+  async function doRetry() {
+    setNote('补签中...')
+    const t = await retry(e)
+    setNote(t)
+    if (!t) return
+    await props.reload()
+    const s = await loadSnapshot()
+    const n = [...s.entries, ...s.idle].find(x => x.key === e.key)
+    if (n) setE(n)
   }
 
-  const draft: Preset = { name: name.trim(), style, skin, keys: keys(), problemsFirst, bg, goals }
+  return (
+    <Form navigationTitle={e.name} navigationBarTitleDisplayMode="inline">
+      <Section>
+        <HStack spacing={14} padding={{ vertical: 4 }}>
+          <AppIcon entry={e} size={52} />
+          <VStack alignment="leading" spacing={3}>
+            <Text font={19} fontWeight="semibold">{e.name}</Text>
+            <Text font={13} foregroundStyle="secondaryLabel">{`${e.author || '未知作者'} · ${e.category}`}</Text>
+          </VStack>
+        </HStack>
+        <LabeledContent label={<Text>状态</Text>}><Text foregroundStyle={color(e.s)}>{word(e.s)}</Text></LabeledContent>
+        <LabeledContent label={<Text>{e.s === 'ok' ? '今日奖励' : '原因'}</Text>} value={e.msg || '-'} />
+        <LabeledContent label={<Text>时间</Text>} value={`${d.getMonth() + 1}月${d.getDate()}日 ${hhmm(e.t)}`} />
+        {e.asset ? <LabeledContent label={<Text>资产</Text>} value={e.asset} /> : null}
+        {e.exp ? <LabeledContent label={<Text>凭证过期</Text>} value={`${Math.max(0, Math.floor((e.exp - Date.now()) / 86_400_000))} 天后`} /> : null}
+      </Section>
+
+      <Section footer={note ? <Text>{note}</Text> : undefined}>
+        {e.s === 'fail' ? <Button title={e.run ? '补签' : '补签 (该脚本不支持)'} action={doRetry} disabled={!e.run} /> : null}
+        <Button title="打开 App" action={() => { openApp(e) }} />
+      </Section>
+
+      <Section header={<Text>最近 7 天</Text>} footer={props.hist.length ? undefined : <Text>还没有历史记录, 以后每次读到数据都会记一笔。</Text>}>
+        {days.map(day => {
+          const it = map.get(day)?.items[e.key]
+          return (
+            <HStack>
+              <Text monospacedDigit>{day.slice(5).replace('-', '/')}</Text>
+              <Text font={13} foregroundStyle={color(it?.s)} padding={{ leading: 8 }}>{word(it?.s)}</Text>
+              <Spacer />
+              <Text font={12} foregroundStyle="secondaryLabel" lineLimit={1}>{it?.msg ?? ''}</Text>
+            </HStack>
+          )
+        })}
+      </Section>
+    </Form>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// 样式库: 按尺寸分, 只列放得下的; 精选 + 更多
+// ─────────────────────────────────────────────────────────────
+type Tab = 'systemSmall' | 'systemMedium' | 'systemLarge' | 'lock'
+
+function StyleLibrary(props: Shared & { onChanged: () => void }) {
+  const [tab, setTab] = useState<Tab>('systemMedium')
+  const [sample, setSample] = useState(true)
+  const [tick, setTick] = useState(0)   // 「用这个样式」后刷新「默认」标记
+  const snap = sample || !props.snap ? sampleSnapshot() : props.snap
+  const hist = sample || !props.snap ? loadHistory(snap) : props.hist
+  const defaults = getDefaults()
+  const changed = () => { setTick(tick + 1); props.onChanged() }
+
+  const card = (s: StyleDef, f: Family, scale: number) => (
+    <NavigationLink destination={<StyleDetail style={s} family={f} snap={snap} hist={hist} onChanged={changed} />}>
+      <VStack spacing={6}>
+        <Preview style={s} family={f} snap={snap} hist={hist} scale={scale} />
+        <HStack spacing={4}>
+          <Text font={13} fontWeight="medium" foregroundStyle="label">{s.name}</Text>
+          {defaults[f] === s.id ? <Text font={10} foregroundStyle="systemBlue">默认</Text> : null}
+        </HStack>
+      </VStack>
+    </NavigationLink>
+  )
+
+  // 小号两列原尺寸, 中号一列原尺寸, 大号两列缩小, 锁屏两列原尺寸
+  const grid = (list: StyleDef[], f: Family) => {
+    const cols = f === 'systemMedium' ? 1 : 2
+    const scale = f === 'systemLarge' ? 0.49 : 1
+    return (
+      <VStack spacing={16}>
+        {chunk(list, cols).map(row => (
+          <HStack spacing={12} alignment="top">
+            {row.map(s => <VStack frame={{ maxWidth: 'infinity' }}>{card(s, f, scale)}</VStack>)}
+            {row.length < cols ? <VStack frame={{ maxWidth: 'infinity' }} /> : null}
+          </HStack>
+        ))}
+      </VStack>
+    )
+  }
+
+  const block = (f: Family, title?: string) => {
+    const all = stylesFor(f)
+    const featured = FEATURED[f].map(id => all.find(s => s.id === id)).filter((s): s is StyleDef => !!s)
+    const more = all.filter(s => !FEATURED[f].includes(s.id))
+    return (
+      <VStack alignment="leading" spacing={12}>
+        {title ? <Text font={17} fontWeight="semibold" padding={{ horizontal: 4 }}>{title}</Text> : null}
+        <SectionTitle title="精选" />
+        {grid(featured, f)}
+        {more.length ? <SectionTitle title="更多样式" /> : null}
+        {more.length ? grid(more, f) : null}
+      </VStack>
+    )
+  }
+
+  return (
+    <ScrollView navigationTitle="样式库" navigationBarTitleDisplayMode="inline" background="systemGroupedBackground">
+      <VStack alignment="leading" spacing={18} padding={16}>
+        <Picker title="尺寸" value={tab} onChanged={(v: any) => setTab(v as Tab)} pickerStyle="segmented">
+          <Text tag="systemSmall">小</Text>
+          <Text tag="systemMedium">中</Text>
+          <Text tag="systemLarge">大</Text>
+          <Text tag="lock">锁屏</Text>
+        </Picker>
+        <Toggle title="示例预览" value={sample} onChanged={setSample} />
+        {tab === 'lock' ? (
+          <VStack alignment="leading" spacing={24}>
+            {block('accessoryCircular', '圆形')}
+            {block('accessoryRectangular', '长条')}
+            <Text font={12} foregroundStyle="secondaryLabel">实时活动和控制中心按钮在「设置」里。</Text>
+          </VStack>
+        ) : block(tab)}
+      </VStack>
+    </ScrollView>
+  )
+}
+
+function StyleDetail(props: { style: StyleDef; family: Family; snap: Snapshot; hist: Day[]; onChanged: () => void }) {
+  const { style, family } = props
+  const [note, setNote] = useState('')
+  const [goals, setGoals] = useState(getDisplay().goals)
+  const param = paramOf(style, family)
+  const sizes = (Object.keys(style.views) as Family[]).map(f => FAMILY_NAME[f]).join('、')
+  const lock = family === 'accessoryCircular' || family === 'accessoryRectangular'
+
+  async function use() {
+    setDefault(family, style.id)
+    await Pasteboard.setString(param)
+    Widget.reloadAll()
+    props.onChanged()
+    setNote(`已设为${FAMILY_NAME[family]}默认样式, 参数「${param}」已复制`)
+  }
 
   async function editGoal(key: string, label: string, current: number) {
     const v = await Dialog.prompt({ title: `${label} 目标值`, message: `当前 ${current}; 清空恢复自动目标`, defaultValue: goals[key] ? String(goals[key]) : '', placeholder: '比如 1000', keyboardType: 'decimalPad' })
@@ -412,51 +606,175 @@ function PresetEditor(props: { preset: Preset; snap: Snapshot; hist: Day[]; isNe
     if (v.trim() && Number.isFinite(n) && n > 0) next[key] = n
     else delete next[key]
     setGoals(next)
+    setDisplay({ ...getDisplay(), goals: next })
+    Widget.reloadAll()
   }
 
-  async function save(): Promise<boolean> {
-    if (!draft.name) {
-      await Dialog.alert({ message: '预设名不能为空' })
-      return false
-    }
-    if (draft.name !== p.name && listPresets().some(x => x.name === draft.name)) {
-      await Dialog.alert({ message: `已经有叫「${draft.name}」的预设了` })
-      return false
-    }
-    if (!selected.length) {
-      await Dialog.alert({ message: '至少勾选一个脚本' })
-      return false
-    }
-    savePreset(draft, props.isNew ? draft.name : p.name)
-    return true
+  return (
+    <List navigationTitle={style.name} navigationBarTitleDisplayMode="inline">
+      <Section footer={<Text>{`${style.desc}。支持: ${sizes}`}</Text>}>
+        <HStack padding={{ vertical: 8 }}>
+          <Spacer />
+          <Preview style={style} family={family} snap={props.snap} hist={props.hist} scale={family === 'systemLarge' ? 0.92 : 1} />
+          <Spacer />
+        </HStack>
+      </Section>
+      <Section
+        footer={<Text>{lock
+          ? `锁屏: 长按锁屏 → 自定 → 添加小组件 → Scripting → checkin, 点小组件在参数里填「${param}」。不填参数用默认样式。`
+          : `桌面: 长按小组件 → 编辑小组件 → 参数里粘贴「${param}」。不填参数就用这个尺寸的默认样式。`}</Text>}
+      >
+        <Button action={use} buttonStyle="borderedProminent" controlSize="large" frame={{ maxWidth: 'infinity' }}>
+          <Text font={16} fontWeight="semibold" frame={{ maxWidth: 'infinity' }}>用这个样式</Text>
+        </Button>
+        {note ? <Text font={13} foregroundStyle="systemGreen">{note}</Text> : null}
+      </Section>
+      {style.id === 'N' ? (
+        <Section header={<Text>兑换目标</Text>} footer={<Text>点一行设目标值; 没设的按下一个整数自动定目标 (735 → 800)。</Text>}>
+          {goalsOf({ ...appCtx(props.snap), hist: props.hist, goals }).map(g => (
+            <Button action={() => editGoal(g.e.key, g.e.name, g.v)} buttonStyle="plain">
+              <HStack>
+                <Text foregroundStyle="label">{g.e.name}</Text>
+                <Spacer />
+                <Text foregroundStyle={g.auto ? 'tertiaryLabel' : 'systemBlue'} monospacedDigit>{`${g.num} / ${g.goal}${g.auto ? ' (自动)' : ''}`}</Text>
+              </HStack>
+            </Button>
+          ))}
+        </Section>
+      ) : null}
+    </List>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// 外观: 素净 / 自定义 (纯色或图片), 顶部实时预览
+// ─────────────────────────────────────────────────────────────
+function Swatches(props: { colors: string[]; value: string; onPick: (c: string) => void }) {
+  return (
+    <HStack spacing={10}>
+      {props.colors.map(c => (
+        <Button action={() => props.onPick(c)} buttonStyle="plain">
+          <Circle fill={c} frame={{ width: 28, height: 28 }}
+            overlay={<Circle stroke={{ shapeStyle: c === props.value ? 'systemBlue' : 'separator', strokeStyle: { lineWidth: c === props.value ? 3 : 1 } }} />} />
+        </Button>
+      ))}
+    </HStack>
+  )
+}
+
+function AppearancePage(props: Shared & { onChanged: () => void }) {
+  const [look, setLookState] = useState<Look>(getLook())
+  const [fam, setFam] = useState<Family>('systemMedium')
+  const [note, setNote] = useState('')
+  const snap = props.snap ?? sampleSnapshot()
+  const hist = props.snap ? props.hist : loadHistory(snap)
+  const style = styleById(getDefaults()[fam])!
+
+  function update(patch: Partial<Look>) {
+    const next = { ...look, ...patch }
+    setLookState(next)
+    setLook(next)
+    Widget.reloadAll()
+    props.onChanged()
   }
 
-  async function done() {
-    if (await save()) dismiss()
+  async function pickImage() {
+    const [img] = await Photos.pickPhotos(1)
+    if (!img) return
+    // 缩到长边 1200 再存, 小组件内存只有 30MB 左右
+    const k = Math.min(1, 1200 / Math.max(img.width, img.height))
+    const small = img.preparingThumbnail({ width: Math.round(img.width * k), height: Math.round(img.height * k) }) ?? img
+    const data = small.toJPEGData(0.85)
+    if (!data) return setNote('图片转换失败')
+    await FileManager.createDirectory(Path.join(FileManager.appGroupDocumentsDirectory, 'checkin'), true)
+    await FileManager.writeAsData(BG_PATH(), data)
+    update({ bgType: 'image', image: BG_PATH() })
+    setNote('')
   }
 
-  async function copyParam() {
-    if (!(await save())) return
-    await Pasteboard.setString(draft.name)
-    setNote(`已保存并复制「${draft.name}」, 到小组件参数里粘贴`)
-  }
+  return (
+    <List navigationTitle="外观" navigationBarTitleDisplayMode="inline">
+      <Section footer={<Text>{`预览的是${FAMILY_NAME[fam]}默认样式「${style.name}」${props.snap ? '' : ' (示例数据)'}`}</Text>}>
+        <VStack spacing={12} frame={{ maxWidth: 'infinity' }} padding={{ vertical: 8 }}>
+          <Preview style={style} family={fam} snap={snap} hist={hist} look={look} scale={fam === 'systemLarge' ? 0.8 : 1} />
+          <Picker title="尺寸" value={fam} onChanged={(v: any) => setFam(v as Family)} pickerStyle="segmented">
+            <Text tag="systemSmall">小</Text>
+            <Text tag="systemMedium">中</Text>
+            <Text tag="systemLarge">大</Text>
+          </Picker>
+        </VStack>
+      </Section>
 
-  /** 用 Scripting 的真实小组件尺寸预览 (会先保存) */
-  async function systemPreview() {
-    if (!(await save())) return
-    const fam = family === 'lock' ? 'accessoryRectangular' : family
-    await Widget.preview({ family: fam, parameters: { options: { [draft.name]: draft.name }, default: draft.name } })
-  }
+      <Section footer={<Text>{look.mode === 'plain' ? '扁平卡片, 跟随系统深浅色。' : '文字颜色按背景亮度自动切换黑白; 用图片时按深色处理, 可调暗化保证文字清楚。'}</Text>}>
+        <Picker title="外观" value={look.mode} onChanged={(v: any) => update({ mode: v })} pickerStyle="segmented">
+          <Text tag="plain">素净</Text>
+          <Text tag="custom">自定义</Text>
+        </Picker>
+      </Section>
 
-  async function remove() {
-    const ok = await Dialog.confirm({ title: `删除「${p.name}」?`, message: '用这个预设的小组件会变回默认样式', cancelLabel: '取消', confirmLabel: '删除' })
-    if (!ok) return
-    deletePreset(p.name)
-    dismiss()
+      {look.mode === 'custom' ? (
+        <Section header={<Text>背景</Text>} footer={note ? <Text>{note}</Text> : undefined}>
+          <Picker title="背景" value={look.bgType} onChanged={(v: any) => update({ bgType: v })} pickerStyle="segmented">
+            <Text tag="color">纯色</Text>
+            <Text tag="image">图片</Text>
+          </Picker>
+          {look.bgType === 'color' ? (
+            <VStack alignment="leading" spacing={10}>
+              <Swatches colors={RECOMMENDED_BG} value={look.color} onPick={c => update({ color: c })} />
+              <ColorPicker title="自选颜色" value={look.color} onChanged={(c: any) => update({ color: String(c) })} supportsOpacity={false} />
+            </VStack>
+          ) : (
+            <VStack alignment="leading" spacing={10}>
+              <Button title={look.image ? '换一张图片' : '从相册选择'} action={pickImage} />
+              {look.image ? (
+                <VStack alignment="leading" spacing={4}>
+                  <Text font={13} foregroundStyle="secondaryLabel">{`模糊 ${Math.round(look.blur)}`}</Text>
+                  <Slider min={0} max={20} value={look.blur} onChanged={(v: number) => update({ blur: v })} />
+                  <Text font={13} foregroundStyle="secondaryLabel">{`暗化 ${Math.round(look.dim * 100)}%`}</Text>
+                  <Slider min={0} max={0.7} value={look.dim} onChanged={(v: number) => update({ dim: v })} />
+                </VStack>
+              ) : null}
+            </VStack>
+          )}
+        </Section>
+      ) : null}
+
+      {look.mode === 'custom' ? (
+        <Section header={<Text>强调色</Text>} footer={<Text>用在进度条、终端日志等处; 成功 / 失败 / 需重抓的颜色固定。</Text>}>
+          <Swatches colors={RECOMMENDED_ACCENT} value={look.accent} onPick={c => update({ accent: c })} />
+          <ColorPicker title="自选强调色" value={look.accent} onChanged={(c: any) => update({ accent: String(c) })} supportsOpacity={false} />
+        </Section>
+      ) : null}
+    </List>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// 显示哪些: 勾选 + 拖动排序 + 有问题优先
+// ─────────────────────────────────────────────────────────────
+function DisplayPage(props: Shared & { onChanged: () => void }) {
+  const snap = props.snap ?? sampleSnapshot()
+  const all = [...snap.entries, ...snap.idle]
+  const allKeys = all.map(e => e.key)
+  const init = getDisplay()
+  const [order, setOrder] = useState<string[]>(init.keys.length ? [...init.keys, ...allKeys.filter(k => !init.keys.includes(k))] : allKeys)
+  const [selected, setSelected] = useState<string[]>(init.keys.length ? init.keys : allKeys)
+  const [problemsFirst, setProblemsFirst] = useState(init.problemsFirst)
+  const byKey = new Map(all.map(e => [e.key, e]))
+
+  function save(o: string[], sel: string[], pf: boolean) {
+    // 全部勾选且没排序 = 空 keys, 以后新增的脚本也自动显示
+    const isAll = sel.length === o.length && o.join() === allKeys.join()
+    setDisplay({ ...getDisplay(), keys: isAll ? [] : o.filter(k => sel.includes(k)), problemsFirst: pf })
+    Widget.reloadAll()
+    props.onChanged()
   }
 
   function toggle(key: string) {
-    setSelected(selected.includes(key) ? selected.filter(k => k !== key) : [...selected, key])
+    const sel = selected.includes(key) ? selected.filter(k => k !== key) : [...selected, key]
+    if (!sel.length) return
+    setSelected(sel)
+    save(order, sel, problemsFirst)
   }
 
   function onMove(indices: number[], newOffset: number) {
@@ -464,160 +782,76 @@ function PresetEditor(props: { preset: Preset; snap: Snapshot; hist: Day[]; isNe
     const rest = order.filter((_, i) => !indices.includes(i))
     rest.splice(newOffset, 0, ...moving)
     setOrder(rest)
+    save(rest, selected, problemsFirst)
   }
 
-  const byKey = new Map(props.snap.entries.map(e => [e.key, e]))
-  const preview = (fam: string) => (
-    <VStack frame={BOX[fam]}>{renderPreset(draft, props.snap, fam, { inApp: true, spot: 0, hist: props.hist, page: 0 })}</VStack>
-  )
-
   return (
-    <NavigationStack>
-      <List
-        navigationTitle={props.isNew ? '新建预设' : p.name}
-        navigationBarTitleDisplayMode="inline"
-        toolbar={{
-          cancellationAction: <Button title="取消" action={dismiss} />,
-          confirmationAction: [<Button title="完成" action={done} />, <EditButton />],
-        }}
+    <List navigationTitle="显示哪些" navigationBarTitleDisplayMode="inline" toolbar={{ topBarTrailing: <EditButton /> }}>
+      <Section footer={<Text>打开后需重抓、失败的排在最前面。</Text>}>
+        <Toggle title="有问题时优先显示" value={problemsFirst} onChanged={(v: boolean) => { setProblemsFirst(v); save(order, selected, v) }} />
+      </Section>
+      <Section
+        header={<Text>{`脚本 · 已选 ${selected.length} / ${order.length}`}</Text>}
+        footer={<Text>点一行勾选或取消; 点右上角「编辑」后拖动排序。所有小组件共用这份设置。</Text>}
       >
-        <Section footer={<Text>{'预览用的是当前数据; 「真实尺寸预览」会先保存, 再用系统小组件渲染。'}</Text>}>
-          <VStack spacing={14} frame={{ maxWidth: 'infinity' }} padding={{ vertical: 8 }}>
-            {family === 'lock' ? (
-              <HStack spacing={14}>{preview('accessoryCircular')}{preview('accessoryRectangular')}</HStack>
-            ) : preview(family)}
-            <Picker title="尺寸" value={family} onChanged={(v: any) => setFamily(v as PreviewFamily)} pickerStyle="segmented">
-              <Text tag="systemSmall">小</Text>
-              <Text tag="systemMedium">中</Text>
-              <Text tag="systemLarge">大</Text>
-              <Text tag="lock">锁屏</Text>
-            </Picker>
-          </VStack>
-          <Button title="真实尺寸预览" action={systemPreview} />
-        </Section>
-
-        <Section header={<Text>样式</Text>} footer={<Text>{STYLES.find(s => s.id === style)?.note ?? `${style} · ${styleName(style)}`}</Text>}>
-          <ScrollView axes="horizontal" scrollIndicator="hidden">
-            <HStack spacing={10} padding={{ vertical: 4 }}>
-              {STYLES.map(s => (
-                <Button action={() => setStyle(s.id)} buttonStyle="plain">
-                  <VStack spacing={5} frame={{ width: 70 }}>
-                    <ZStack frame={{ width: 64, height: 64 }}
-                      background={<RoundedRectangle cornerRadius={14} fill="tertiarySystemFill" />}
-                      overlay={s.id === style ? <RoundedRectangle cornerRadius={14} stroke={{ shapeStyle: 'systemBlue', strokeStyle: { lineWidth: 2.5 } }} /> : undefined}>
-                      <Image systemName={s.icon} font={22} foregroundStyle={s.id === style ? 'systemBlue' : 'secondaryLabel'} />
-                    </ZStack>
-                    <Text font={11} foregroundStyle={s.id === style ? 'systemBlue' : 'secondaryLabel'} fontWeight={s.id === style ? 'semibold' : 'regular'} lineLimit={1}>
-                      {`${s.id} ${s.name}`}
-                    </Text>
+        <ForEach
+          count={order.length}
+          itemBuilder={(i: number) => {
+            const key = order[i]
+            const e = byKey.get(key)
+            const on = selected.includes(key)
+            return (
+              <Button key={key} action={() => toggle(key)} buttonStyle="plain">
+                <HStack spacing={12}>
+                  {e ? <AppIcon entry={e} size={28} /> : <Image systemName="questionmark.square.dashed" font={22} foregroundStyle="secondaryLabel" />}
+                  <VStack alignment="leading" spacing={0}>
+                    <Text font={15} foregroundStyle={on ? 'label' : 'secondaryLabel'}>{e?.name ?? key}</Text>
+                    <Text font={11} foregroundStyle="tertiaryLabel">{e ? (e.asset ? `${e.author} · ${e.asset}` : e.author) : key}</Text>
                   </VStack>
-                </Button>
-              ))}
-            </HStack>
-          </ScrollView>
-        </Section>
-
-        <Section
-          header={<Text>{`显示内容 · ${selected.length} / ${order.length}`}</Text>}
-          footer={<Text>{'点一行勾选或取消; 点右上角「编辑」后拖动排序。全部勾选且没排序时, 以后新增的脚本也会自动显示。'}</Text>}
-        >
-          <ForEach
-            count={order.length}
-            itemBuilder={(i: number) => {
-              const key = order[i]
-              const e = byKey.get(key)
-              const on = selected.includes(key)
-              return (
-                <Button key={key} action={() => toggle(key)} buttonStyle="plain">
-                  <HStack spacing={12}>
-                    {e ? <AppIcon entry={e} size={26} /> : <Image systemName="questionmark.square.dashed" font={22} foregroundStyle="secondaryLabel" />}
-                    <VStack alignment="leading" spacing={0}>
-                      <Text font={15} foregroundStyle={on ? 'label' : 'secondaryLabel'}>{e?.name ?? key}</Text>
-                      <Text font={11} foregroundStyle="tertiaryLabel">{e?.asset ? `${key} · ${e.asset}` : key}</Text>
-                    </VStack>
-                    <Spacer />
-                    {on ? <Image systemName="checkmark" font={15} fontWeight="semibold" foregroundStyle="systemBlue" /> : null}
-                  </HStack>
-                </Button>
-              )
-            }}
-            onMove={onMove}
-          />
-        </Section>
-
-        {style === 'N' ? (
-          <Section header={<Text>兑换目标</Text>} footer={<Text>{'点一行设目标值; 没设的按下一个整数自动定目标 (735 → 800)。'}</Text>}>
-            {goalsOf({ ...appCtx(props.snap), entries: props.snap.entries.filter(e => selected.includes(e.key)), hist: props.hist, preset: draft }).map(g => (
-              <Button action={() => editGoal(g.e.key, g.e.name, g.v)} buttonStyle="plain">
-                <HStack>
-                  <Text foregroundStyle="label">{g.e.name}</Text>
                   <Spacer />
-                  <Text foregroundStyle={g.auto ? 'tertiaryLabel' : 'systemBlue'} monospacedDigit>{`${g.num} / ${g.goal}${g.auto ? ' (自动)' : ''}`}</Text>
+                  {on ? <Image systemName="checkmark" font={15} fontWeight="semibold" foregroundStyle="systemBlue" /> : null}
                 </HStack>
               </Button>
-            ))}
-          </Section>
-        ) : null}
-
-        <Section header={<Text>外观</Text>}>
-          <Picker title="皮肤" value={skin} onChanged={(v: any) => setSkin(v as Skin)} pickerStyle="segmented">
-            <Text tag="plain">素净</Text>
-            <Text tag="color">彩色</Text>
-          </Picker>
-          <Picker title="背景" value={bg} onChanged={(v: any) => setBg(v as Bg)} pickerStyle="segmented">
-            <Text tag="auto">{skin === 'color' ? '自动 (深色)' : '跟随系统'}</Text>
-            <Text tag="dark">深色</Text>
-            <Text tag="light">浅色</Text>
-          </Picker>
-          <Toggle title="有问题时优先显示" value={problemsFirst} onChanged={setProblemsFirst} />
-          <LabeledContent label={<Text>预设名</Text>}>
-            <TextField title="小组件参数" value={name} onChanged={setName} multilineTextAlignment="trailing" />
-          </LabeledContent>
-        </Section>
-
-        <Section footer={note ? <Text>{note}</Text> : undefined}>
-          <Button action={copyParam} buttonStyle="borderedProminent" controlSize="large" frame={{ maxWidth: 'infinity' }}>
-            <Text font={16} fontWeight="semibold" frame={{ maxWidth: 'infinity' }}>{`复制参数「${draft.name || '未命名'}」`}</Text>
-          </Button>
-          {props.isNew ? null : <Button title="删除预设" role="destructive" action={remove} />}
-        </Section>
-      </List>
-    </NavigationStack>
+            )
+          }}
+          onMove={onMove}
+        />
+      </Section>
+    </List>
   )
 }
 
 // ─────────────────────────────────────────────────────────────
-// 更多设置
+// 设置
 // ─────────────────────────────────────────────────────────────
-type Check = { connected: boolean; count: number; error?: string }
-
-function MoreSettings(props: { onChanged: () => void }) {
-  const [host, setHostText] = useState(getHost())
-  const [mock, setMockOn] = useState(getMock())
-  const [check, setCheck] = useState<Check | null>(null)
-  const [checking, setChecking] = useState(false)
-  const [updateText, setUpdateText] = useState('')
-  const [cacheText, setCacheText] = useState('')
+function SettingsPage(props: Shared & { onChanged: () => void }) {
+  const [data, setDataState] = useState<DataPrefs>(getData())
+  const [testText, setTestText] = useState('')
   const [keep, setKeep] = useState(getKeepDays())
-  const [histText, setHistText] = useState('')
+  const [liveText, setLiveText] = useState('')
+  const [misc, setMisc] = useState('')
+  const [updateText, setUpdateText] = useState('')
   const version = Script.metadata.version ?? '-'
 
-  function handleMock(on: boolean) {
-    setMockOn(on)
-    setMock(on)
-    props.onChanged()
+  function update(patch: Partial<DataPrefs>) {
+    const next = { ...data, ...patch }
+    setDataState(next)
+    setData(next)
   }
 
-  function saveHost() {
-    setHost(host)
-    setHostText(getHost())
-    props.onChanged()
+  async function test() {
+    setTestText('连接中...')
+    const r = await probe(data.source, data.host)
+    setTestText(r.ok ? `已连上 ${r.via}, 读到 ${r.count} 个结果` : r.error ?? '连不上')
+    if (r.ok) props.onChanged()
   }
 
-  async function runCheck() {
-    setChecking(true)
-    setCheck(await probe())
-    setChecking(false)
+  async function startLive() {
+    const s = props.snap
+    if (!s) return setLiveText('还没有数据')
+    const d = getDisplay()
+    const entries = d.keys.length ? s.entries.filter(e => d.keys.includes(e.key)) : s.entries
+    setLiveText((await startOrRefresh(liveStateOf(entries))) ? '已开启, 锁屏和灵动岛可见' : '没开起来: 检查 设置 → Scripting → 实时活动 是否允许')
   }
 
   async function checkUpdate() {
@@ -625,78 +859,85 @@ function MoreSettings(props: { onChanged: () => void }) {
     try {
       const res = await fetch(REMOTE_META)
       const remote = String((await res.json() as { version?: string }).version ?? '')
-      if (!remote || !isNewer(remote, version)) {
-        setUpdateText('已是最新')
-        return
-      }
+      if (!remote || !isNewer(remote, version)) return setUpdateText('已是最新')
       setUpdateText(`有新版本 ${remote}`)
-      const ok = await Dialog.confirm({ title: `发现新版本 ${remote}`, message: `当前 ${version}, 更新会重新导入脚本, 预设保留`, cancelLabel: '稍后', confirmLabel: '更新' })
+      const ok = await Dialog.confirm({ title: `发现新版本 ${remote}`, message: `当前 ${version}, 更新会重新导入脚本, 设置保留`, cancelLabel: '稍后', confirmLabel: '更新' })
       if (ok) await Safari.openURL(INSTALL_URL)
     } catch {
       setUpdateText('检查失败')
     }
   }
 
-  const step = (ok: boolean | null) => (ok === null ? 'circle' : ok ? 'checkmark.circle.fill' : 'xmark.circle.fill')
-  const stepColor = (ok: boolean | null) => (ok === null ? 'tertiaryLabel' : ok ? 'systemGreen' : 'systemRed')
+  const st = props.snap ? liveStateOf(props.snap.entries) : null
 
   return (
-    <Form navigationTitle="更多设置" navigationBarTitleDisplayMode="inline">
-      <Section header={<Text>数据源</Text>} footer={<Text>{'关掉演示数据后从 BoxJS 读取, 代理工具 (Loon / Surge / QX) 需保持开启。'}</Text>}>
-        <Toggle title="演示数据" value={mock} onChanged={handleMock} />
-        <LabeledContent label={<Text>BoxJS 地址</Text>}>
-          <TextField title={DEFAULT_HOST} value={host} onChanged={setHostText} multilineTextAlignment="trailing" />
-        </LabeledContent>
-        <Button title="保存地址并刷新" action={saveHost} />
-        <Button title={cacheText || '清缓存'} action={() => { clearCache(); setCacheText('已清除'); props.onChanged() }} />
+    <Form navigationTitle="设置" navigationBarTitleDisplayMode="inline">
+      <Section
+        header={<Text>数据来源</Text>}
+        footer={<Text>{data.source === 'auto'
+          ? `先请求汇总地址 ${SUMMARY_URL}, 失败再读 BoxJS (${data.host})。`
+          : data.source === 'summary' ? '一次读完全部结果, 需要 Loon 开着签到合集插件。' : '逐个读取 BoxJS 里的结果。'}</Text>}
+      >
+        <Picker title="来源" value={data.source} onChanged={(v: any) => update({ source: v as Source })}>
+          <Text tag="auto">自动</Text>
+          <Text tag="summary">汇总地址</Text>
+          <Text tag="boxjs">BoxJS</Text>
+        </Picker>
+        {data.source === 'boxjs' ? (
+          <LabeledContent label={<Text>BoxJS 地址</Text>}>
+            <TextField title={DEFAULT_HOST} value={data.host} onChanged={(v: string) => update({ host: v })} multilineTextAlignment="trailing" />
+          </LabeledContent>
+        ) : null}
+        <Button title={testText ? `测试连接 · ${testText}` : '测试连接'} action={test} />
+        <Picker title="小组件刷新间隔" value={data.refresh} onChanged={(v: any) => { update({ refresh: Number(v) as 15 | 30 | 60 }); Widget.reloadAll() }}>
+          <Text tag={15}>15 分钟</Text>
+          <Text tag={30}>30 分钟</Text>
+          <Text tag={60}>60 分钟</Text>
+        </Picker>
       </Section>
 
-      <Section header={<Text>历史记录</Text>} footer={<Text>{`每次读到数据按北京时间存当天快照, 同一天覆盖。已记录 ${recordedDays()} 天; 演示数据用的是现场生成的 30 天历史。`}</Text>}>
+      <Section header={<Text>实时活动</Text>} footer={<Text>{liveText || '锁屏和灵动岛显示今日进度; 需要手动开启, 系统不允许没人操作时自动弹出。'}</Text>}>
+        {st ? (
+          <VStack padding={{ vertical: 6 }} background={<RoundedRectangle cornerRadius={18} fill="rgba(28,28,30,0.92)" />}>
+            <LiveBanner st={st} />
+          </VStack>
+        ) : null}
+        <Button title="开始早间签到实时活动" action={startLive} />
+        <Button title="结束实时活动" action={async () => { await LiveActivity.endAllActivities({ dismissTimeInterval: 0 }); setLiveText('已结束') }} />
+      </Section>
+
+      <Section header={<Text>控制中心按钮</Text>}>
+        <Text font={13} foregroundStyle="secondaryLabel">{'控制中心 → 左上角 + → 添加控制 → Scripting → checkin。点一下会读数据、刷新小组件, 并开启或刷新实时活动。'}</Text>
+      </Section>
+
+      <Section header={<Text>历史记录</Text>} footer={<Text>{`每次读到数据按北京时间记一份当天结果, 同一天覆盖。已记录 ${recordedDays()} 天。`}</Text>}>
         <Picker title="保留天数" value={keep} onChanged={(v: any) => { setKeep(Number(v)); setKeepDays(Number(v)) }}>
           <Text tag={30}>30 天</Text>
           <Text tag={90}>90 天</Text>
           <Text tag={180}>180 天</Text>
           <Text tag={365}>365 天</Text>
         </Picker>
-        <Button title={histText || '清除历史'} role="destructive" action={async () => {
-          const ok = await Dialog.confirm({ title: '清除全部历史?', message: '日历、收益、热力图等会从头开始记录', cancelLabel: '取消', confirmLabel: '清除' })
-          if (!ok) return
+        <Button title="清除历史" role="destructive" action={async () => {
+          if (!(await Dialog.confirm({ title: '清除全部历史?', message: '日历、收益、热力图等会从头记录', cancelLabel: '取消', confirmLabel: '清除' }))) return
           clearHistory()
-          setHistText('已清除')
-          props.onChanged()
+          setMisc('历史已清除')
         }} />
       </Section>
 
-      <Section header={<Text>新手引导</Text>} footer={check?.error ? <Text>{check.error}</Text> : undefined}>
-        <HStack spacing={10}>
-          <Image systemName={step(check ? check.count > 0 : null)} foregroundStyle={stepColor(check ? check.count > 0 : null)} />
-          <VStack alignment="leading" spacing={1}>
-            <Text>1. 装签到插件</Text>
-            <Text font={12} foregroundStyle="secondaryLabel">
-              {check ? (check.count > 0 ? `BoxJS 里有 ${check.count} 个签到结果` : '还没读到签到结果, 先让签到脚本跑一次') : '代理工具里装 BoxJS 和支持签到状态的脚本'}
-            </Text>
-          </VStack>
-        </HStack>
-        <HStack spacing={10}>
-          <Image systemName={step(check ? check.connected : null)} foregroundStyle={stepColor(check ? check.connected : null)} />
-          <VStack alignment="leading" spacing={1}>
-            <Text>2. 连 BoxJS</Text>
-            <Text font={12} foregroundStyle="secondaryLabel">{check ? (check.connected ? `已连上 ${getHost()}` : '连不上, 检查地址和代理工具') : `当前地址 ${getHost()}`}</Text>
-          </VStack>
-        </HStack>
-        <HStack spacing={10}>
-          <Image systemName="info.circle" foregroundStyle="systemBlue" />
-          <VStack alignment="leading" spacing={1}>
-            <Text>3. 加小组件</Text>
-            <Text font={12} foregroundStyle="secondaryLabel">桌面长按空白 → + → Scripting → 选 checkin, 参数填预设名</Text>
-          </VStack>
-        </HStack>
-        <Button title={checking ? '检查中...' : '开始检查'} action={runCheck} disabled={checking} />
+      <Section header={<Text>新手引导</Text>}>
+        <Button title="1. 导入签到合集插件 (Loon)" action={() => { Safari.openURL(LOON_IMPORT) }} />
+        <Button title="2. 打开 Loon 跑一次签到" action={() => { Safari.openURL('loon://') }} />
+        <Button title="3. 回到这里测试连接" action={test} />
+      </Section>
+
+      <Section footer={misc ? <Text>{misc}</Text> : undefined}>
+        <Button title="清除缓存和图标" action={async () => { clearCache(); await clearIcons(); setMisc('缓存已清除, 下次刷新重新下载图标'); props.onChanged() }} />
       </Section>
 
       <Section header={<Text>关于</Text>}>
         <LabeledContent label={<Text>版本</Text>} value={version} />
         <Button title={updateText ? `检查更新 · ${updateText}` : '检查更新'} action={checkUpdate} />
+        <NavigationLink destination={<ProtocolPage />}><Text>签到协议 · 给脚本作者</Text></NavigationLink>
       </Section>
     </Form>
   )
@@ -705,24 +946,25 @@ function MoreSettings(props: { onChanged: () => void }) {
 // ─────────────────────────────────────────────────────────────
 // 签到协议
 // ─────────────────────────────────────────────────────────────
-const SAMPLE_REGISTRY = '{"dreame_status":{"name":"追觅","author":"MaYIHEI"}}'
+const SAMPLE_REGISTRY = '{"dreame_status":{"name":"追觅","author":"MaYIHEI","run":"http://1.1.1.1/checkin/dreame"}}'
 const SAMPLE_RESULT = '{"v":1,"s":"ok","t":1793105254635,"msg":"+5 积分 · 连签 3 天","asset":"积分 735"}'
 
 function ProtocolPage() {
   const [note, setNote] = useState('')
   return (
     <Form navigationTitle="签到协议 v1" navigationBarTitleDisplayMode="inline">
-      <Section footer={<Text>{'脚本跑完后把结果写进代理工具的持久化存储 ($persistentStore / $prefs), 本小组件通过 BoxJS 读取。'}</Text>}>
-        <Text>{'1. 在 checkin_registry 里登记自己: { "状态key": { name, author, url?, run? } }'}</Text>
-        <Text>{'2. 每次签到后把结果写进状态 key: { v:1, s, t, msg, asset? }'}</Text>
+      <Section footer={<Text>{'脚本跑完后把结果写进代理工具的持久化存储 ($persistentStore / $prefs), 本小组件通过汇总地址或 BoxJS 读取。'}</Text>}>
+        <Text>{'1. 在 checkin_registry 里登记自己: { "状态key": { name, author, url?, run?, open? } }'}</Text>
+        <Text>{'2. 每次签到后把结果写进状态 key: { v:1, s, t, msg, asset?, exp? }'}</Text>
       </Section>
       <Section header={<Text>字段</Text>}>
         <LabeledContent label={<Text>s</Text>} value="ok 成功 / cookie 需重抓 / fail 失败 / none 不显示" />
-        <LabeledContent label={<Text>t</Text>} value="毫秒时间戳" />
+        <LabeledContent label={<Text>t</Text>} value="毫秒时间戳; 超过 7 天算长期未运行" />
         <LabeledContent label={<Text>msg</Text>} value="今日奖励, 如 +5 积分" />
         <LabeledContent label={<Text>asset</Text>} value="资产 (可选), 如 积分 735" />
         <LabeledContent label={<Text>exp</Text>} value="凭证过期毫秒时间戳 (可选)" />
-        <LabeledContent label={<Text>run</Text>} value="登记项里的补签 URL (可选), GET 后现跑脚本并返回最新结果" />
+        <LabeledContent label={<Text>run</Text>} value="登记项里的补签地址 (可选)" />
+        <LabeledContent label={<Text>open</Text>} value="登记项里的打开 App 链接 (可选)" />
       </Section>
       <Section header={<Text>示例</Text>} footer={note ? <Text>{note}</Text> : undefined}>
         <Text font={12} fontDesign="monospaced">{`checkin_registry\n${SAMPLE_REGISTRY}`}</Text>

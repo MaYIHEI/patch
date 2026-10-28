@@ -1,119 +1,95 @@
 // checkin / styles/basic.tsx
-// A 列表 · B 环形 · E 资产钱包 · M 大字状态 · I 锁屏
+// A 列表 · B 环形 · E 资产钱包 · M 大字状态 · I 完成度 (锁屏)
+// 每个样式只实现它在 styles/index.tsx 里声明支持的尺寸, 行数按最小机型 (SE / mini) 算过能放下
 
-import { VStack, HStack, ZStack, Text, Spacer, Image, Gauge, AccessoryWidgetBackground, RoundedRectangle } from 'scripting'
+import { VStack, HStack, ZStack, Text, Spacer, Image, Gauge, AccessoryWidgetBackground, RoundedRectangle, Link } from 'scripting'
 
-import { counts, isProblem, rewardTotal, splitAsset, brand, type Entry } from '../api'
+import { counts, isProblem, rewardTotal, splitAsset, type Entry } from '../api'
+import { assetDelta } from '../history'
 import {
   Root, Card, AppIcon, SegBar, Ring, ProblemPills, ActionPill, RowEnd, DateTag, Header, Num, Empty, Dot,
-  syncText, statusColor, chunk, signed, OK, BAD, type Ctx,
+  syncText, statusColor, chunk, signed, detailURL, hhmm, OK, BAD, type Ctx,
 } from '../ui'
-import { assetDelta } from '../history'
 
-/** 一行脚本: 图标 + 名称 (+ 下一行灰字 msg) + 行尾 */
+/** 一行脚本: 图标 + 名称 (+ 下一行灰字 msg) + 行尾; 小组件里点左边打开脚本详情 */
 export function EntryRow(props: { ctx: Ctx; entry: Entry; icon: number; sub?: boolean; buttons?: boolean; font?: number }) {
   const { ctx, entry, icon } = props
   const { th } = ctx
   const font = props.font ?? 14
   const msg = entry.s === 'cookie' ? `${entry.msg || '凭证失效'} · 打开 App 刷新` : entry.msg
-  return (
-    <HStack spacing={8} frame={{ maxWidth: 'infinity' }}>
+  const left = (
+    <HStack spacing={8}>
       <AppIcon entry={entry} size={icon} />
-      {props.sub ? (
-        <VStack alignment="leading" spacing={1}>
-          <HStack spacing={4}>
-            <Text font={font} fontWeight="medium" foregroundStyle={th.t1} lineLimit={1}>{entry.name}</Text>
-            <DateTag entry={entry} />
-          </HStack>
-          <Text font={11} foregroundStyle={entry.s === 'ok' ? th.t2 : statusColor(entry)} lineLimit={1}>{msg}</Text>
-        </VStack>
-      ) : (
+      <VStack alignment="leading" spacing={1}>
         <HStack spacing={4}>
           <Text font={font} fontWeight="medium" foregroundStyle={th.t1} lineLimit={1}>{entry.name}</Text>
           <DateTag entry={entry} />
         </HStack>
-      )}
+        {props.sub ? <Text font={11} foregroundStyle={entry.s === 'ok' ? th.t2 : statusColor(entry)} lineLimit={1}>{msg}</Text> : null}
+      </VStack>
+    </HStack>
+  )
+  return (
+    <HStack spacing={8} frame={{ maxWidth: 'infinity' }}>
+      {ctx.inApp ? left : <Link url={detailURL(entry.key)}>{left}</Link>}
       <Spacer minLength={4} />
       <RowEnd ctx={ctx} entry={entry} buttons={props.buttons} font={font} />
     </HStack>
   )
 }
 
-/** "今日签到 / 28 / 31" */
-function DoneCount(props: { ctx: Ctx; size: number }) {
-  const { ctx } = props
-  const c = counts(ctx.entries)
-  return (
-    <VStack alignment="leading" spacing={1}>
-      <Text font={12} foregroundStyle={ctx.th.t2}>今日签到</Text>
-      <HStack spacing={2} alignment="lastTextBaseline">
-        <Num value={c.ok} size={props.size} color={ctx.th.t1} />
-        <Text font={props.size * 0.58} fontWeight="medium" monospacedDigit foregroundStyle={ctx.th.t2}>{` / ${ctx.entries.length}`}</Text>
-      </HStack>
-    </VStack>
-  )
-}
+const empty = (ctx: Ctx) => <Root ctx={ctx}><Empty ctx={ctx} text="还没有签到结果" /></Root>
 
 // ─────────────────────────────────────────────────────────────
-// A 列表
+// A 列表: 中 3 行, 大 6 行
 // ─────────────────────────────────────────────────────────────
 export function ListStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, size, entries } = ctx
-  if (!entries.length) return <Root ctx={ctx}><Empty ctx={ctx} text="还没有签到结果" /></Root>
-  const rows = size === 'l' ? 7 : 3
+  if (!entries.length) return empty(ctx)
+  const c = counts(entries)
+  const rows = size === 'l' ? 6 : 3
   const shown = entries.slice(0, rows)
   const rest = entries.length - shown.length
-  if (size === 's') {
+  const head = (
+    <HStack spacing={6}>
+      <HStack spacing={2} alignment="lastTextBaseline">
+        <Num value={c.ok} size={size === 'l' ? 24 : 18} color={th.t1} />
+        <Text font={size === 'l' ? 14 : 12} monospacedDigit foregroundStyle={th.t2}>{` / ${entries.length}`}</Text>
+      </HStack>
+      <Text font={11} foregroundStyle={th.t3} lineLimit={1}>{syncText(ctx.snap)}</Text>
+      <Spacer minLength={4} />
+      <ProblemPills ctx={ctx} />
+    </HStack>
+  )
+  if (size === 'm') {
     return (
       <Root ctx={ctx} spacing={7}>
-        <HStack>
-          <DoneCount ctx={ctx} size={20} />
-          <Spacer />
-        </HStack>
-        <SegBar ctx={ctx} height={4} />
-        {shown.map(e => <EntryRow ctx={ctx} entry={e} icon={18} font={12} />)}
+        {head}
+        <SegBar ctx={ctx} />
+        <VStack spacing={5}>{shown.map(e => <EntryRow ctx={ctx} entry={e} icon={20} font={13} buttons />)}</VStack>
       </Root>
     )
   }
   return (
-    <Root ctx={ctx} spacing={size === 'l' ? 9 : 7}>
-      <HStack>
-        <DoneCount ctx={ctx} size={size === 'l' ? 26 : 20} />
-        <Spacer />
-        <ProblemPills ctx={ctx} />
-      </HStack>
+    <Root ctx={ctx} spacing={9}>
+      {head}
       <SegBar ctx={ctx} />
-      {size === 'l' ? (
-        <VStack spacing={7}>
-          {shown.map(e => <EntryRow ctx={ctx} entry={e} icon={28} sub buttons />)}
-        </VStack>
-      ) : (
-        <VStack spacing={5}>
-          {shown.map(e => <EntryRow ctx={ctx} entry={e} icon={20} font={13} buttons />)}
-        </VStack>
-      )}
+      <VStack spacing={7}>{shown.map(e => <EntryRow ctx={ctx} entry={e} icon={28} sub buttons />)}</VStack>
       <Spacer minLength={0} />
-      {size === 'l' ? (
-        <HStack>
-          <Text font={11} foregroundStyle={th.t3}>{rest > 0 ? `还有 ${rest} 个` : ''}</Text>
-          <Spacer />
-          <Text font={11} foregroundStyle={th.t3}>{syncText(ctx.snap)}</Text>
-        </HStack>
-      ) : null}
+      {rest > 0 ? <Text font={11} foregroundStyle={th.t3}>{`还有 ${rest} 个`}</Text> : null}
     </Root>
   )
 }
 
 // ─────────────────────────────────────────────────────────────
-// B 环形
+// B 环形: 小、中
 // ─────────────────────────────────────────────────────────────
 function RingCenter(props: { ctx: Ctx; size: number }) {
   const { ctx } = props
-  const c = counts(ctx.entries)
   return (
     <VStack spacing={0}>
-      <Num value={c.ok} size={props.size} color={ctx.th.t1} />
+      <Num value={counts(ctx.entries).ok} size={props.size} color={ctx.th.t1} />
       <Text font={11} monospacedDigit foregroundStyle={ctx.th.t2}>{`/ ${ctx.entries.length}`}</Text>
     </VStack>
   )
@@ -131,8 +107,8 @@ function MiniAsset(props: { ctx: Ctx; entry: Entry }) {
   const { ctx, entry } = props
   const a = splitAsset(entry.asset ?? '')
   return (
-    <Card ctx={ctx} padding={{ horizontal: 10, vertical: 6 }} spacing={1}>
-      <HStack spacing={6}>
+    <Card ctx={ctx} padding={{ horizontal: 10, vertical: 5 }} spacing={1}>
+      <HStack spacing={6} frame={{ maxHeight: 'infinity' }}>
         <Text font={11} foregroundStyle={ctx.th.t2} lineLimit={1}>{`${entry.name} ${a.unit}`}</Text>
         <Spacer minLength={2} />
         <Num value={a.num} size={15} color={ctx.th.t1} />
@@ -144,147 +120,100 @@ function MiniAsset(props: { ctx: Ctx; entry: Entry }) {
 export function RingStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, size, entries } = ctx
-  if (!entries.length) return <Root ctx={ctx}><Empty ctx={ctx} text="还没有签到结果" /></Root>
+  if (!entries.length) return empty(ctx)
   const pl = problemLine(ctx)
-  const assets = entries.filter(e => e.asset)
   if (size === 's') {
     return (
-      <Root ctx={ctx} spacing={6}>
+      <Root ctx={ctx} spacing={4}>
+        <HStack><Spacer /><Ring ctx={ctx} size={74} line={10}><RingCenter ctx={ctx} size={22} /></Ring><Spacer /></HStack>
         <Spacer minLength={0} />
-        <HStack><Spacer /><Ring ctx={ctx} size={88} line={11}><RingCenter ctx={ctx} size={24} /></Ring><Spacer /></HStack>
-        <HStack><Spacer /><Text font={11} foregroundStyle={pl.color}>{pl.text}</Text><Spacer /></HStack>
-        <Spacer minLength={0} />
+        <HStack><Spacer /><Text font={12} fontWeight="medium" foregroundStyle={pl.color}>{pl.text}</Text><Spacer /></HStack>
+        <HStack><Spacer /><Text font={10} foregroundStyle={th.t3}>{syncText(ctx.snap)}</Text><Spacer /></HStack>
       </Root>
     )
   }
-  if (size === 'm') {
-    return (
-      <Root ctx={ctx}>
-        <HStack spacing={14} frame={{ maxHeight: 'infinity' }}>
-          <VStack spacing={6}>
-            <Ring ctx={ctx} size={90} line={10}><RingCenter ctx={ctx} size={22} /></Ring>
-            <Text font={11} foregroundStyle={pl.color}>{pl.text}</Text>
-          </VStack>
-          <VStack spacing={6} frame={{ maxWidth: 'infinity', maxHeight: 'infinity' }}>
-            {(assets.length ? assets : entries).slice(0, 3).map(e => e.asset ? <MiniAsset ctx={ctx} entry={e} /> : (
-              <Card ctx={ctx} padding={{ horizontal: 10, vertical: 6 }}><EntryRow ctx={ctx} entry={e} icon={16} font={12} /></Card>
-            ))}
-          </VStack>
-        </HStack>
-      </Root>
-    )
-  }
-  const c = counts(entries)
+  const assets = entries.filter(e => e.asset)
   return (
-    <Root ctx={ctx} spacing={12}>
-      <HStack spacing={16}>
-        <Ring ctx={ctx} size={110} line={13}><RingCenter ctx={ctx} size={28} /></Ring>
-        <VStack alignment="leading" spacing={6}>
-          <Legend ctx={ctx} color={OK} label="成功" n={c.ok} />
-          <Legend ctx={ctx} color={BAD} label="需重抓" n={c.cookie} />
-          <Legend ctx={ctx} color="#FF9F0A" label="失败" n={c.fail} />
-          <Text font={12} foregroundStyle={th.t2}>{`今日奖励 +${rewardTotal(entries)} · ${syncText(ctx.snap)}`}</Text>
+    <Root ctx={ctx}>
+      <HStack spacing={14} frame={{ maxHeight: 'infinity' }}>
+        <VStack spacing={6}>
+          <Ring ctx={ctx} size={86} line={10}><RingCenter ctx={ctx} size={22} /></Ring>
+          <Text font={11} foregroundStyle={pl.color}>{pl.text}</Text>
         </VStack>
-        <Spacer />
+        <VStack spacing={6} frame={{ maxWidth: 'infinity', maxHeight: 'infinity' }}>
+          <Header ctx={ctx} title={assets.length ? '资产' : '需要处理'} right={syncText(ctx.snap)} font={12} />
+          {assets.length
+            ? assets.slice(0, 3).map(e => <MiniAsset ctx={ctx} entry={e} />)
+            : entries.slice(0, 3).map(e => <EntryRow ctx={ctx} entry={e} icon={18} font={12} />)}
+        </VStack>
       </HStack>
-      {assets.length ? (
-        <VStack spacing={8}>
-          {chunk(assets.slice(0, 6), 2).map(row => (
-            <HStack spacing={8}>
-              <MiniAsset ctx={ctx} entry={row[0]} />
-              {row[1] ? <MiniAsset ctx={ctx} entry={row[1]} /> : <VStack frame={{ maxWidth: 'infinity' }} />}
-            </HStack>
-          ))}
-        </VStack>
-      ) : (
-        <VStack spacing={7}>{entries.filter(isProblem).slice(0, 5).map(e => <EntryRow ctx={ctx} entry={e} icon={24} sub buttons />)}</VStack>
-      )}
-      <Spacer minLength={0} />
     </Root>
   )
 }
 
-function Legend(props: { ctx: Ctx; color: string; label: string; n: number }) {
-  return (
-    <HStack spacing={6}>
-      <Dot color={props.color} size={8} />
-      <Text font={13} foregroundStyle={props.ctx.th.t2}>{props.label}</Text>
-      <Num value={props.n} size={15} color={props.ctx.th.t1} />
-    </HStack>
-  )
-}
-
 // ─────────────────────────────────────────────────────────────
-// E 资产钱包
+// E 资产钱包: 小 1 张, 中 3 张, 大 6 张, 锁屏长条 2 个
 // ─────────────────────────────────────────────────────────────
 function WalletCard(props: { ctx: Ctx; entry: Entry; numSize: number }) {
   const { ctx, entry } = props
   const { th } = ctx
   const a = splitAsset(entry.asset ?? '')
-  const b = brand(entry.key)
   const bad = entry.s === 'cookie'
-  // 彩色: 品牌深色卡; 素净: 白卡. 需重抓的卡变红
-  const fill = bad ? th.badBg : th.color ? b.bg : th.card
-  const label = bad ? th.badFg : th.color ? b.fg : th.t2
-  const num = bad ? th.badFg : th.color ? '#FFFFFF' : th.t1
   return (
     <VStack
       alignment="leading"
       spacing={0}
       padding={10}
       frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'topLeading' }}
-      background={<RoundedRectangle cornerRadius={14} fill={fill} />}
-      overlay={th.color && !bad ? undefined : <RoundedRectangle cornerRadius={14} stroke={{ shapeStyle: th.border, strokeStyle: { lineWidth: 0.5 } }} />}
+      background={<RoundedRectangle cornerRadius={14} fill={bad ? th.badBg : th.card} />}
+      overlay={<RoundedRectangle cornerRadius={14} stroke={{ shapeStyle: th.border, strokeStyle: { lineWidth: 0.5 } }} />}
     >
       <HStack spacing={5}>
-        {th.color ? null : <AppIcon entry={entry} size={16} />}
-        <Text font={11} foregroundStyle={label} lineLimit={1}>{entry.name}</Text>
+        <AppIcon entry={entry} size={16} />
+        <Text font={11} foregroundStyle={bad ? th.badFg : th.t2} lineLimit={1}>{entry.name}</Text>
         <Spacer minLength={0} />
         {entry.s === 'fail' ? <Dot color="#FF9F0A" size={6} /> : null}
       </HStack>
       <Spacer minLength={2} />
-      <Num value={a.num} size={props.numSize} color={num} />
-      <Text font={11} foregroundStyle={label} lineLimit={1}>{bad ? '需重抓' : a.unit || ' '}</Text>
+      <Num value={a.num} size={props.numSize} color={bad ? th.badFg : th.t1} />
+      <Text font={11} foregroundStyle={bad ? th.badFg : th.t2} lineLimit={1}>{bad ? '需重抓' : a.unit || ' '}</Text>
     </VStack>
   )
 }
 
 export function WalletStyle(props: { ctx: Ctx }) {
   const { ctx } = props
-  const { size } = ctx
+  const { th, size } = ctx
   const assets = ctx.entries.filter(e => e.asset)
-  if (!assets.length) return <Root ctx={ctx}><Empty ctx={ctx} text="选中的脚本都没有资产" /></Root>
+  if (!assets.length) return <Root ctx={ctx}><Empty ctx={ctx} text="显示的脚本都没有资产" /></Root>
   if (size === 's') {
     const e = assets[0]
     const a = splitAsset(e.asset!)
-    const b = brand(e.key)
-    const { th } = ctx
     return (
-      <Root ctx={ctx} bg={th.color ? b.bg : undefined} tone={e.s === 'cookie' ? 'bad' : undefined} spacing={0}>
+      <Root ctx={ctx} tone={e.s === 'cookie' ? 'bad' : undefined} spacing={0}>
         <HStack spacing={6}>
           <AppIcon entry={e} size={26} />
           <Spacer />
-          <Text font={11} foregroundStyle={th.color ? b.fg : th.t3}>{syncText(ctx.snap)}</Text>
+          <Text font={10} foregroundStyle={th.t3}>{syncText(ctx.snap)}</Text>
         </HStack>
         <Spacer />
-        <Text font={12} foregroundStyle={th.color ? b.fg : th.t2} lineLimit={1}>{`${e.name} · ${a.unit}`}</Text>
-        <Num value={a.num} size={34} weight="bold" color={th.color ? '#FFFFFF' : th.t1} />
-        <Text font={12} foregroundStyle={e.s === 'ok' ? (th.color ? b.fg : th.t2) : statusColor(e)} lineLimit={1}>
-          {e.s === 'cookie' ? '需重抓' : e.msg}
-        </Text>
+        <Text font={12} foregroundStyle={th.t2} lineLimit={1}>{`${e.name} · ${a.unit}`}</Text>
+        <Num value={a.num} size={32} weight="bold" color={th.t1} />
+        <Text font={12} foregroundStyle={e.s === 'ok' ? th.t2 : statusColor(e)} lineLimit={1}>{e.s === 'cookie' ? '需重抓' : e.msg}</Text>
       </Root>
     )
   }
   const shown = assets.slice(0, size === 'm' ? 3 : 6)
-  // 较昨天: 有昨天记录的资产求和; 都没有就显示同步时间
+  // 较昨天: 有昨天记录的资产求和; 都没有就只显示数据时间
   const deltas = shown.map(e => assetDelta(ctx.hist, e.key)).filter((d): d is number => d !== undefined)
-  const right = deltas.length ? `较昨天 ${signed(deltas.reduce((a, b) => a + b, 0))}` : syncText(ctx.snap)
+  const right = deltas.length ? `较昨天 ${signed(deltas.reduce((a, b) => a + b, 0))} · ${hhmm(ctx.snap.fetchedAt)}` : syncText(ctx.snap)
   return (
     <Root ctx={ctx} spacing={10}>
       <Header ctx={ctx} title="我的资产" right={right} />
       {size === 'm' ? (
         <HStack spacing={8} frame={{ maxHeight: 'infinity' }}>
           {shown.map(e => <WalletCard ctx={ctx} entry={e} numSize={20} />)}
+          {shown.length < 3 ? Array(3 - shown.length).fill(0).map(() => <VStack frame={{ maxWidth: 'infinity' }} />) : null}
         </HStack>
       ) : (
         <VStack spacing={8} frame={{ maxHeight: 'infinity' }}>
@@ -300,54 +229,58 @@ export function WalletStyle(props: { ctx: Ctx }) {
   )
 }
 
-// ─────────────────────────────────────────────────────────────
-// M 大字状态: 有问题整张卡变红, 全部正常变绿
-// ─────────────────────────────────────────────────────────────
-const actionWord = (e: Entry) => (e.s === 'cookie' ? '重抓' : '补签')
-
-function AllGood(props: { ctx: Ctx; big: number }) {
+export function WalletLockRect(props: { ctx: Ctx }) {
   const { ctx } = props
+  const assets = ctx.entries.filter(e => e.asset).slice(0, 2)
   return (
-    <VStack alignment="leading" spacing={2}>
-      <Image systemName="checkmark" font={props.big * 0.9} fontWeight="bold" foregroundStyle={OK} />
-      <Text font={props.big} fontWeight="bold" foregroundStyle={ctx.th.goodFg} lineLimit={1} minScaleFactor={0.6}>全部正常</Text>
-      <Text font={12} foregroundStyle={ctx.th.goodFg} lineLimit={1}>{`${ctx.entries.length} 个脚本 · 今日 +${rewardTotal(ctx.entries)}`}</Text>
-    </VStack>
+    <LockPreview ctx={ctx} radius={14}>
+      <VStack alignment="leading" spacing={1} frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'leading' }} padding={ctx.inApp ? { horizontal: 10 } : 0}>
+        <Text font={12} fontWeight="semibold" lineLimit={1} foregroundStyle={lockFg(ctx)}>{`资产 · ${hhmm(ctx.snap.fetchedAt)}`}</Text>
+        {assets.length ? assets.map(e => (
+          <Text font={13} monospacedDigit lineLimit={1} foregroundStyle={lockFg(ctx)}>{`${e.name} ${e.asset}`}</Text>
+        )) : <Text font={12} lineLimit={1} foregroundStyle={lockFg(ctx)}>没有资产</Text>}
+      </VStack>
+    </LockPreview>
   )
 }
+
+// ─────────────────────────────────────────────────────────────
+// M 大字状态: 有问题整张卡变红, 全部正常变绿; 小、中、锁屏圆形
+// ─────────────────────────────────────────────────────────────
+const actionWord = (e: Entry) => (e.s === 'cookie' ? '重抓' : '补签')
 
 export function BigStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, size, entries } = ctx
-  if (!entries.length) return <Root ctx={ctx}><Empty ctx={ctx} text="还没有签到结果" /></Root>
+  if (!entries.length) return empty(ctx)
   const problems = entries.filter(isProblem)
   if (!problems.length) {
-    const assets = entries.filter(e => e.asset)
+    const good = (big: number) => (
+      <VStack alignment="leading" spacing={2}>
+        <Image systemName="checkmark" font={big * 0.8} fontWeight="bold" foregroundStyle={OK} />
+        <Text font={big} fontWeight="bold" foregroundStyle={th.goodFg} lineLimit={1} minScaleFactor={0.6}>全部正常</Text>
+        <Text font={11} foregroundStyle={th.goodFg} lineLimit={1}>{`${entries.length} 个脚本 · 今日 +${rewardTotal(entries)}`}</Text>
+        <Text font={10} foregroundStyle={th.goodFg} opacity={0.75}>{syncText(ctx.snap)}</Text>
+      </VStack>
+    )
+    if (size === 's') return <Root ctx={ctx} tone="good"><Spacer minLength={0} />{good(26)}</Root>
     return (
-      <Root ctx={ctx} tone="good" spacing={10}>
-        {size === 'm' ? (
-          <HStack spacing={14} frame={{ maxHeight: 'infinity' }}>
-            <AllGood ctx={ctx} big={28} />
-            <VStack spacing={6} frame={{ maxWidth: 'infinity' }}>
-              {assets.slice(0, 3).map(e => <EntryRow ctx={ctx} entry={e} icon={18} font={12} />)}
-            </VStack>
-          </HStack>
-        ) : (
-          <VStack alignment="leading" spacing={10} frame={{ maxHeight: 'infinity', alignment: 'topLeading' }}>
-            {size === 'l' ? <Spacer minLength={0} /> : null}
-            <AllGood ctx={ctx} big={size === 'l' ? 40 : 28} />
-            {size === 'l' ? <Spacer minLength={0} /> : null}
-            {size === 'l' ? assets.slice(0, 5).map(e => <EntryRow ctx={ctx} entry={e} icon={22} font={13} />) : null}
+      <Root ctx={ctx} tone="good">
+        <HStack spacing={14} frame={{ maxHeight: 'infinity' }}>
+          {good(26)}
+          <VStack spacing={6} frame={{ maxWidth: 'infinity' }}>
+            {entries.filter(e => e.asset).slice(0, 3).map(e => <EntryRow ctx={ctx} entry={e} icon={18} font={12} />)}
           </VStack>
-        )}
+        </HStack>
       </Root>
     )
   }
-  const big = <Num value={problems.length} size={size === 'l' ? 88 : size === 'm' ? 60 : 62} weight="bold" color={th.badFg} />
+  const label = <Text font={12} foregroundStyle={th.badFg} lineLimit={1}>{`需要处理 · ${hhmm(ctx.snap.fetchedAt)}`}</Text>
+  const big = <Num value={problems.length} size={size === 'm' ? 56 : 58} weight="bold" color={th.badFg} />
   if (size === 's') {
     return (
       <Root ctx={ctx} tone="bad" spacing={0}>
-        <Text font={12} foregroundStyle={th.badFg}>需要处理</Text>
+        {label}
         <Spacer minLength={0} />
         {big}
         <Spacer minLength={0} />
@@ -355,57 +288,50 @@ export function BigStyle(props: { ctx: Ctx }) {
       </Root>
     )
   }
-  const rows = problems.slice(0, size === 'l' ? 6 : 3)
-  const list = (
-    <VStack spacing={size === 'l' ? 8 : 5} frame={{ maxWidth: 'infinity' }}>
-      {rows.map(e => (
-        <HStack spacing={8}>
-          <AppIcon entry={e} size={size === 'l' ? 26 : 20} />
-          <VStack alignment="leading" spacing={0}>
-            <Text font={13} fontWeight="medium" foregroundStyle={th.t1} lineLimit={1}>{e.name}</Text>
-            {size === 'l' ? <Text font={11} foregroundStyle={statusColor(e)} lineLimit={1}>{e.msg}</Text> : null}
-          </VStack>
-          <Spacer minLength={4} />
-          <ActionPill ctx={ctx} entry={e} />
-        </HStack>
-      ))}
-    </VStack>
-  )
-  if (size === 'm') {
-    return (
-      <Root ctx={ctx} tone="bad">
-        <HStack spacing={14} frame={{ maxHeight: 'infinity' }}>
-          <VStack alignment="leading" spacing={0} frame={{ width: 92, maxHeight: 'infinity', alignment: 'topLeading' }}>
-            <Text font={12} foregroundStyle={th.badFg}>需要处理</Text>
-            <Spacer minLength={0} />
-            {big}
-          </VStack>
-          {list}
-        </HStack>
-      </Root>
-    )
-  }
-  const c = counts(entries)
   return (
-    <Root ctx={ctx} tone="bad" spacing={6}>
-      <Text font={13} foregroundStyle={th.badFg}>需要处理</Text>
-      {big}
-      <Spacer minLength={0} />
-      {list}
-      <Spacer minLength={0} />
-      <Text font={11} foregroundStyle={th.t2}>{`成功 ${c.ok} · 需重抓 ${c.cookie} · 失败 ${c.fail} · ${syncText(ctx.snap)}`}</Text>
+    <Root ctx={ctx} tone="bad">
+      <HStack spacing={14} frame={{ maxHeight: 'infinity' }}>
+        <VStack alignment="leading" spacing={0} frame={{ width: 92, maxHeight: 'infinity', alignment: 'topLeading' }}>
+          {label}
+          <Spacer minLength={0} />
+          {big}
+        </VStack>
+        <VStack spacing={5} frame={{ maxWidth: 'infinity' }}>
+          {problems.slice(0, 3).map(e => (
+            <HStack spacing={8}>
+              <AppIcon entry={e} size={20} />
+              <Text font={13} fontWeight="medium" foregroundStyle={th.t1} lineLimit={1}>{e.name}</Text>
+              <Spacer minLength={4} />
+              <ActionPill ctx={ctx} entry={e} />
+            </HStack>
+          ))}
+        </VStack>
+      </HStack>
     </Root>
   )
 }
 
-// ─────────────────────────────────────────────────────────────
-// I 锁屏: 圆形完成度 / 长条摘要; 放到桌面时是同样信息的大字版
-// ─────────────────────────────────────────────────────────────
-function lockLines(entries: Entry[], max: number): string[] {
-  const problems = entries.filter(isProblem)
-  if (!problems.length) return ['全部正常']
-  return problems.slice(0, max).map(e => (e.s === 'cookie' ? `${e.name}需重抓` : `${e.name} 待补签`))
+export function BigLockCircular(props: { ctx: Ctx }) {
+  const { ctx } = props
+  const n = ctx.entries.filter(isProblem).length
+  return (
+    <LockPreview ctx={ctx} radius={38}>
+      <ZStack>
+        <AccessoryWidgetBackground />
+        <VStack spacing={0}>
+          <Image systemName={n ? 'exclamationmark.triangle.fill' : 'checkmark'} font={12} foregroundStyle={lockFg(ctx)} />
+          <Text font={20} fontWeight="bold" monospacedDigit foregroundStyle={lockFg(ctx)}>{n ? String(n) : '好'}</Text>
+        </VStack>
+      </ZStack>
+    </LockPreview>
+  )
 }
+
+// ─────────────────────────────────────────────────────────────
+// I 完成度: 锁屏圆形 / 长条
+// ─────────────────────────────────────────────────────────────
+/** 锁屏用系统着色, App 内预览才给白字 */
+const lockFg = (ctx: Ctx) => (ctx.inApp ? '#FFFFFF' : undefined)
 
 /** App 内预览锁屏时垫一块深色底, 模拟锁屏 */
 function LockPreview(props: { ctx: Ctx; radius: number; children?: any }) {
@@ -441,47 +367,16 @@ export function LockCircular(props: { ctx: Ctx }) {
 export function LockRect(props: { ctx: Ctx }) {
   const { ctx } = props
   const c = counts(ctx.entries)
-  const reward = rewardTotal(ctx.entries)
+  const problems = ctx.entries.filter(isProblem)
+  const lines = problems.length ? problems.slice(0, 2).map(e => (e.s === 'cookie' ? `${e.name}需重抓` : `${e.name} 待补签`)) : ['全部正常']
   return (
     <LockPreview ctx={ctx} radius={14}>
       <VStack alignment="leading" spacing={1} frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'leading' }} padding={ctx.inApp ? { horizontal: 10 } : 0}>
-        <Text font={14} fontWeight="bold" monospacedDigit lineLimit={1} foregroundStyle={ctx.inApp ? '#FFFFFF' : undefined}>
-          {`签到 ${c.ok}/${ctx.entries.length}${reward ? ` · +${reward}` : ''}`}
+        <Text font={14} fontWeight="bold" monospacedDigit lineLimit={1} foregroundStyle={lockFg(ctx)}>
+          {`签到 ${c.ok}/${ctx.entries.length} · ${hhmm(ctx.snap.fetchedAt)}`}
         </Text>
-        {lockLines(ctx.entries, 2).map(t => <Text font={12} lineLimit={1} foregroundStyle={ctx.inApp ? 'rgba(255,255,255,0.78)' : undefined}>{t}</Text>)}
+        {lines.map(t => <Text font={12} lineLimit={1} foregroundStyle={ctx.inApp ? 'rgba(255,255,255,0.78)' : undefined}>{t}</Text>)}
       </VStack>
     </LockPreview>
-  )
-}
-
-export function LockStyle(props: { ctx: Ctx }) {
-  const { ctx } = props
-  const { th, size, entries } = ctx
-  const c = counts(entries)
-  const lines = lockLines(entries, size === 'l' ? 6 : size === 'm' ? 3 : 1)
-  const ring = <Ring ctx={ctx} size={size === 's' ? 84 : 96} line={size === 's' ? 9 : 11}><RingCenter ctx={ctx} size={22} /></Ring>
-  if (size === 's') {
-    return (
-      <Root ctx={ctx} spacing={6}>
-        <HStack><Spacer />{ring}<Spacer /></HStack>
-        <HStack><Spacer /><Text font={12} fontWeight="semibold" foregroundStyle={th.t1} lineLimit={1}>{lines[0]}</Text><Spacer /></HStack>
-      </Root>
-    )
-  }
-  return (
-    <Root ctx={ctx} spacing={12}>
-      <HStack spacing={16}>
-        {ring}
-        <VStack alignment="leading" spacing={3}>
-          <Text font={17} fontWeight="bold" monospacedDigit foregroundStyle={th.t1}>{`签到 ${c.ok}/${entries.length} · +${rewardTotal(entries)}`}</Text>
-          {(size === 'm' ? lines : lines.slice(0, 1)).map(t => <Text font={13} foregroundStyle={t === '全部正常' ? OK : th.t2} lineLimit={1}>{t}</Text>)}
-        </VStack>
-        <Spacer />
-      </HStack>
-      {size === 'l' ? (
-        <VStack spacing={8}>{entries.filter(isProblem).slice(0, 6).map(e => <EntryRow ctx={ctx} entry={e} icon={26} sub buttons />)}</VStack>
-      ) : null}
-      <Spacer minLength={0} />
-    </Root>
   )
 }

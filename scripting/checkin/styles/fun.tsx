@@ -3,9 +3,9 @@
 
 import { VStack, HStack, ZStack, Text, Spacer, Image, Rectangle, RoundedRectangle } from 'scripting'
 
-import { counts, isProblem, isToday, rewardTotal, splitAsset, brand, timeLabel, type Entry } from '../api'
+import { counts, isProblem, isToday, rewardTotal, splitAsset, timeLabel, type Entry } from '../api'
 import {
-  Root, Card, AppIcon, Dot, ActionPill, Header, Num, Empty, SegBar,
+  Root, AppIcon, Dot, ActionPill, Header, Num, Empty, SegBar,
   syncText, statusColor, hhmm, chunk, OK, BAD, WARN, type Ctx,
 } from '../ui'
 import { EntryRow } from './basic'
@@ -13,6 +13,7 @@ import { EntryRow } from './basic'
 const firstPart = (msg: string) => msg.split(' · ')[0]
 const RANK = { cookie: 0, fail: 1, ok: 2, none: 3 }
 const worst = (list: Entry[]) => list.reduce((w, e) => (RANK[e.s] < RANK[w.s] ? e : w), list[0])
+const empty = (ctx: Ctx) => <Root ctx={ctx}><Empty ctx={ctx} text="还没有签到结果" /></Root>
 
 // ─────────────────────────────────────────────────────────────
 // D 图标墙: 小号只放有问题的 9 个, 中号 14 个, 大号 25 个; 有问题的描边
@@ -43,88 +44,82 @@ function IconGrid(props: { ctx: Ctx; list: Entry[]; cols: number; rows: number; 
 export function IconWallStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, size, entries } = ctx
-  if (!entries.length) return <Root ctx={ctx}><Empty ctx={ctx} text="还没有签到结果" /></Root>
+  if (!entries.length) return empty(ctx)
   const problems = entries.filter(isProblem)
   if (size === 's') {
     if (!problems.length) {
       return (
         <Root ctx={ctx} tone="good" spacing={4}>
-          <Image systemName="checkmark.seal.fill" font={30} foregroundStyle={OK} />
+          <Image systemName="checkmark.seal.fill" font={28} foregroundStyle={OK} />
           <Spacer />
           <Text font={22} fontWeight="bold" foregroundStyle={th.goodFg}>全部正常</Text>
-          <Text font={12} foregroundStyle={th.goodFg}>{`${entries.length} 个脚本`}</Text>
+          <Text font={11} foregroundStyle={th.goodFg}>{`${entries.length} 个脚本 · ${hhmm(ctx.snap.fetchedAt)}`}</Text>
         </Root>
       )
     }
     return (
       <Root ctx={ctx} spacing={8}>
-        <Header ctx={ctx} title={`${problems.length} 个需要处理`} font={12} />
-        <IconGrid ctx={ctx} list={problems} cols={3} rows={3} size={32} gap={8} />
+        <Header ctx={ctx} title={`${problems.length} 需处理`} right={hhmm(ctx.snap.fetchedAt)} font={12} />
+        <IconGrid ctx={ctx} list={problems} cols={3} rows={3} size={28} gap={6} />
       </Root>
     )
   }
-  const right = problems.length ? `${problems.length} 个需要处理` : '全部正常'
-  const rightColor = problems.length ? BAD : OK
+  const head = <Header ctx={ctx} title={`${entries.length} 个脚本`} right={problems.length ? `${problems.length} 需处理 · ${hhmm(ctx.snap.fetchedAt)}` : syncText(ctx.snap)} rightColor={problems.length ? BAD : th.t3} />
   if (size === 'm') {
     return (
       <Root ctx={ctx} spacing={10}>
-        <Header ctx={ctx} title={`${entries.length} 个脚本`} right={right} rightColor={rightColor} />
-        <IconGrid ctx={ctx} list={entries} cols={7} rows={2} size={36} gap={8} />
+        {head}
+        <IconGrid ctx={ctx} list={entries} cols={7} rows={2} size={34} gap={7} />
       </Root>
     )
   }
   return (
     <Root ctx={ctx} spacing={10}>
-      <Header ctx={ctx} title={`${entries.length} 个脚本`} right={right} rightColor={rightColor} />
+      {head}
       <SegBar ctx={ctx} height={4} />
-      <IconGrid ctx={ctx} list={entries} cols={5} rows={5} size={46} gap={11} />
+      <IconGrid ctx={ctx} list={entries} cols={5} rows={5} size={44} gap={10} />
     </Root>
   )
 }
 
 // ─────────────────────────────────────────────────────────────
-// F 终端日志
+// F 终端日志: 中 5 行, 大 15 行
 // ─────────────────────────────────────────────────────────────
 export function TerminalStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, size, entries } = ctx
   const font = size === 'l' ? 12 : 11
-  const rows = size === 'l' ? 15 : size === 'm' ? 5 : 4
+  const rows = size === 'l' ? 15 : 5
   const c = counts(entries)
-  const dim = th.color ? 'rgba(235,235,245,0.45)' : th.t3
-  const ink = th.color ? '#F2F2F7' : th.t1
   const line = (e: Entry) => {
     const mark = e.s === 'ok' ? '✓' : e.s === 'cookie' ? '✗' : '!'
     const result = e.s === 'cookie' ? 'cookie' : e.s === 'fail' ? e.msg || 'fail' : firstPart(e.msg) || 'ok'
     return (
       <HStack spacing={5}>
         <Text font={font} fontDesign="monospaced" foregroundStyle={statusColor(e)}>{mark}</Text>
-        <Text font={font} fontDesign="monospaced" foregroundStyle={ink} lineLimit={1}>{e.name}</Text>
+        <Text font={font} fontDesign="monospaced" foregroundStyle={th.t1} lineLimit={1}>{e.name}</Text>
         {isToday(e.t) ? null : <Text font={font - 1} fontDesign="monospaced" foregroundStyle={WARN}>{timeLabel(e.t)}</Text>}
         <Spacer minLength={4} />
-        <Text font={font} fontDesign="monospaced" foregroundStyle={e.s === 'ok' ? dim : statusColor(e)} lineLimit={1}>{result}</Text>
+        <Text font={font} fontDesign="monospaced" foregroundStyle={e.s === 'ok' ? th.t3 : statusColor(e)} lineLimit={1}>{result}</Text>
       </HStack>
     )
   }
   return (
-    <Root ctx={ctx} bg={th.color ? '#05070B' : undefined} spacing={size === 'l' ? 3 : 2}>
-      <Text font={font} fontDesign="monospaced" foregroundStyle={dim} lineLimit={1}>{`~ checkin today · ${hhmm(ctx.snap.fetchedAt)}`}</Text>
+    <Root ctx={ctx} spacing={size === 'l' ? 3 : 2}>
+      <Text font={font} fontDesign="monospaced" foregroundStyle={th.t3} lineLimit={1}>{`~ checkin today · ${hhmm(ctx.snap.fetchedAt)}`}</Text>
       {entries.slice(0, rows).map(line)}
       <Spacer minLength={0} />
-      <Text font={font} fontDesign="monospaced" foregroundStyle={th.color ? '#64D2FF' : th.t2} lineLimit={1} minScaleFactor={0.7}>
-        {size === 's' ? `${c.ok}✓ ${c.cookie}✗ ${c.fail}! ▌` : `${c.ok} ok · ${c.cookie} cookie · ${c.fail} fail ▌`}
-      </Text>
+      <Text font={font} fontDesign="monospaced" foregroundStyle={th.accent} lineLimit={1}>{`${c.ok} ok · ${c.cookie} cookie · ${c.fail} fail ▌`}</Text>
     </Root>
   )
 }
 
 // ─────────────────────────────────────────────────────────────
-// G 时间线: 按记录时间 (时:分) 分组, 新的在下
+// G 时间线: 按记录时间 (时:分) 分组, 新的在下; 中 4 组, 大 8 组
 // ─────────────────────────────────────────────────────────────
 function groupByTime(entries: Entry[]): { label: string; list: Entry[] }[] {
-  const sorted = [...entries].sort((a, b) => a.t - b.t)
   const out: { label: string; list: Entry[] }[] = []
-  for (const e of sorted) {
+  for (const e of [...entries].sort((a, b) => a.t - b.t)) {
     const label = isToday(e.t) ? hhmm(e.t) : `${timeLabel(e.t)} ${hhmm(e.t)}`
     const last = out[out.length - 1]
     if (last && last.label === label) last.list.push(e)
@@ -136,38 +131,30 @@ function groupByTime(entries: Entry[]): { label: string; list: Entry[] }[] {
 export function TimelineStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, size, entries } = ctx
-  if (!entries.length) return <Root ctx={ctx}><Empty ctx={ctx} text="还没有签到结果" /></Root>
-  const n = size === 'l' ? 9 : size === 'm' ? 4 : 3
-  const groups = groupByTime(entries).slice(-n)
-  const rowH = size === 'l' ? 32 : size === 'm' ? 23 : 30
+  if (!entries.length) return empty(ctx)
+  const groups = groupByTime(entries).slice(size === 'l' ? -8 : -4)
+  const rowH = size === 'l' ? 32 : 23
   return (
     <Root ctx={ctx} spacing={6}>
-      <Header ctx={ctx} title="时间线" right={size === 's' ? undefined : syncText(ctx.snap)} font={size === 's' ? 12 : 13} />
+      <Header ctx={ctx} title="时间线" right={syncText(ctx.snap)} />
       <VStack spacing={0}>
         {groups.map((g, i) => {
           const w = worst(g.list)
-          const names = g.list.map(e => e.name).join(' · ')
           return (
             <HStack spacing={8} frame={{ height: rowH }}>
-              <Text font={11} monospacedDigit foregroundStyle={th.t2} lineLimit={1} frame={{ width: size === 's' ? 36 : 70, alignment: 'leading' }}>
-                {size === 's' ? g.label.slice(-5) : g.label}
-              </Text>
+              <Text font={11} monospacedDigit foregroundStyle={th.t2} lineLimit={1} frame={{ width: 70, alignment: 'leading' }}>{g.label}</Text>
               <ZStack frame={{ width: 10, height: rowH }}>
                 <Rectangle fill={th.track} frame={{ width: 1.5, height: i === groups.length - 1 ? rowH / 2 : rowH }} offset={{ x: 0, y: i === groups.length - 1 ? -rowH / 4 : 0 }} />
                 <Dot color={statusColor(w)} size={9} />
               </ZStack>
-              {size === 's' ? (
-                <Text font={12} foregroundStyle={th.t1} lineLimit={1}>{names}</Text>
-              ) : (
-                <VStack alignment="leading" spacing={0}>
-                  <Text font={13} fontWeight="medium" foregroundStyle={th.t1} lineLimit={1}>{names}</Text>
-                  {size === 'l' ? (
-                    <Text font={11} foregroundStyle={w.s === 'ok' ? th.t2 : statusColor(w)} lineLimit={1}>
-                      {g.list.length === 1 ? (w.s === 'cookie' ? '需重抓' : w.msg) : `${g.list.length} 个脚本`}
-                    </Text>
-                  ) : null}
-                </VStack>
-              )}
+              <VStack alignment="leading" spacing={0}>
+                <Text font={13} fontWeight="medium" foregroundStyle={th.t1} lineLimit={1}>{g.list.map(e => e.name).join(' · ')}</Text>
+                {size === 'l' ? (
+                  <Text font={11} foregroundStyle={w.s === 'ok' ? th.t2 : statusColor(w)} lineLimit={1}>
+                    {g.list.length === 1 ? (w.s === 'cookie' ? '需重抓' : w.msg) : `${g.list.length} 个脚本`}
+                  </Text>
+                ) : null}
+              </VStack>
               <Spacer minLength={0} />
               {size === 'l' && g.list.length === 1 && w.s !== 'ok' ? <ActionPill ctx={ctx} entry={w} /> : null}
             </HStack>
@@ -180,7 +167,7 @@ export function TimelineStyle(props: { ctx: Ctx }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// L 签到小票: 虚线票据, 逐行奖励, 最后合计
+// L 签到小票: 虚线票据, 逐行奖励, 最后合计; 中 3 行, 大 11 行
 // ─────────────────────────────────────────────────────────────
 function DashLine(props: { color: any }) {
   return <Rectangle frame={{ maxWidth: 'infinity', height: 0.5 }} stroke={{ shapeStyle: props.color, strokeStyle: { lineWidth: 1, dash: [3, 3] } }} />
@@ -196,7 +183,7 @@ export function ReceiptStyle(props: { ctx: Ctx }) {
   const c = counts(entries)
   const value = (e: Entry) => (e.s === 'cookie' ? '需重抓' : e.s === 'fail' ? '失败' : firstPart(e.msg) || '已签')
   return (
-    <Root ctx={ctx} spacing={0} padding={size === 's' ? 10 : 12}>
+    <Root ctx={ctx} spacing={0} padding={12}>
       <VStack
         alignment="leading"
         spacing={size === 'l' ? 5 : 3}
@@ -217,7 +204,7 @@ export function ReceiptStyle(props: { ctx: Ctx }) {
             <Text font={font} fontDesign="monospaced" foregroundStyle={e.s === 'ok' ? ink : statusColor(e)} lineLimit={1}>{value(e)}</Text>
           </HStack>
         ))}
-        {entries.length > rows ? <Text font={font - 1} fontDesign="monospaced" foregroundStyle={ink} opacity={0.6}>{`…另 ${entries.length - rows} 项`}</Text> : null}
+        {size === 'l' && entries.length > rows ? <Text font={font - 1} fontDesign="monospaced" foregroundStyle={ink} opacity={0.6}>{`…另 ${entries.length - rows} 项`}</Text> : null}
         <Spacer minLength={0} />
         <DashLine color={ink} />
         <HStack>
@@ -231,16 +218,12 @@ export function ReceiptStyle(props: { ctx: Ctx }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// P 聚光灯: 每次刷新轮换一个脚本的大卡片
+// P 聚光灯: 每次刷新轮换一个脚本的大卡片; 小、中
 // ─────────────────────────────────────────────────────────────
-function SpotCard(props: { ctx: Ctx; entry: Entry; num: number }) {
+function SpotCard(props: { ctx: Ctx; entry: Entry; num: number; fill: boolean }) {
   const { ctx, entry: e } = props
   const { th } = ctx
-  const b = brand(e.key)
   const bad = e.s === 'cookie'
-  const fill = bad ? th.badBg : th.color ? b.bg : th.card
-  const sub = bad ? th.badFg : th.color ? b.fg : th.t2
-  const main = bad ? th.badFg : th.color ? '#FFFFFF' : th.t1
   const a = e.asset ? splitAsset(e.asset) : null
   const parts = e.msg.split(' · ')
   return (
@@ -249,17 +232,17 @@ function SpotCard(props: { ctx: Ctx; entry: Entry; num: number }) {
       spacing={0}
       padding={12}
       frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'topLeading' }}
-      background={<RoundedRectangle cornerRadius={14} fill={fill} />}
+      background={props.fill ? <RoundedRectangle cornerRadius={14} fill={bad ? th.badBg : th.card} /> : undefined}
     >
       <HStack>
         <AppIcon entry={e} size={30} />
         <Spacer />
-        <Text font={11} foregroundStyle={sub} lineLimit={1}>{parts[1] ?? ''}</Text>
+        <Text font={11} foregroundStyle={th.t2} lineLimit={1}>{parts[1] ?? ''}</Text>
       </HStack>
       <Spacer minLength={4} />
-      <Text font={12} foregroundStyle={sub} lineLimit={1}>{a?.unit ? `${e.name} · ${a.unit}` : e.name}</Text>
-      <Num value={bad ? '需重抓' : e.s === 'fail' ? '失败' : a ? a.num : '已签'} size={props.num} weight="bold" color={e.s === 'fail' ? WARN : main} />
-      <Text font={12} foregroundStyle={sub} lineLimit={1}>{e.s === 'ok' ? `今日 ${parts[0]}` : e.msg}</Text>
+      <Text font={12} foregroundStyle={th.t2} lineLimit={1}>{a?.unit ? `${e.name} · ${a.unit}` : e.name}</Text>
+      <Num value={bad ? '需重抓' : e.s === 'fail' ? '失败' : a ? a.num : '已签'} size={props.num} weight="bold" color={e.s === 'fail' ? WARN : bad ? th.badFg : th.t1} />
+      <Text font={11} foregroundStyle={th.t2} lineLimit={1}>{`${e.s === 'ok' ? `今日 ${parts[0]}` : e.msg} · ${hhmm(ctx.snap.fetchedAt)}`}</Text>
     </VStack>
   )
 }
@@ -267,43 +250,32 @@ function SpotCard(props: { ctx: Ctx; entry: Entry; num: number }) {
 export function SpotlightStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, size, entries } = ctx
-  if (!entries.length) return <Root ctx={ctx}><Empty ctx={ctx} text="还没有签到结果" /></Root>
+  if (!entries.length) return empty(ctx)
   const i = ctx.spot % entries.length
   const e = entries[i]
   const next = [...entries.slice(i + 1), ...entries.slice(0, i)]
   if (size === 's') {
-    const b = brand(e.key)
-    // 小号整张卡就是聚光灯卡
     return (
-      <Root ctx={ctx} bg={e.s === 'cookie' ? th.badBg : th.color ? b.bg : undefined} padding={0} spacing={0}>
-        <SpotCard ctx={ctx} entry={e} num={34} />
-      </Root>
-    )
-  }
-  if (size === 'm') {
-    return (
-      <Root ctx={ctx}>
-        <HStack spacing={12} frame={{ maxHeight: 'infinity' }}>
-          <SpotCard ctx={ctx} entry={e} num={30} />
-          <VStack alignment="leading" spacing={6} frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'topLeading' }}>
-            <Text font={11} foregroundStyle={th.t3}>接下来</Text>
-            {next.slice(0, 3).map(x => <EntryRow ctx={ctx} entry={x} icon={20} font={12} />)}
-          </VStack>
-        </HStack>
+      <Root ctx={ctx} tone={e.s === 'cookie' ? 'bad' : undefined} padding={2} spacing={0}>
+        <SpotCard ctx={ctx} entry={e} num={32} fill={false} />
       </Root>
     )
   }
   return (
-    <Root ctx={ctx} spacing={10}>
-      <VStack frame={{ height: 170 }}><SpotCard ctx={ctx} entry={e} num={44} /></VStack>
-      <VStack spacing={7}>{next.slice(0, 5).map(x => <EntryRow ctx={ctx} entry={x} icon={24} font={13} />)}</VStack>
-      <Spacer minLength={0} />
+    <Root ctx={ctx}>
+      <HStack spacing={12} frame={{ maxHeight: 'infinity' }}>
+        <SpotCard ctx={ctx} entry={e} num={28} fill />
+        <VStack alignment="leading" spacing={6} frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'topLeading' }}>
+          <Text font={11} foregroundStyle={th.t3}>接下来</Text>
+          {next.slice(0, 3).map(x => <EntryRow ctx={ctx} entry={x} icon={20} font={12} />)}
+        </VStack>
+      </HStack>
     </Root>
   )
 }
 
 // ─────────────────────────────────────────────────────────────
-// S 签到天气: 全部成功晴, 有失败雨, 需重抓 ≥ 3 雷暴
+// S 签到天气: 全部成功晴, 有失败雨, 需重抓 ≥ 3 雷暴; 小、中
 // ─────────────────────────────────────────────────────────────
 function weatherOf(list: Entry[]): { sym: string; name: string; color: string } {
   const c = counts(list)
@@ -313,76 +285,43 @@ function weatherOf(list: Entry[]): { sym: string; name: string; color: string } 
   return { sym: 'sun.max.fill', name: '晴', color: '#FFD60A' }
 }
 
-function weatherSub(list: Entry[]): string {
-  const c = counts(list)
-  const bits = [`${c.ok}/${list.length} 成功`]
-  if (c.cookie) bits.push(`${c.cookie} 处需重抓`)
-  if (c.fail) bits.push(`${c.fail} 处失败`)
-  return bits.join(' · ')
-}
-
 export function WeatherStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, size, entries } = ctx
-  if (!entries.length) return <Root ctx={ctx}><Empty ctx={ctx} text="还没有签到结果" /></Root>
+  if (!entries.length) return empty(ctx)
   const w = weatherOf(entries)
-  const now = (big: number) => (
+  const c = counts(entries)
+  const sub = [`${c.ok}/${entries.length} 成功`, c.cookie ? `${c.cookie} 处需重抓` : '', c.fail ? `${c.fail} 处失败` : ''].filter(Boolean).join(' · ')
+  const now = (
     <VStack alignment="leading" spacing={2}>
-      <Image systemName={w.sym} font={big} foregroundStyle={w.color} />
-      <Text font={big * 0.8} fontWeight="bold" foregroundStyle={th.t1}>{w.name}</Text>
-      <Text font={11} foregroundStyle={th.t2} lineLimit={2}>{weatherSub(entries)}</Text>
+      <Image systemName={w.sym} font={30} foregroundStyle={w.color} />
+      <Text font={24} fontWeight="bold" foregroundStyle={th.t1}>{w.name}</Text>
+      <Text font={11} foregroundStyle={th.t2} lineLimit={1} minScaleFactor={0.7}>{sub}</Text>
     </VStack>
   )
+  const time = <Text font={10} foregroundStyle={th.t3}>{syncText(ctx.snap)}</Text>
+  if (size === 's') return <Root ctx={ctx}>{now}<Spacer />{time}</Root>
   const problems = entries.filter(isProblem)
-  if (size === 's') return <Root ctx={ctx}>{now(38)}<Spacer /><Text font={11} foregroundStyle={th.t3}>{syncText(ctx.snap)}</Text></Root>
-  if (size === 'm') {
-    return (
-      <Root ctx={ctx}>
-        <HStack spacing={14} frame={{ maxHeight: 'infinity' }}>
-          {now(34)}
-          <VStack alignment="leading" spacing={6} frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'topLeading' }}>
-            <Text font={11} foregroundStyle={th.t3}>预报</Text>
-            {(problems.length ? problems : entries).slice(0, 3).map(e => (
-              <HStack spacing={6}>
-                <Image systemName={e.s === 'cookie' ? 'cloud.bolt.fill' : e.s === 'fail' ? 'cloud.rain.fill' : 'sun.max.fill'} font={13} foregroundStyle={e.s === 'ok' ? '#FFD60A' : statusColor(e)} />
-                <Text font={13} foregroundStyle={th.t1} lineLimit={1}>{e.name}</Text>
-                <Spacer minLength={2} />
-                <Text font={11} foregroundStyle={th.t2} lineLimit={1}>{e.s === 'ok' ? firstPart(e.msg) : e.msg}</Text>
-              </HStack>
-            ))}
-          </VStack>
-        </HStack>
-      </Root>
-    )
-  }
-  // 大号: 按小时的「逐时预报」
-  const hours: { hour: number; list: Entry[] }[] = []
-  for (const e of [...entries].filter(x => isToday(x.t)).sort((a, b) => a.t - b.t)) {
-    const hour = new Date(e.t).getHours()
-    const last = hours[hours.length - 1]
-    if (last && last.hour === hour) last.list.push(e)
-    else hours.push({ hour, list: [e] })
-  }
   return (
-    <Root ctx={ctx} spacing={12}>
-      <HStack>{now(44)}<Spacer /><Text font={11} foregroundStyle={th.t3}>{syncText(ctx.snap)}</Text></HStack>
-      <Card ctx={ctx} padding={{ horizontal: 8, vertical: 8 }}>
-        <HStack spacing={0}>
-          {hours.slice(-6).map(x => {
-            const hw = weatherOf(x.list)
-            return (
-              <VStack spacing={4} frame={{ maxWidth: 'infinity' }}>
-                <Text font={11} foregroundStyle={th.t2}>{`${x.hour}时`}</Text>
-                <Image systemName={hw.sym} font={18} foregroundStyle={hw.color} />
-                <Text font={12} monospacedDigit foregroundStyle={th.t1}>{String(x.list.length)}</Text>
-              </VStack>
-            )
-          })}
-        </HStack>
-      </Card>
-      <VStack spacing={7}>{problems.slice(0, 4).map(e => <EntryRow ctx={ctx} entry={e} icon={24} sub buttons />)}</VStack>
-      <Spacer minLength={0} />
+    <Root ctx={ctx}>
+      <HStack spacing={14} frame={{ maxHeight: 'infinity' }}>
+        <VStack alignment="leading" frame={{ maxHeight: 'infinity', alignment: 'topLeading' }}>
+          {now}
+          <Spacer minLength={0} />
+          {time}
+        </VStack>
+        <VStack alignment="leading" spacing={6} frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'topLeading' }}>
+          <Text font={11} foregroundStyle={th.t3}>预报</Text>
+          {(problems.length ? problems : entries).slice(0, 3).map(e => (
+            <HStack spacing={6}>
+              <Image systemName={e.s === 'cookie' ? 'cloud.bolt.fill' : e.s === 'fail' ? 'cloud.rain.fill' : 'sun.max.fill'} font={13} foregroundStyle={e.s === 'ok' ? '#FFD60A' : statusColor(e)} />
+              <Text font={13} foregroundStyle={th.t1} lineLimit={1}>{e.name}</Text>
+              <Spacer minLength={2} />
+              <Text font={11} foregroundStyle={th.t2} lineLimit={1}>{e.s === 'ok' ? firstPart(e.msg) : e.msg}</Text>
+            </HStack>
+          ))}
+        </VStack>
+      </HStack>
     </Root>
   )
 }
-

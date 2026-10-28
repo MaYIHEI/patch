@@ -5,7 +5,7 @@ import { AppIntentManager, AppIntentProtocol, Widget, ControlWidget } from 'scri
 
 import { loadSnapshot, runCheckin, markRetrying } from './api'
 import { recordSnapshot } from './history'
-import { findPreset } from './presets'
+import { getDisplay } from './settings'
 import { select } from './api'
 import { liveStateOf } from './styles/live'
 import { startOrRefresh } from './live_activity'
@@ -15,14 +15,14 @@ const AppStorage = Storage as unknown as {
   set(key: string, value: unknown): void
 }
 
-export const pageKey = (preset: string) => `checkin.page.${preset}`
+export const PAGE_KEY = 'checkin.page'
 
 /** Q 翻页: 页码存 Storage, 小组件重绘时读 */
 export const PageIntent = AppIntentManager.register({
   name: 'CheckinPageIntent',
   protocol: AppIntentProtocol.AppIntent,
-  perform: async ({ preset, delta }: { preset: string; delta: number }) => {
-    AppStorage.set(pageKey(preset), (AppStorage.get<number>(pageKey(preset)) ?? 0) + delta)
+  perform: async ({ delta }: { delta: number }) => {
+    AppStorage.set(PAGE_KEY, (AppStorage.get<number>(PAGE_KEY) ?? 0) + delta)
     Widget.reloadAll()
   },
 })
@@ -61,8 +61,8 @@ export const LiveRefreshIntent = AppIntentManager.register({
   perform: async (_: undefined) => {
     const snap = await loadSnapshot()
     recordSnapshot(snap)
-    const preset = findPreset(undefined)
-    await startOrRefresh(liveStateOf(select(snap.entries, preset.keys, preset.problemsFirst)))
+    const d = getDisplay()
+    await startOrRefresh(liveStateOf(select(snap.entries, d.keys, d.problemsFirst)))
     Widget.reloadAll()
     ControlWidget.reloadButtons()
   },
