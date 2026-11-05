@@ -1,0 +1,26 @@
+{
+  "name": "Loon Panel",
+  "version": "0.1.0",
+  "description": "Airport subscription usage, node health check and one-tap switching for Loon",
+  "author": {
+    "name": "MaYIHEI",
+    "email": "MaYIHEI@github.com",
+    "homepage": "https://github.com/MaYIHEI"
+  },
+  "entry": "index.tsx",
+  "icon": "gauge.with.dots.needle.67percent",
+  "color": "rgba(10, 132, 255, 1)",
+  "runInApp": false,
+  "contributors": [],
+  "remoteResource": "https://www.imarkr.com/api/github/download/MaYIHEI/patch/scripting/loon-panel.zip",
+  "iconImage": null,
+  "intentInputTypes": [],
+  "localizedNames": {
+    "en": "Loon Panel",
+    "zh": "Loon 面板"
+  },
+  "localizedDescriptions": {
+    "en": "Airport usage trends and forecasts, node latency and exit checks, and mode / node switching for Loon.",
+    "zh": "机场用量趋势和预测、节点延迟与出口体检、Loon 模式和节点切换。"
+  }
+}
