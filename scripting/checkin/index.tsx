@@ -52,7 +52,7 @@ import {
   type Snapshot,
 } from './api'
 import {
-  getData, setData, getDisplay, setDisplay, getLook, setLook, getDefaults, setDefault,
+  getData, setData, getDisplay, setDisplay, getLook, setLook, getDefaults, setDefault, dropLegacy, getRemote, setRemote,
   DEFAULT_LOOK, DEFAULT_HOST, RECOMMENDED_BG, RECOMMENDED_ACCENT, SUMMARY_URL,
   type DataPrefs, type Look, type Family, type Source,
 } from './settings'
@@ -65,7 +65,7 @@ import {
   liveStateOf, LiveBanner, LiveCompactLeading, LiveCompactTrailing, LiveMinimal,
   LiveExpandedLeading, LiveExpandedTrailing, LiveExpandedCenter, LiveExpandedBottom,
 } from './styles/live'
-import { startOrRefresh } from './live_activity'
+import { startOrRefresh, prepareRemote } from './live_activity'
 
 declare const Safari: { openURL(url: string): Promise<boolean> }
 
@@ -76,6 +76,7 @@ const LOON_IMPORT = `loon://import?plugin=${encodeURIComponent(PLUGIN_URL)}`
 const BG_PATH = () => Path.join(FileManager.appGroupDocumentsDirectory, 'checkin', 'background.jpg')
 
 async function main() {
+  dropLegacy()
   await Navigation.present({ element: <Home /> })
   Script.exit()
 }
@@ -920,6 +921,10 @@ function SettingsPage(props: Shared & { onChanged: () => void }) {
         <Button title="结束实时活动" action={async () => { await LiveActivity.endAllActivities({ dismissTimeInterval: 0 }); setLiveText('已结束') }} />
       </Section>
 
+      <Section header={<Text>自动刷新</Text>} footer={<Text>Loon 签到跑完后自动刷新桌面小组件, 并在锁屏弹出或更新实时活动。需要 Scripting 的 Remote Push。</Text>}>
+        <NavigationLink destination={<AutoRefreshPage />}><Text>设置自动刷新</Text></NavigationLink>
+      </Section>
+
       <Section header={<Text>控制中心按钮</Text>}>
         <Text font={13} foregroundStyle="secondaryLabel">{'控制中心 → 左上角 + → 添加控制 → Scripting → checkin。点一下会读数据、刷新小组件, 并开启或刷新实时活动。'}</Text>
       </Section>
@@ -952,6 +957,137 @@ function SettingsPage(props: Shared & { onChanged: () => void }) {
         <LabeledContent label={<Text>版本</Text>} value={version} />
         <Button title={updateText ? `检查更新 · ${updateText}` : '检查更新'} action={checkUpdate} />
         <NavigationLink destination={<ProtocolPage />}><Text>签到协议 · 给脚本作者</Text></NavigationLink>
+      </Section>
+    </Form>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// 自动刷新 (Remote Updates): 接收端准备 + 给 Loon 的参数; 推送由 paperclip 汇总脚本发
+// 发送密钥只在复制那一刻经手, 不保存; 主密钥不进脚本
+// ─────────────────────────────────────────────────────────────
+type WidgetTarget = { id: string; parameter: string; status: string }
+
+function AutoRefreshPage() {
+  const [major, minor] = (Device.systemVersion || '0').split('.').map(Number)
+  const widgetOK = major >= 26                                  // 小组件远程刷新: iOS 26+
+  const startOK = major > 17 || (major === 17 && (minor || 0) >= 2)   // 远程启动实时活动: iOS 17.2+
+  const [widgetNote, setWidgetNote] = useState('')
+  const [targets, setTargets] = useState<WidgetTarget[]>([])
+  const [remote, setRemoteState] = useState(getRemote())
+  const [liveNote, setLiveNote] = useState('')
+  const [copyNote, setCopyNote] = useState('')
+  const err = (e: unknown) => (e as Error)?.message ?? String(e)
+
+  async function enableWidgets() {
+    setWidgetNote('授权中...')
+    try {
+      await Widget.remoteUpdates.enable()
+      setWidgetNote('已授权, 接着在桌面小组件里打开 Remote Updates')
+    } catch (e) {
+      setWidgetNote(`授权失败: ${err(e)}`)
+    }
+  }
+
+  async function loadTargets() {
+    setWidgetNote('读取中...')
+    try {
+      const list: any[] = await Widget.remoteUpdates.listTargets()
+      setTargets(list.map(t => ({ id: String(t?.targetId ?? ''), parameter: String(t?.parameter ?? t?.selector?.parameter ?? ''), status: String(t?.status ?? '') })))
+      setWidgetNote(list.length ? '' : '还没有 target: 确认桌面小组件的配置里已打开 Remote Updates')
+    } catch (e) {
+      setWidgetNote(`读取失败: ${err(e)}`)
+    }
+  }
+
+  async function prepare() {
+    setLiveNote('准备中...')
+    try {
+      const r = await prepareRemote()
+      const info = { startTargetId: r.startTargetId, templateVersion: r.templateVersion, status: r.status }
+      setRemote(info)
+      setRemoteState(info)
+      setLiveNote(r.status === 'ready' ? '已就绪' : `状态「${r.status || '未知'}」, 过一会儿再点一次。原始返回: ${r.raw}`)
+    } catch (e) {
+      setLiveNote(`准备失败: ${err(e)}`)
+    }
+  }
+
+  async function copy() {
+    const key = await Dialog.prompt({
+      title: '粘贴发送密钥',
+      message: '在 Remote Updates 里为下面的 target 生成的 Sender Key。只用于这次复制, 不会保存在 Scripting。',
+      placeholder: '发送密钥 (不是主密钥)',
+      obscureText: true,
+    })
+    if (!key?.trim()) return
+    // 复制时现场读一次, 不依赖页面上有没有点过「读取」
+    let widgetIds: string[] = []
+    if (widgetOK) {
+      try {
+        const list: any[] = await Widget.remoteUpdates.listTargets()
+        widgetIds = list.filter(t => t?.targetId && t?.status !== 'disabled').map(t => String(t.targetId))
+      } catch (e) {
+        setCopyNote(`读取小组件 target 失败: ${err(e)}`)
+        return
+      }
+    }
+    const remote = getRemote()
+    const lines = [
+      `push_key=${key.trim()}`,
+      `widget_targets=${widgetIds.join(',')}`,
+      `activity_start_target=${remote.startTargetId}`,
+      `template_version=${remote.templateVersion}`,
+    ]
+    await Pasteboard.setString(lines.join('\n'))
+    setCopyNote(`已复制 ${widgetIds.length} 个小组件 target${remote.startTargetId ? ' 和实时活动' : ''}; 发送密钥没有保存`)
+  }
+
+  return (
+    <Form navigationTitle="自动刷新" navigationBarTitleDisplayMode="inline">
+      <Section footer={<Text>{`小组件远程刷新要 iOS 26+, 远程启动实时活动要 iOS 17.2+, 当前 iOS ${Device.systemVersion}。远程刷新和推送通知共用 Remote Push 每日额度 (按 UTC 天计, 每台设备分别计), Loon 每跑一次汇总消耗一次。推送送达后什么时候刷新由系统决定。`}</Text>}>
+        <Text>{'1. Scripting → 工具 → Remote Push, 点 Set Up Remote Push 连接这台设备 (已连接可跳过)'}</Text>
+      </Section>
+
+      {widgetOK ? (
+        <Section header={<Text>桌面小组件</Text>} footer={widgetNote ? <Text>{widgetNote}</Text> : <Text>不同参数的小组件是不同的 target, 每个都要在配置里打开 Remote Updates; 同一参数的多个小组件共用一个。</Text>}>
+          <Button title="2. 授权小组件远程刷新" action={enableWidgets} />
+          <Text>{'3. 长按桌面 checkin 小组件 → 编辑小组件 → 打开 Remote Updates'}</Text>
+          <Button title="4. 读取小组件 target" action={loadTargets} />
+          {targets.map(t => (
+            <VStack alignment="leading" spacing={2}>
+              <HStack>
+                <Text>{t.parameter ? `参数「${t.parameter}」` : '未填参数'}</Text>
+                <Spacer />
+                <Text font={12} foregroundStyle={t.status === 'ready' ? OK : WARN}>{t.status || '-'}</Text>
+              </HStack>
+              <Text font={11} fontDesign="monospaced" foregroundStyle="secondaryLabel">{t.id}</Text>
+            </VStack>
+          ))}
+        </Section>
+      ) : (
+        <Section header={<Text>桌面小组件</Text>}><Text foregroundStyle="secondaryLabel">{`小组件远程刷新需要 iOS 26, 当前 iOS ${Device.systemVersion}, 暂时不能用。`}</Text></Section>
+      )}
+
+      {startOK ? (
+        <Section header={<Text>实时活动</Text>} footer={<Text>{liveNote || '准备后 Loon 签到完就能在锁屏弹出实时活动; 不会马上启动。改了 checkin 版本后要重新准备, template_version 会变。'}</Text>}>
+          <Button title="5. 准备远程启动实时活动" action={prepare} />
+          {remote.startTargetId ? <LabeledContent label={<Text>start target</Text>}><Text font={11} fontDesign="monospaced">{remote.startTargetId}</Text></LabeledContent> : null}
+          {remote.templateVersion ? <LabeledContent label={<Text>template</Text>}><Text font={11} fontDesign="monospaced">{remote.templateVersion}</Text></LabeledContent> : null}
+          {remote.status ? <LabeledContent label={<Text>状态</Text>} value={remote.status} /> : null}
+        </Section>
+      ) : (
+        <Section header={<Text>实时活动</Text>}><Text foregroundStyle="secondaryLabel">{`远程启动实时活动需要 iOS 17.2, 当前 iOS ${Device.systemVersion}, 暂时不能用。`}</Text></Section>
+      )}
+
+      <Section header={<Text>发送密钥</Text>} footer={<Text>只给 Loon 这几项权限; 不要用主密钥, 也不要把密钥发给别人。</Text>}>
+        <Text>{'6. Scripting → 工具 → Remote Push → Remote Updates, 选中上面的小组件 target 和实时活动 start target, 点 Create Sender Key'}</Text>
+        <Text font={13} fontDesign="monospaced" foregroundStyle="secondaryLabel">{'widgets:reload\nactivities:start\nactivities:read-state\nactivities:update\nactivities:end'}</Text>
+        <Text font={12} foregroundStyle="secondaryLabel">{'权限只勾这五项, 并允许更新「由这个密钥创建的活动」(created_from)。read-state 是更新实时活动时读当前版本号要用的。'}</Text>
+      </Section>
+
+      <Section footer={<Text>{copyNote || '粘贴发送密钥后, 把 push_key / widget_targets / activity_start_target / template_version 四项拼好放进剪贴板, 到 Loon 签到合集插件的参数里粘贴。'}</Text>}>
+        <Button title="7. 复制 Loon 插件参数" action={copy} />
       </Section>
     </Form>
   )
