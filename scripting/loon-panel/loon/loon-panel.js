@@ -1,42 +1,81 @@
 // Loon 面板 · 给 Scripting 小组件提供数据
-// 定时任务: 节点体检 (各策略组当前选中的节点 + 插件参数里指定策略组的全部节点), 结果写进 $persistentStore
-// 请求 http://1.1.1.1/loon-panel/data: 返回模式、策略组、当前节点、体检结果
-// 请求 http://1.1.1.1/loon-panel/set?mode=0|1|2 或 ?group=…&node=…: 切换后复测当前节点, 返回最新状态; 不带参数只复测当前节点
+// 定时任务 / 网络切换: 节点体检 (各策略组当前节点 + 插件参数里指定策略组的全部节点)、直连出口、解锁检测、
+//   锁定的策略组被还原就改回来、当前节点挂了发通知或自动切换, 结果写进 $persistentStore, 跑完可推送刷新小组件
+// 请求 http://1.1.1.1/loon-panel/data: 返回模式、策略组、体检结果、解锁、事件记录等
+// 请求 http://1.1.1.1/loon-panel/set: ?mode=0|1|2 切模式; ?group=…&node=… 切节点; ?group=…&node=…&lock=1 锁定, ?group=…&lock=0 解锁; 不带参数只复测
+// 请求 http://1.1.1.1/loon-panel/deep?node=…: 对节点跑一次深度检测 (加 &speed=1 同时测速)
 
+const VERSION = '0.2.0'
 const STORE_KEY = 'loon_panel'
+const CORE_KEY = 'loon_panel_core'
+// 检测核心库 (paperclip ipquality-web-test), 解锁和深度检测都用它, 这里不另写一份
+const CORE_URL = 'https://raw.githubusercontent.com/MaYIHEI/paperclip/refs/heads/testing/loon/ipquality-web-test/ipquality-core.js'
+const CORE_TTL = 86400000
+
 const ARG = typeof $argument === 'object' && $argument ? $argument : {}
+const flagOf = (v, fallback) => (v === undefined || v === null || v === '' ? fallback : v === true || v === 'true')
 const TEST_URL = ARG.test_url || 'http://www.gstatic.com/generate_204'
 const IP_URL = ARG.ip_url || 'https://api.ipify.org'
 const TIMEOUT = Number(ARG.timeout) > 0 ? Number(ARG.timeout) : 3000
 const FULL_GROUPS = String(ARG.groups || '').split(/[,，]/).map(s => s.trim()).filter(Boolean)
+const NOTIFY = flagOf(ARG.notify, true)
+const AUTO_SWITCH = flagOf(ARG.auto_switch, false)
+const NET_RETEST = flagOf(ARG.net_retest, true)
+const PUSH_KEY = String(ARG.push_key || '').trim()
+const PUSH_TARGETS = String(ARG.widget_targets || '').split(/[,，\s]+/).filter(Boolean)
+
 const CRON_BUDGET = 100000   // 插件里定时任务 timeout=120 秒, 留余量
 const REQ_BUDGET = 20000     // 操作地址 timeout=30 秒, 小组件按钮也等不了太久
+const DEEP_BUDGET = 75000    // 深度检测地址 timeout=90 秒
 const KEEP_MS = 3 * 86400000 // 3 天没再测的节点从结果里删掉
+const HISTORY = 24           // 每个节点保留最近 24 次
+const FAIL_LIMIT = 3         // 连续几次超时算挂了
+const MEDIA_EVERY = 6 * 3600000  // 同一节点的解锁结果 6 小时内不重测
+const MEDIA_PER_RUN = 3
+const EVENTS = 40
+const DEEP_KEEP = 6
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+const clean = v => (v === undefined || v === null ? '' : String(v).trim())
 
 // ─────────────────────────────────────────────────────────────
-// 配置
+// 配置. Loon 有时把值再包一层 JSON 字符串, 空值是字符串 "null"
 // ─────────────────────────────────────────────────────────────
+function decode(v) {
+  if (typeof v !== 'string') return v === undefined || v === null ? '' : v
+  const s = v.trim()
+  if (!s || s === 'null' || s === 'undefined') return ''
+  if (s[0] === '"' || s[0] === '[' || s[0] === '{') {
+    try { return decode(JSON.parse(s)) } catch (e) { return s }
+  }
+  return s
+}
+
 function readConfig() {
-  try { return JSON.parse($config.getConfig() || '{}') } catch (e) { return {} }
+  try {
+    const c = decode($config.getConfig())
+    return c && typeof c === 'object' ? c : {}
+  } catch (e) {
+    return {}
+  }
 }
 
 const nameOf = x => (typeof x === 'string' ? x : x && typeof x.name === 'string' ? x.name : '')
 
 function groupNames(conf) {
-  const list = Array.isArray(conf.all_policy_groups) ? conf.all_policy_groups : []
-  return list.map(nameOf).filter(Boolean)
+  if (Array.isArray(conf.all_policy_groups)) return conf.all_policy_groups.map(nameOf).filter(Boolean)
+  return Object.keys(conf.policy_select || {})
 }
 
-/** 策略组的可选项; 文档说名字不对时可能一直不回调, 3 秒兜底 */
-function subPolicies(group) {
+/** 文档说名字不对时可能一直不回调, 3 秒兜底 */
+function callSubs(fn, group) {
   return new Promise(resolve => {
     let done = false
     const finish = v => { if (!done) { done = true; resolve(v) } }
     setTimeout(() => finish([]), 3000)
     try {
-      $config.getSubPolicies(group, text => {
-        let list = []
-        try { list = text ? JSON.parse(text) : [] } catch (e) { list = [] }
+      fn.call($config, group, text => {
+        const list = decode(text)
         finish((Array.isArray(list) ? list : []).map(nameOf).filter(Boolean))
       })
     } catch (e) {
@@ -45,15 +84,20 @@ function subPolicies(group) {
   })
 }
 
-/** 一路往下找到真正的节点: 策略组选中的可能还是策略组 */
-function leafOf(name, groupSet) {
-  let cur = name
-  for (let i = 0; i < 8 && groupSet.has(cur); i++) {
-    const next = $config.getSelectedPolicy(cur)
-    if (!next) break
-    cur = next
-  }
-  return cur
+/** 两种拼写都试: 有人实测 getSubPolicies 拿不到, 旧名 getSubPolicys 能拿到 */
+async function subPolicies(group) {
+  const list = $config.getSubPolicies ? await callSubs($config.getSubPolicies, group) : []
+  return list.length || !$config.getSubPolicys ? list : callSubs($config.getSubPolicys, group)
+}
+
+const isBuiltin = n => /^(DIRECT|REJECT)/i.test(n)
+
+/** 当前选择: 没被手动选过的策略组可能读不到, 依次看 policy_select、旧接口, 最后取第一个真实成员 */
+function selectedOf(name, conf, subs) {
+  let v = nameOf(decode($config.getSelectedPolicy(name)))
+  if (!v && conf.policy_select) v = nameOf(conf.policy_select[name])
+  if (!v && $config.getPolicy) v = nameOf(decode($config.getPolicy(name)))
+  return v || subs.find(n => !isBuiltin(n)) || subs[0] || ''
 }
 
 async function readState() {
@@ -61,8 +105,16 @@ async function readState() {
   const names = groupNames(conf)
   const set = new Set(names)
   const subs = await Promise.all(names.map(subPolicies))
-  const groups = names.map((name, i) => ({ name, now: $config.getSelectedPolicy(name) || '', leaf: leafOf(name, set), subs: subs[i] }))
-  return { conf, set, groups }
+  const now = {}
+  names.forEach((n, i) => { now[n] = selectedOf(n, conf, subs[i]) })
+  /** 一路往下找到真正的节点: 策略组选中的可能还是策略组 */
+  const leafOf = name => {
+    let cur = name
+    for (let i = 0; i < 8 && set.has(cur) && now[cur]; i++) cur = now[cur]
+    return cur
+  }
+  const groups = names.map((name, i) => ({ name, now: now[name], leaf: leafOf(name), subs: subs[i] }))
+  return { conf, set, groups, leafOf }
 }
 
 const testable = name => !!name && !/^REJECT/i.test(name)
@@ -70,6 +122,40 @@ const testable = name => !!name && !/^REJECT/i.test(name)
 function uniq(list) {
   const seen = new Set()
   return list.filter(x => testable(x) && !seen.has(x) && seen.add(x))
+}
+
+/** 各策略组当前选中的节点; 一路下来还停在策略组上的 (没有选中项) 不测 */
+const leaves = state => uniq(state.groups.map(g => g.leaf).filter(n => !state.set.has(n)))
+
+// ─────────────────────────────────────────────────────────────
+// 存储、事件、通知
+// ─────────────────────────────────────────────────────────────
+function readStore() {
+  let s = {}
+  try { s = JSON.parse($persistentStore.read(STORE_KEY) || '{}') } catch (e) { s = {} }
+  if (!s || typeof s !== 'object') s = {}
+  for (const k of ['nodes', 'media', 'deep', 'locks']) if (!s[k] || typeof s[k] !== 'object') s[k] = {}
+  if (!Array.isArray(s.events)) s.events = []
+  return s
+}
+
+function writeStore(store) {
+  const now = Date.now()
+  for (const k of Object.keys(store.nodes)) if (!store.nodes[k] || !(now - store.nodes[k].t < KEEP_MS)) delete store.nodes[k]
+  for (const k of Object.keys(store.media)) if (!store.media[k] || !(now - store.media[k].t < KEEP_MS)) delete store.media[k]
+  const deep = Object.keys(store.deep).sort((a, b) => store.deep[b].t - store.deep[a].t)
+  for (const k of deep.slice(DEEP_KEEP)) delete store.deep[k]
+  store.events = store.events.slice(-EVENTS)
+  $persistentStore.write(JSON.stringify(store), STORE_KEY)
+}
+
+/** k: net 切网络 / fail 节点挂了 / switch 自动切换 / lock 改回锁定 */
+function addEvent(store, k, msg) {
+  store.events.push({ t: Date.now(), k, msg })
+}
+
+function notify(title, content) {
+  if (NOTIFY) $notification.post('Loon 面板', title, content)
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -94,7 +180,12 @@ function pickIP(data) {
   return text.length <= 45 && /^[0-9a-f:.]+$/i.test(text) && /[.:]/.test(text) ? text : ''
 }
 
-const clean = v => (v === undefined || v === null ? '' : String(v).trim())
+function exitInfo(r, ip) {
+  r.ip = ip
+  r.cc = clean($utils.geoip(ip)).toUpperCase()
+  r.asn = clean($utils.ipasn(ip))
+  r.org = clean($utils.ipaso(ip))
+}
 
 async function probe(node) {
   const r = { t: Date.now(), ok: false, ms: 0 }
@@ -107,45 +198,159 @@ async function probe(node) {
   r.ms = a.ms
   const b = await get(IP_URL, node)
   const ip = b.error ? '' : pickIP(b.data)
-  if (ip) {
-    r.ip = ip
-    r.cc = clean($utils.geoip(ip)).toUpperCase()
-    r.asn = clean($utils.ipasn(ip))
-    r.org = clean($utils.ipaso(ip))
-  }
+  if (ip) exitInfo(r, ip)
   return r
 }
 
-function readStore() {
-  try {
-    const s = JSON.parse($persistentStore.read(STORE_KEY) || '{}')
-    return s && typeof s === 'object' ? s : {}
-  } catch (e) {
-    return {}
-  }
-}
-
-/** 逐个测, 快到时限就停, 剩下的下次再测 */
-async function runChecks(targets, budget) {
-  const store = readStore()
-  const nodes = store.nodes && typeof store.nodes === 'object' ? store.nodes : {}
+/** 逐个测, 快到时限就停, 剩下的下次再测; 在用的节点失败时连试 3 次, 免得偶发超时就报警 */
+async function runChecks(store, targets, current, budget) {
   const start = Date.now()
   let tested = 0
   for (const name of targets) {
     if (Date.now() - start + 2 * TIMEOUT > budget) break
-    nodes[name] = await probe(name)
+    const prev = store.nodes[name] || {}
+    let r = await probe(name)
+    let fails = r.ok ? 0 : 1
+    for (let i = 1; !r.ok && current.has(name) && i < FAIL_LIMIT && Date.now() - start + 2 * TIMEOUT <= budget; i++) {
+      r = await probe(name)
+      fails = r.ok ? 0 : fails + 1
+    }
+    r.h = (prev.h || []).concat(r.ok ? r.ms : -1).slice(-HISTORY)
+    r.fail = r.ok ? 0 : (prev.fail || 0) + fails
+    if (!r.ok && prev.alerted) r.alerted = true
+    store.nodes[name] = r
     tested++
   }
   const now = Date.now()
-  for (const k of Object.keys(nodes)) if (!nodes[k] || !(now - nodes[k].t < KEEP_MS)) delete nodes[k]
-  store.nodes = nodes
   store.check = { t: now, took: now - start, tested, total: targets.length }
-  $persistentStore.write(JSON.stringify(store), STORE_KEY)
-  return store
 }
 
-/** 各策略组当前选中的节点; 一路下来还停在策略组上的 (没有选中项) 不测 */
-const leaves = (groups, set) => uniq(groups.map(g => g.leaf).filter(n => !set.has(n)))
+async function checkDirect(store) {
+  const a = await get(IP_URL, 'DIRECT')
+  const ip = a.error ? '' : pickIP(a.data)
+  if (!ip) return
+  const d = { t: Date.now(), ms: a.ms }
+  exitInfo(d, ip)
+  store.direct = d
+}
+
+/** 锁定的策略组被还原 (常见于重启 Loon 后) 就改回来 */
+function applyLocks(state, store) {
+  let changed = false
+  for (const g of state.groups) {
+    const want = store.locks[g.name]
+    if (!want || g.now === want) continue
+    if ($config.setSelectPolicy(g.name, want)) {
+      addEvent(store, 'lock', `${g.name} 被还原，已改回 ${want}`)
+      notify('策略组已改回', `${g.name} → ${want}`)
+      changed = true
+    }
+  }
+  return changed
+}
+
+/** 在用的节点连续超时: 发通知; 打开了自动切换就切到这个策略组里能用的最快节点 (锁定的不动) */
+function handleDown(state, store) {
+  let changed = false
+  for (const name of leaves(state)) {
+    const r = store.nodes[name]
+    if (!r || r.ok || r.fail < FAIL_LIMIT || r.alerted) continue
+    r.alerted = true
+    const owner = state.groups.find(g => g.now === name && !store.locks[g.name])
+    const alive = owner && AUTO_SWITCH
+      ? owner.subs.filter(n => n !== name && store.nodes[n] && store.nodes[n].ok).sort((a, b) => store.nodes[a].ms - store.nodes[b].ms)
+      : []
+    if (alive.length && $config.setSelectPolicy(owner.name, alive[0])) {
+      const msg = `${name} 连续 ${r.fail} 次超时，${owner.name} 已切到 ${alive[0]}（${store.nodes[alive[0]].ms}ms）`
+      addEvent(store, 'switch', msg)
+      notify('节点已自动切换', msg)
+      changed = true
+    } else {
+      const msg = `${name} 连续 ${r.fail} 次超时`
+      addEvent(store, 'fail', msg)
+      notify('当前节点不可用', msg)
+    }
+  }
+  return changed
+}
+
+function pushReload() {
+  if (!PUSH_KEY || !PUSH_TARGETS.length) return Promise.resolve()
+  const t = Date.now()
+  return Promise.all(PUSH_TARGETS.map(id => new Promise(resolve => {
+    $httpClient.post({
+      url: `https://push.scripting.fun/v1/remote-updates/widget-targets/${encodeURIComponent(id)}/reload`,
+      headers: { Authorization: `Bearer ${PUSH_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idempotency_key: `loonpanel:${t}:${id}` }),
+    }, error => {
+      if (error) console.log(`推送刷新失败: ${clean(error).slice(0, 80)}`)
+      resolve()
+    })
+  })))
+}
+
+// ─────────────────────────────────────────────────────────────
+// 检测核心库: 下载 ipquality-core.js 缓存一天, 注入节点和开关后执行, 取 result.data
+// ─────────────────────────────────────────────────────────────
+function loadCore() {
+  let cached = null
+  try { cached = JSON.parse($persistentStore.read(CORE_KEY) || 'null') } catch (e) { cached = null }
+  if (cached && cached.code && Date.now() - cached.t < CORE_TTL) return Promise.resolve(cached.code)
+  return new Promise(resolve => {
+    $httpClient.get({ url: CORE_URL, timeout: 12000 }, (error, response, body) => {
+      if (!error && response && response.status === 200 && body) {
+        $persistentStore.write(JSON.stringify({ t: Date.now(), code: body }), CORE_KEY)
+        resolve(body)
+      } else {
+        resolve(cached ? cached.code : '')   // 下载失败时旧版本也能用
+      }
+    })
+  })
+}
+
+function runCore(code, node, labels, budget) {
+  return new Promise(resolve => {
+    let done = false
+    const finish = v => { if (!done) { done = true; resolve(v) } }
+    setTimeout(() => finish(null), budget)
+    const options = {
+      read: label => (labels.indexOf(String(label || '')) >= 0 ? 'true' : 'false'),
+      write: () => false,
+      remove: () => false,
+    }
+    try {
+      new Function('$done', '$persistentStore', '$environment', code)(
+        result => finish(result && result.data && result.data.v === 1 ? result.data : null),
+        options,
+        { params: { node } },
+      )
+    } catch (e) {
+      console.log(`检测核心库出错: ${e && e.message ? e.message : e}`)
+      finish(null)
+    }
+  })
+}
+
+const MEDIA_LABELS = ['执行媒体与 AI 检测', '显示媒体与 AI 结果']
+const DEEP_LABELS = MEDIA_LABELS.concat([
+  '显示基础信息', '显示 IP 类型', '显示风险评分', '显示风险因素', '显示出口分流', '显示 BGP 信息', '显示地区一致性',
+  '测试外部探针 Ping', '测试外部探针入站路径', '测试 HTTPS 稳定性', '检测 IP 黑名单', '检测 DNS 泄漏', '测试近似回程',
+])
+const SPEED_LABELS = ['测试多连接测速', '测试三网真实测速']
+
+/** 解锁结果不用每次都测: 在用的节点 6 小时一次, 每轮最多几个 */
+async function refreshMedia(store, nodes, deadline) {
+  const due = nodes.filter(n => store.nodes[n] && store.nodes[n].ok && !(store.media[n] && Date.now() - store.media[n].t < MEDIA_EVERY)).slice(0, MEDIA_PER_RUN)
+  if (!due.length) return
+  const code = await loadCore()
+  if (!code) return
+  for (const node of due) {
+    const left = deadline - Date.now()
+    if (left < 15000) break
+    const data = await runCore(code, node, MEDIA_LABELS, left)
+    if (data && Array.isArray(data.media)) store.media[node] = { t: Date.now(), list: data.media }
+  }
+}
 
 // ─────────────────────────────────────────────────────────────
 // 数据地址 / 操作地址
@@ -154,10 +359,10 @@ function parseQuery(url) {
   const out = {}
   const i = url.indexOf('?')
   if (i < 0) return out
+  const dec = s => { try { return decodeURIComponent(s.replace(/\+/g, ' ')) } catch (e) { return s } }
   for (const part of url.slice(i + 1).split('#')[0].split('&')) {
     if (!part) continue
     const j = part.indexOf('=')
-    const dec = s => { try { return decodeURIComponent(s.replace(/\+/g, ' ')) } catch (e) { return s } }
     out[dec(j < 0 ? part : part.slice(0, j))] = dec(j < 0 ? '' : part.slice(j + 1))
   }
   return out
@@ -167,13 +372,20 @@ function snapshot(state, store, result) {
   const mode = Number(state.conf.running_model)
   const body = {
     v: 1,
+    version: VERSION,
     t: Date.now(),
     mode: mode === 0 || mode === 1 || mode === 2 ? mode : -1,
     final: clean(state.conf.final),
     global: clean(state.conf.global_proxy),
     groups: state.groups,
-    nodes: store.nodes || {},
+    nodes: store.nodes,
     check: store.check || null,
+    direct: store.direct || null,
+    media: store.media,
+    deep: store.deep,
+    locks: store.locks,
+    events: store.events.slice().reverse(),
+    opts: { notify: NOTIFY, auto: AUTO_SWITCH, net: NET_RETEST, push: !!(PUSH_KEY && PUSH_TARGETS.length), full: FULL_GROUPS },
   }
   if (result) body.result = result
   return body
@@ -190,51 +402,93 @@ function respond(status, obj) {
 }
 
 async function handleSet(q) {
-  const before = await readState()
-  let targets = []
+  const store = readStore()
   let result = { ok: true }
+  let via = ''    // 切完要复测谁; 空 = 全部当前节点
   if (q.mode !== undefined && q.mode !== '') {
     const m = Number(q.mode)
     if (!$config.setRunningModel(m)) result = { ok: false, error: '模式切换失败' }
     else {
       // 当前节点: 全局直连测 DIRECT, 全局代理测全局策略, 分流测兜底策略
-      const via = m === 0 ? 'DIRECT' : m === 2 ? clean(before.conf.global_proxy) : clean(before.conf.final)
-      targets = leaves([{ leaf: leafOf(via, before.set) }], before.set)
+      const conf = readConfig()
+      via = m === 0 ? 'DIRECT' : m === 2 ? clean(conf.global_proxy) : clean(conf.final)
     }
   } else if (q.group) {
-    if (!q.node || !$config.setSelectPolicy(q.group, q.node)) result = { ok: false, error: `${q.group} 切换失败` }
-    else targets = leaves([{ leaf: leafOf(q.group, before.set) }], before.set)
-  } else {
-    targets = leaves(before.groups, before.set)
+    if (q.lock === '0') delete store.locks[q.group]
+    else if (q.node && $config.setSelectPolicy(q.group, q.node)) {
+      via = q.group
+      if (q.lock === '1' || store.locks[q.group]) store.locks[q.group] = q.node   // 手动换节点时锁跟着走
+    } else result = { ok: false, error: `${q.group} 切换失败` }
   }
-  const store = await runChecks(targets, REQ_BUDGET)
-  return snapshot(await readState(), store, result)
+  const state = await readState()
+  const skip = !result.ok || q.lock === '0'
+  const targets = skip ? [] : via ? uniq([state.leafOf(via)].filter(n => !state.set.has(n))) : leaves(state)
+  await runChecks(store, targets, new Set(leaves(state)), REQ_BUDGET)
+  writeStore(store)
+  return snapshot(state, store, result)
+}
+
+async function handleDeep(q) {
+  const store = readStore()
+  const state = await readState()
+  const node = q.node || (state.groups[0] && state.groups[0].leaf) || ''
+  if (!node) return snapshot(state, store, { ok: false, error: '没有可检测的节点' })
+  const code = await loadCore()
+  if (!code) return snapshot(state, store, { ok: false, error: '检测核心库下载失败' })
+  const labels = q.speed === '1' ? DEEP_LABELS.concat(SPEED_LABELS) : DEEP_LABELS
+  const data = await runCore(code, node, labels, DEEP_BUDGET)
+  if (!data) return snapshot(state, store, { ok: false, error: '检测超时或核心库版本不匹配' })
+  const old = store.deep[node] || {}
+  store.deep[node] = q.speed === '1' ? data : Object.assign({}, data, { speed: old.speed })   // 没测速时保留上次速度
+  store.deep[node].t = Date.now()
+  if (Array.isArray(data.media)) store.media[node] = { t: Date.now(), list: data.media }
+  writeStore(store)
+  return snapshot(state, store, { ok: true })
 }
 
 async function handleRequest() {
   const url = $request.url
   const path = url.replace(/^https?:\/\/[^/]+/i, '').split(/[?#]/)[0].replace(/\/+$/, '')
   if (path === '/loon-panel/set') return respond(200, await handleSet(parseQuery(url)))
+  if (path === '/loon-panel/deep') return respond(200, await handleDeep(parseQuery(url)))
   if (path === '/loon-panel/data') return respond(200, snapshot(await readState(), readStore()))
   respond(404, { v: 1, error: 'not found' })
 }
 
-async function handleCron() {
-  const state = await readState()
+async function handleCheck() {
+  const net = /网络/.test(typeof $script === 'object' && $script ? clean($script.name) : '')
+  if (net) await sleep(3000)   // 刚切网络时连接还没恢复
+  const start = Date.now()
+  const store = readStore()
+  let state = await readState()
+  if (applyLocks(state, store)) state = await readState()
   const full = []
-  for (const name of FULL_GROUPS) {
-    const g = state.groups.find(x => x.name === name)
-    if (g) full.push(...g.subs)
+  if (!net) {
+    for (const name of FULL_GROUPS) {
+      const g = state.groups.find(x => x.name === name)
+      if (g) full.push(...g.subs)
+    }
   }
-  const store = await runChecks(uniq([...leaves(state.groups, state.set), ...full.filter(n => !state.set.has(n))]), CRON_BUDGET)
+  const current = leaves(state)
+  await runChecks(store, uniq([...current, ...full.filter(n => !state.set.has(n))]), new Set(current), CRON_BUDGET)
+  await checkDirect(store)
+  if (handleDown(state, store)) state = await readState()
   const c = store.check
+  if (net) {
+    const bad = current.filter(n => store.nodes[n] && !store.nodes[n].ok).length
+    addEvent(store, 'net', `网络切换，复测 ${c.tested} 个节点，${bad ? `${bad} 个不可用` : '全部正常'}`)
+  } else {
+    await refreshMedia(store, leaves(state), start + CRON_BUDGET)
+  }
+  writeStore(store)
+  await pushReload()
   console.log(`体检完成 ${c.tested}/${c.total}, 用时 ${Math.round(c.took / 1000)} 秒`)
   $done()
 }
 
 const isRequest = typeof $request !== 'undefined' && $request && $request.url
 
-;(isRequest ? handleRequest() : handleCron()).catch(e => {
+;(isRequest ? handleRequest() : handleCheck()).catch(e => {
   console.log(`Loon 面板出错: ${e && e.message ? e.message : e}`)
   if (isRequest) respond(500, { v: 1, error: String(e && e.message ? e.message : e) })
   else $done()
