@@ -6,7 +6,8 @@
 import { VStack, Text, Image, Widget } from 'scripting'
 
 import { loadLoon } from './loon'
-import { loadSubs } from './subs'
+import { loadSubs, localEvents, checkAlerts } from './subs'
+import { lastNat } from './net'
 import { getLook, getPrefs, type Family } from './settings'
 import { resolveStyle, renderStyle } from './styles/index'
 
@@ -16,8 +17,9 @@ async function main() {
   let view
   try {
     const [loon, subs] = await Promise.all([loadLoon(), loadSubs()])
+    await checkAlerts(subs, prefs.alerts).catch(e => console.log(`提醒发送失败: ${(e as Error).message}`))   // 发不出通知不影响小组件
     view = renderStyle(resolveStyle(Widget.parameter, family), family, {
-      inApp: false, loon: loon.data, loonErr: loon.error, subs, look: getLook(), prefs,
+      inApp: false, loon: loon.data, loonErr: loon.error, subs, look: getLook(), prefs, nat: lastNat(), local: localEvents(),
     })
   } catch (e) {
     view = <ErrorView message={(e as Error).message} />

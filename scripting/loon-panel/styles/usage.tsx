@@ -3,7 +3,7 @@
 
 import { VStack, HStack, ZStack, Text, Spacer, Gauge, AccessoryWidgetBackground, RoundedRectangle } from 'scripting'
 
-import { fmtBytes, expireText, type SubView } from '../subs'
+import { fmtBytes, md, type SubView } from '../subs'
 import { mainGroupLeaf } from './node'
 import { Root, Header, Num, Empty, Bar, UsageRing, DailyBars, usageColor, latencyText, syncText, OK, BAD, WARN, type Ctx } from '../ui'
 
@@ -34,7 +34,7 @@ export function RingStyle(props: { ctx: Ctx }) {
       <Header ctx={ctx} title={`${staleMark(s)}${s.name}`} icon="chart.pie.fill" font={12} />
       <HStack frame={{ maxWidth: 'infinity' }}>
         <Spacer minLength={0} />
-        <UsageRing ctx={ctx} ratio={unlimited ? 0 : s.ratio} size={70} line={9}>
+        <UsageRing ctx={ctx} ratio={unlimited ? 0 : s.ratio} size={60} line={8}>
           <VStack spacing={0}>
             <Num value={unlimited ? fmtBytes(s.used) : pct(s.ratio)} size={unlimited ? 15 : 19} color={th.t1} weight="bold" />
             <Text font={10} foregroundStyle={th.t3}>已用</Text>
@@ -44,8 +44,9 @@ export function RingStyle(props: { ctx: Ctx }) {
       </HStack>
       <Spacer minLength={0} />
       <Text font={11} fontWeight="medium" monospacedDigit foregroundStyle={th.t1} lineLimit={1} minScaleFactor={0.7}>
-        {unlimited ? '不限流量' : `剩 ${fmtBytes(Math.max(0, s.usage.total - s.used))} / ${fmtBytes(s.usage.total)}`}
+        {unlimited ? '不限流量' : `剩 ${fmtBytes(s.remain)} / ${fmtBytes(s.usage.total)}`}
       </Text>
+      {s.budget ? <Text font={10} monospacedDigit foregroundStyle={th.t2} lineLimit={1} minScaleFactor={0.7}>{`每天可用 ${fmtBytes(s.budget.today)}`}</Text> : null}
       <Text font={10} foregroundStyle={fcColor(s) ?? th.t3} lineLimit={1} minScaleFactor={0.7}>{s.fc.text}</Text>
     </Root>
   )
@@ -64,7 +65,7 @@ export function TrendStyle(props: { ctx: Ctx }) {
   const today = days[days.length - 1]
   return (
     <Root ctx={ctx} spacing={8}>
-      <Header ctx={ctx} title={`${staleMark(s)}${s.name}`} icon="chart.bar.fill" right={expireText(s.usage) || (s.err && !s.usage ? s.err : undefined)} />
+      <Header ctx={ctx} title={`${staleMark(s)}${s.name}`} icon="chart.bar.fill" right={s.deadline ? `${md(s.deadline)} ${s.deadlineWord}` : s.err && !s.usage ? s.err : undefined} />
       <HStack spacing={14} alignment="top" frame={{ maxHeight: 'infinity' }}>
         <VStack alignment="leading" spacing={4} frame={{ width: 118, alignment: 'leading' }}>
           <HStack alignment="lastTextBaseline" spacing={3}>
@@ -73,8 +74,10 @@ export function TrendStyle(props: { ctx: Ctx }) {
           </HStack>
           <Text font={11} monospacedDigit foregroundStyle={th.t2} lineLimit={1} minScaleFactor={0.7}>{usedText(s)}</Text>
           <Bar ctx={ctx} value={s.ratio} color={usageColor(s.ratio)} height={5} />
+          {s.usage ? <Text font={10} monospacedDigit foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.7}>{`↓${fmtBytes(s.usage.down)} ↑${fmtBytes(s.usage.up)}`}</Text> : null}
           <Spacer minLength={0} />
-          <Text font={11} fontWeight="medium" foregroundStyle={fcColor(s) ?? th.t2} lineLimit={2} minScaleFactor={0.8}>{s.fc.text}</Text>
+          <Text font={11} fontWeight="medium" foregroundStyle={fcColor(s) ?? th.t2} lineLimit={1} minScaleFactor={0.7}>{s.fc.text}</Text>
+          {s.budget ? <Text font={10} foregroundStyle={th.t2} lineLimit={1} minScaleFactor={0.7}>{`到${s.deadlineWord}前每天 ${fmtBytes(s.budget.today)}`}</Text> : null}
         </VStack>
         <VStack alignment="leading" spacing={4} frame={{ maxWidth: 'infinity', maxHeight: 'infinity' }}>
           <HStack>
@@ -85,7 +88,7 @@ export function TrendStyle(props: { ctx: Ctx }) {
             </Text>
           </HStack>
           {known.length ? (
-            <DailyBars ctx={ctx} values={days} height={62} />
+            <DailyBars ctx={ctx} values={days} height={62} avg={s.fc.avg} />
           ) : (
             <ZStack frame={{ maxWidth: 'infinity', height: 62 }} background={<RoundedRectangle cornerRadius={8} fill={th.track} />}>
               <Text font={11} foregroundStyle={th.t2} multilineTextAlignment="center">{'每次刷新记一笔\n明天起显示日用量'}</Text>
@@ -156,4 +159,13 @@ export function LockRect(props: { ctx: Ctx }) {
       </VStack>
     </LockPreview>
   )
+}
+
+/** 单行 (锁屏时间上方): 只有一行文字 */
+export function LockInline(props: { ctx: Ctx }) {
+  const { ctx } = props
+  const s = mainSub(ctx)
+  const leaf = mainGroupLeaf(ctx)
+  const text = [s?.usage ? (s.usage.total > 0 ? `剩 ${fmtBytes(s.remain)}` : `已用 ${fmtBytes(s.used)}`) : '', leaf ? latencyText(leaf.r) : ''].filter(Boolean).join(' · ') || 'Loon 面板'
+  return <Text lineLimit={1} foregroundStyle={ctx.inApp ? '#FFFFFF' : undefined} padding={ctx.inApp ? 8 : 0} background={ctx.inApp ? <RoundedRectangle cornerRadius={8} fill="#23306B" /> : undefined}>{text}</Text>
 }

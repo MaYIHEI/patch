@@ -3,12 +3,12 @@
 
 import { VStack, HStack, Text, Spacer, Image, Button, Capsule, Rectangle } from 'scripting'
 
-import { MODES, shownGroups, switchTarget, healthCount, type Group } from '../loon'
+import { MODES, shownGroups, switchTarget, healthCount, unlockNode, loonStatus, type Group } from '../loon'
 import { fmtBytes } from '../subs'
-import { ModeIntent, SwitchIntent, readNote } from '../app_intents'
+import { ModeIntent, SwitchIntent, CheckIntent, readNote } from '../app_intents'
 import { mainGroupLeaf, checkText } from './node'
 import { pct, fcColor, staleMark } from './usage'
-import { Root, Bar, Dot, usageColor, latencyColor, latencyText, nodeLabel, asnText, flag, syncText, withAlpha, OK, BAD, type Ctx } from '../ui'
+import { Root, Bar, Dot, RefreshButton, usageColor, mediaColor, latencyColor, latencyText, nodeLabel, asnText, flag, syncText, withAlpha, OK, BAD, WARN, type Ctx } from '../ui'
 
 function Section(props: { ctx: Ctx; title: string; right?: string }) {
   const { th } = props.ctx
@@ -44,6 +44,9 @@ function ModeBar(props: { ctx: Ctx }) {
           </Tap>
         )
       })}
+      <Tap ctx={ctx} intent={ctx.loon && !ctx.loon.stale ? CheckIntent(undefined) : undefined}>
+        <Image systemName="stethoscope" font={12} fontWeight="semibold" foregroundStyle={th.t2} padding={{ horizontal: 9, vertical: 7 }} background={<Capsule fill={th.card} />} />
+      </Tap>
     </HStack>
   )
 }
@@ -75,13 +78,16 @@ export function BoardStyle(props: { ctx: Ctx }) {
   const leaf = mainGroupLeaf(ctx)
   const health = loon ? healthCount(loon) : null
   const note = ctx.inApp ? null : readNote()
+  const status = loonStatus(loon)
+  const media = loon ? unlockNode(loon, ctx.prefs)?.list ?? [] : []
   return (
     <Root ctx={ctx} spacing={8}>
       <HStack spacing={6}>
         <Image systemName="gauge.with.dots.needle.67percent" font={14} fontWeight="semibold" foregroundStyle={th.accent} />
         <Text font={15} fontWeight="bold" foregroundStyle={th.t1}>Loon 面板</Text>
         <Spacer minLength={4} />
-        <Text font={11} foregroundStyle={note ? (note.ok ? OK : BAD) : loon?.stale || !loon ? '#FF9F0A' : th.t3} lineLimit={1}>{note ? note.text : syncText(ctx)}</Text>
+        <Text font={11} foregroundStyle={note ? (note.ok ? OK : BAD) : status.level === 'ok' ? th.t3 : status.level === 'warn' ? WARN : BAD} lineLimit={1}>{note ? note.text : status.level === 'ok' ? syncText(ctx) : status.text}</Text>
+        <RefreshButton ctx={ctx} />
       </HStack>
 
       <ModeBar ctx={ctx} />
@@ -119,16 +125,21 @@ export function BoardStyle(props: { ctx: Ctx }) {
         <Text font={11} foregroundStyle={th.t3}>读不到 Loon 数据, 打开 App 看排查步骤</Text>
       )}
 
+      {media.length ? (
+        <HStack spacing={5}>
+          <Text font={10} foregroundStyle={th.t3}>解锁</Text>
+          {media.slice(0, 6).map(m => <Text font={10} fontWeight="medium" foregroundStyle={mediaColor(m)} lineLimit={1} minScaleFactor={0.7}>{m.name}</Text>)}
+        </HStack>
+      ) : null}
       <Spacer minLength={0} />
       {leaf?.r?.ip ? (
-        <HStack spacing={6} padding={{ horizontal: 10, vertical: 6 }} background={<Capsule fill={withAlpha(th.accent, 0.12)} />}>
-          <Text font={11} foregroundStyle={th.t2}>出口</Text>
-          <Text font={11} fontWeight="semibold" monospacedDigit foregroundStyle={th.t1} lineLimit={1}>{`${flag(leaf.r.cc)} ${leaf.r.ip}`}</Text>
-          <Text font={10} foregroundStyle={th.t3} lineLimit={1}>{asnText(leaf.r)}</Text>
+        <HStack spacing={6} padding={{ horizontal: 10, vertical: 5 }} background={<Capsule fill={withAlpha(th.accent, 0.12)} />}>
+          <Text font={10} foregroundStyle={th.t2}>出口</Text>
+          <Text font={10} fontWeight="semibold" monospacedDigit foregroundStyle={th.t1} lineLimit={1} minScaleFactor={0.7}>{`${flag(leaf.r.cc)} ${leaf.r.ip}`}</Text>
+          <Text font={10} foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.7}>{loon?.direct?.org ? `直连 ${loon.direct.org}` : asnText(leaf.r)}</Text>
           <Spacer minLength={0} />
         </HStack>
       ) : null}
-      {!ctx.inApp && groups.length ? <Text font={9} foregroundStyle={th.t3}>点策略组切到体检最快的节点</Text> : null}
     </Root>
   )
 }

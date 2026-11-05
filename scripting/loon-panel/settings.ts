@@ -20,10 +20,13 @@ const write = (key: string, v: unknown) => AppStorage.set(key, JSON.stringify(v)
 /**
  * main: 小号「当前节点」和看板出口信息用哪个策略组, 空 = Loon 的兜底策略 (final)
  * groups: 大号看板列哪些策略组, 空 = 前 4 个
+ * unlock: 解锁样式看哪个策略组的节点, 空 = 主策略组
+ * alerts: 用量提醒开关
  */
-export type Prefs = { refresh: 15 | 30 | 60; main: string; groups: string[] }
+export type Alerts = { usage: boolean; runout: boolean; expire: boolean }
+export type Prefs = { refresh: 15 | 30 | 60; main: string; groups: string[]; unlock: string; alerts: Alerts }
 const PREFS_KEY = 'loonpanel.prefs'
-export const getPrefs = () => read<Prefs>(PREFS_KEY, { refresh: 30, main: '', groups: [] })
+export const getPrefs = () => read<Prefs>(PREFS_KEY, { refresh: 30, main: '', groups: [], unlock: '', alerts: { usage: true, runout: true, expire: false } })
 export const setPrefs = (p: Prefs) => write(PREFS_KEY, p)
 
 // ────────────────────────────────────────────────────────────
@@ -51,10 +54,17 @@ export const RECOMMENDED_ACCENT = ['#0A84FF', '#30D158', '#FF9F0A', '#BF5AF2', '
 // ────────────────────────────────────────────────────────────
 // 各尺寸不填参数时用的样式
 // ────────────────────────────────────────────────────────────
-export type Family = 'systemSmall' | 'systemMedium' | 'systemLarge' | 'accessoryCircular' | 'accessoryRectangular'
+export type Family = 'systemSmall' | 'systemMedium' | 'systemLarge' | 'accessoryCircular' | 'accessoryRectangular' | 'accessoryInline'
 const DEFAULTS_KEY = 'loonpanel.defaults'
 export const BUILTIN_DEFAULTS: Record<Family, string> = {
-  systemSmall: 'A', systemMedium: 'C', systemLarge: 'E', accessoryCircular: 'F', accessoryRectangular: 'F',
+  systemSmall: 'A', systemMedium: 'C', systemLarge: 'E', accessoryCircular: 'F', accessoryRectangular: 'F', accessoryInline: 'F',
 }
 export const getDefaults = () => read<Record<Family, string>>(DEFAULTS_KEY, BUILTIN_DEFAULTS)
 export const setDefault = (f: Family, style: string) => write(DEFAULTS_KEY, { ...getDefaults(), [f]: style })
+
+// ────────────────────────────────────────────────────────────
+// 自动刷新 (Remote Updates): 只存不敏感的 target 信息, 发送密钥不落地
+// ────────────────────────────────────────────────────────────
+const REMOTE_KEY = 'loonpanel.remote'
+export const getRemoteTargets = () => read<{ ids: string[] }>(REMOTE_KEY, { ids: [] }).ids
+export const setRemoteTargets = (ids: string[]) => write(REMOTE_KEY, { ids })

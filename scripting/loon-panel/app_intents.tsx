@@ -1,9 +1,11 @@
 // loon-panel / app_intents.tsx
-// 小组件按钮的动作 (官方要求全部写在这个文件): 切换模式、切换节点, 都走 Loon 插件的操作地址
+// 小组件、控制中心按钮的动作 (官方要求全部写在这个文件), 都走 Loon 插件的操作地址
 
-import { AppIntentManager, AppIntentProtocol, Widget } from 'scripting'
+import { AppIntentManager, AppIntentProtocol, Widget, ControlWidget } from 'scripting'
 
-import { setLoon } from './loon'
+import { setLoon, loadLoon, mainGroup, ownerGroup, switchTarget } from './loon'
+import { loadSubs } from './subs'
+import { getPrefs } from './settings'
 
 const AppStorage = Storage as unknown as {
   get<T = unknown>(key: string): T | null
@@ -44,5 +46,56 @@ export const SwitchIntent = AppIntentManager.register({
   protocol: AppIntentProtocol.AppIntent,
   perform: async ({ group, node }: { group: string; node: string }) => {
     await run({ group, node }, `${group} → ${node}`)
+  },
+})
+
+/** 不带参数 = 复测各策略组当前节点 */
+export const CheckIntent = AppIntentManager.register({
+  name: 'LoonPanelCheckIntent',
+  protocol: AppIntentProtocol.AppIntent,
+  perform: async (_: undefined) => {
+    await run({}, '体检完成')
+  },
+})
+
+/** 右上角刷新: 重读订阅用量, 小组件重绘时再读 Loon */
+export const RefreshIntent = AppIntentManager.register({
+  name: 'LoonPanelRefreshIntent',
+  protocol: AppIntentProtocol.AppIntent,
+  perform: async (_: undefined) => {
+    await loadSubs(true)
+    Widget.reloadAll()
+  },
+})
+
+/** 主策略组切到体检最快的节点 */
+async function fastest() {
+  const { data } = await loadLoon()
+  const main = data && !data.stale ? mainGroup(data, getPrefs()) : undefined
+  const g = main && data ? ownerGroup(data, main) : undefined
+  const target = g && data ? switchTarget(data, g) : undefined
+  if (g && target) await run({ group: g.name, node: target }, `${g.name} → ${target}`)
+  else {
+    AppStorage.set(NOTE_KEY, { t: Date.now(), ok: false, text: '没有可切换的节点' })
+    Widget.reloadAll()
+  }
+}
+
+export const FastestIntent = AppIntentManager.register({
+  name: 'LoonPanelFastestIntent',
+  protocol: AppIntentProtocol.AppIntent,
+  perform: async (_: undefined) => {
+    await fastest()
+    ControlWidget.reloadButtons()
+  },
+})
+
+/** 控制中心开关: 开 = 全局代理, 关 = 分流 */
+export const ModeToggleIntent = AppIntentManager.register({
+  name: 'LoonPanelModeToggleIntent',
+  protocol: AppIntentProtocol.AppIntent,
+  perform: async ({ value }: { value: boolean }) => {
+    await run({ mode: value ? 2 : 1 }, '已切换模式')
+    ControlWidget.reloadToggles()
   },
 })

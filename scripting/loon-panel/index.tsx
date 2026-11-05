@@ -1,7 +1,7 @@
 // loon-panel / index.tsx
 // App 页面 — 在 Scripting 里运行, 不是 widget
 //
-// 首页: 首次引导 + 状态卡 + 四个入口 (样式库 / 外观 / 订阅 / 设置) + Loon (模式、策略组、立即体检)
+// 首页: 首次引导 + 状态卡 + 四个入口 (样式库 / 外观 / 机场 / 设置) + Loon (模式、策略组、体检、更新订阅、事件)
 
 import {
   Button,
@@ -35,16 +35,22 @@ import {
   useState,
 } from 'scripting'
 
-import { loadLoon, cachedLoon, setLoon, sampleLoon, mainGroup, healthCount, clearLoonCache, MODES, DATA_URL, type LoonData, type Group } from './loon'
 import {
-  loadSubs, cachedSubs, sampleSubs, listSubs, saveSubs, addSub, updateSub, removeSub, fetchUsage, clearHistory, recordedDays,
-  fmtBytes, expireText, shiftDay, todayStr, type SubView,
+  loadLoon, cachedLoon, setLoon, deepCheck, sampleLoon, mainGroup, healthCount, availability, loonStatus, clearLoonCache, MODES, DATA_URL,
+  type Deep, type LoonData, type Group,
+} from './loon'
+import {
+  loadSubs, cachedSubs, sampleSubs, listSubs, saveSubs, addSub, updateSub, removeSub, fetchUsage, clearHistory, recordedDays, localEvents, overview,
+  fmtBytes, expireText, md, shiftDay, todayStr, type SubView,
 } from './subs'
+import { checkNat, lastNat, type Nat } from './net'
 import {
-  getPrefs, setPrefs, getLook, setLook, getDefaults, setDefault,
+  getPrefs, setPrefs, getLook, setLook, getDefaults, setDefault, getRemoteTargets, setRemoteTargets,
   DEFAULT_LOOK, RECOMMENDED_BG, RECOMMENDED_ACCENT, type Look, type Family, type Prefs,
 } from './settings'
-import { makeTheme, UsageRing, DailyBars, latencyColor, latencyText, nodeLabel, asnText, ago, hhmm, chunk, usageColor, OK, BAD, WARN, type Ctx } from './ui'
+import { makeTheme, UsageRing, DailyBars, HourBars, Spark, mediaColor, mediaWord, latencyColor, latencyText, nodeLabel, asnText, ago, hhmm, chunk, usageColor, OK, BAD, WARN, type Ctx } from './ui'
+import { ipTags } from './styles/net'
+import { rateText } from './styles/flow'
 import { STYLES, stylesFor, styleById, paramOf, renderStyle, type StyleDef } from './styles/index'
 
 declare const Safari: { openURL(url: string): Promise<boolean> }
@@ -65,6 +71,7 @@ async function main() {
 // ─────────────────────────────────────────────────────────────
 const CARD = 'secondarySystemGroupedBackground'
 
+type Act = { mode?: number; group?: string; node?: string; lock?: number }
 type Shared = { loon: LoonData | null; loonErr: string; subs: SubView[]; reload: (force?: boolean) => Promise<void> }
 
 const BOX: Record<Family, { width: number; height: number }> = {
@@ -73,10 +80,11 @@ const BOX: Record<Family, { width: number; height: number }> = {
   systemLarge: { width: 338, height: 354 },
   accessoryCircular: { width: 76, height: 76 },
   accessoryRectangular: { width: 172, height: 76 },
+  accessoryInline: { width: 172, height: 34 },
 }
 
 const FAMILY_NAME: Record<Family, string> = {
-  systemSmall: '小号', systemMedium: '中号', systemLarge: '大号', accessoryCircular: '锁屏圆形', accessoryRectangular: '锁屏长条',
+  systemSmall: '小号', systemMedium: '中号', systemLarge: '大号', accessoryCircular: '锁屏圆形', accessoryRectangular: '锁屏长条', accessoryInline: '锁屏单行',
 }
 
 /** 按真实尺寸渲染一个小组件; scale < 1 时整体缩小 (外框也跟着缩) */
@@ -84,7 +92,7 @@ function Preview(props: { style: StyleDef; family: Family; loon: LoonData | null
   const box = BOX[props.family]
   const k = props.scale ?? 1
   const view = renderStyle(props.style, props.family, {
-    inApp: true, loon: props.loon, loonErr: '', subs: props.subs, look: props.look ?? getLook(), prefs: getPrefs(),
+    inApp: true, loon: props.loon, loonErr: '', subs: props.subs, look: props.look ?? getLook(), prefs: getPrefs(), nat: lastNat(), local: localEvents(),
   })
   return (
     <ZStack frame={{ width: box.width * k, height: box.height * k }} clipped>
@@ -94,7 +102,7 @@ function Preview(props: { style: StyleDef; family: Family; loon: LoonData | null
 }
 
 function appCtx(loon: LoonData | null, subs: SubView[]): Ctx {
-  return { th: makeTheme(DEFAULT_LOOK), size: 'm', inApp: true, loon, loonErr: '', subs, prefs: getPrefs() }
+  return { th: makeTheme(DEFAULT_LOOK), size: 'm', inApp: true, loon, loonErr: '', subs, all: overview(subs), prefs: getPrefs(), nat: null, events: [] }
 }
 
 function SectionTitle(props: { title: string }) {
@@ -136,7 +144,7 @@ function Home() {
   }
 
   /** 操作地址: 切模式 / 切节点 / 复测 */
-  async function act(q: { mode?: number; group?: string; node?: string }, label: string) {
+  async function act(q: Act, label: string) {
     setBusy(label)
     setNote(`${label}...`)
     try {
@@ -155,6 +163,8 @@ function Home() {
   const look = getLook()
   const prefs = getPrefs()
   const live = loon && !loon.stale
+  const soon = subs.filter(x => x.fc.kind === 'runout' && (x.fc.date ?? 0) - Date.now() < 7 * 86_400_000).length
+  const events = [...(loon?.events ?? []), ...localEvents()].sort((a, b) => b.t - a.t)
 
   return (
     <NavigationStack>
@@ -183,7 +193,7 @@ function Home() {
             </HStack>
             <HStack spacing={12}>
               <NavigationLink destination={<SubsPage {...shared} />}>
-                <EntryCard icon="airplane" color="systemGreen" title="订阅" sub={subs.length ? `${subs.length} 个机场` : '还没添加'} />
+                <EntryCard icon="airplane" color="systemGreen" title="机场" sub={subs.length ? `${subs.length} 个${soon ? ` · ${soon} 个快用完` : ''}` : '还没添加'} />
               </NavigationLink>
               <NavigationLink destination={<SettingsPage {...shared} onChanged={() => setTick(tick + 1)} />}>
                 <EntryCard icon="gearshape.fill" color="systemGray" title="设置" sub={`每 ${prefs.refresh} 分钟刷新`} />
@@ -202,17 +212,30 @@ function Home() {
                   </Picker>
                 </HStack>
                 {loon.groups.map(g => (
-                  <NavigationLink destination={<GroupPage group={g} loon={loon} act={act} />}>
+                  <NavigationLink destination={<GroupPage group={g} loon={loon} act={act} reload={reload} />}>
                     <GroupLine group={g} loon={loon} />
                   </NavigationLink>
                 ))}
-                <Button action={() => { act({}, '体检当前节点') }} buttonStyle="plain" disabled={!!busy || !live}>
-                  <HStack padding={{ horizontal: 14, vertical: 13 }}>
-                    <Text font={15} foregroundStyle={busy || !live ? 'tertiaryLabel' : 'systemBlue'}>立即体检当前节点</Text>
-                    <Spacer />
-                    <Text font={12} foregroundStyle="secondaryLabel">{loon.check ? `上次 ${ago(loon.check.t)}` : '还没体检过'}</Text>
-                  </HStack>
-                </Button>
+                <HStack spacing={16} padding={{ horizontal: 14, vertical: 13 }}>
+                  <Button action={() => { act({}, '体检当前节点') }} buttonStyle="plain" disabled={!!busy || !live}>
+                    <Text font={15} foregroundStyle={busy || !live ? 'tertiaryLabel' : 'systemBlue'}>立即体检</Text>
+                  </Button>
+                  <Button action={() => { Safari.openURL('loon://update?sub=all') }} buttonStyle="plain">
+                    <Text font={15} foregroundStyle="systemBlue">更新订阅</Text>
+                  </Button>
+                  <Spacer />
+                  <Text font={12} foregroundStyle="secondaryLabel">{loon.check ? `上次 ${ago(loon.check.t)}` : '还没体检过'}</Text>
+                </HStack>
+                {events.length ? (
+                  <NavigationLink destination={<EventsPage events={events} />}>
+                    <HStack padding={{ horizontal: 14, vertical: 11 }}>
+                      <Text font={14} foregroundStyle="label" lineLimit={1}>{events[0].msg}</Text>
+                      <Spacer />
+                      <Text font={12} foregroundStyle="secondaryLabel">{`${events.length} 件`}</Text>
+                      <Image systemName="chevron.right" font={13} foregroundStyle="tertiaryLabel" />
+                    </HStack>
+                  </NavigationLink>
+                ) : null}
               </VStack>
               {note ? <Text font={12} foregroundStyle="secondaryLabel" padding={{ horizontal: 16 }}>{note}</Text> : null}
             </VStack>
@@ -228,9 +251,9 @@ function StatusCard(props: { loon: LoonData | null; loonErr: string; subs: SubVi
   const s = subs[0]
   const g = loon ? mainGroup(loon, getPrefs()) : undefined
   const r = g && loon ? loon.nodes[g.leaf] : undefined
-  const status = !loon
-    ? { text: props.loonErr ? '读不到 Loon 数据' : '读取中...', color: props.loonErr ? BAD : 'secondaryLabel' }
-    : loon.stale ? { text: `连不上 Loon · 显示 ${hhmm(loon.t)} 的数据`, color: WARN } : { text: 'Loon 插件已连接', color: OK }
+  const st = loonStatus(loon)
+  const status = !loon && !props.loonErr ? { text: '读取中...', color: 'secondaryLabel' } : { text: st.text, color: st.level === 'ok' ? OK : st.level === 'warn' ? WARN : BAD }
+  const all = overview(subs)
   return (
     <HStack spacing={16} padding={18} frame={{ maxWidth: 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={22} fill={CARD} />}>
       {s?.usage ? (
@@ -247,8 +270,9 @@ function StatusCard(props: { loon: LoonData | null; loonErr: string; subs: SubVi
         </ZStack>
       )}
       <VStack alignment="leading" spacing={5}>
-        <Text font={19} fontWeight="bold" lineLimit={1}>{s ? s.name : '还没有添加订阅'}</Text>
-        {s?.usage ? <Text font={14} foregroundStyle="secondaryLabel">{s.usage.total > 0 ? `剩 ${fmtBytes(Math.max(0, s.usage.total - s.used))} · ${s.fc.short}` : `已用 ${fmtBytes(s.used)}`}</Text> : s?.err ? <Text font={13} foregroundStyle={BAD}>{s.err}</Text> : null}
+        <Text font={19} fontWeight="bold" lineLimit={1}>{s ? `今天 ${fmtBytes(all.today)}` : '还没有添加机场'}</Text>
+        {s ? <Text font={12} foregroundStyle="secondaryLabel" lineLimit={1}>{`${subs.length} 个机场合计 · ${rateText(all.recent)}`}</Text> : null}
+        {s?.usage ? <Text font={14} foregroundStyle="secondaryLabel">{s.usage.total > 0 ? `${s.name}剩 ${fmtBytes(s.remain)} · ${s.fc.short}` : `${s.name}已用 ${fmtBytes(s.used)}`}</Text> : s?.err ? <Text font={13} foregroundStyle={BAD}>{s.err}</Text> : null}
         {g ? <Text font={13} foregroundStyle="secondaryLabel" lineLimit={1}>{`${g.name}: ${nodeLabel(g.leaf, r)} · ${latencyText(r)}`}</Text> : null}
         <HStack spacing={6}>
           <Circle fill={status.color} frame={{ width: 7, height: 7 }} />
@@ -326,28 +350,45 @@ function Guide(props: { shared: Shared; act: (q: {}, label: string) => Promise<v
 }
 
 // ─────────────────────────────────────────────────────────────
-// 策略组: 列出可选项和体检延迟, 点一下切换
+// 策略组: 按延迟排序, 点一下切换; 可锁定; 当前节点的解锁和深度检测
 // ─────────────────────────────────────────────────────────────
-function GroupPage(props: { group: Group; loon: LoonData; act: (q: { group: string; node: string }, label: string) => Promise<void> }) {
+function GroupPage(props: { group: Group; loon: LoonData; act: (q: Act, label: string) => Promise<void>; reload: (force?: boolean) => Promise<void> }) {
   const [g, setG] = useState(props.group)
+  const [loon, setLoonData] = useState(props.loon)
   const [busy, setBusy] = useState('')
-  const loon = props.loon
   const groupNames = new Set(loon.groups.map(x => x.name))
+  const locked = loon.locks?.[g.name]
+  const ms = (n: string) => { const r = loon.nodes[n]; return !r ? 1e7 : r.ok ? r.ms : 1e6 }
+  const list = g.subs.slice().sort((a, b) => ms(a) - ms(b))
+  const media = loon.media?.[g.leaf]?.list ?? []
+
+  async function after(q: Act, label: string) {
+    await props.act(q, label)
+    const fresh = cachedLoon()
+    if (fresh) {
+      setLoonData(fresh)
+      const x = fresh.groups.find(y => y.name === g.name)
+      if (x) setG(x)
+    }
+  }
 
   async function pick(node: string) {
     if (node === g.now || busy) return
     setBusy(node)
-    await props.act({ group: g.name, node }, `切换到 ${node}`)
-    const fresh = cachedLoon()?.groups.find(x => x.name === g.name)
-    if (fresh) setG(fresh)
+    await after({ group: g.name, node }, `切换到 ${node}`)
     setBusy('')
   }
 
   return (
     <List navigationTitle={g.name} navigationBarTitleDisplayMode="inline">
-      <Section footer={<Text>点一行切换。延迟来自最近一次体检; 没测过的显示「未测」, 想测全部节点可以在插件参数「全量体检的策略组」里填这个策略组。</Text>}>
-        {g.subs.map(name => {
+      <Section footer={<Text>{locked ? `Loon 把选择还原时, 插件会改回 ${locked} 并发通知。` : '打开后插件每次体检都会检查, 被还原就改回来。'}</Text>}>
+        <Toggle title="锁定当前选择" value={!!locked} onChanged={(v: boolean) => { after(v ? { group: g.name, node: g.now, lock: 1 } : { group: g.name, lock: 0 }, v ? '锁定' : '解锁') }} />
+      </Section>
+
+      <Section header={<Text>{loon.check ? `按延迟排序 · ${ago(loon.check.t)} 体检` : '节点'}</Text>} footer={<Text>点一行切换。没测过的显示「未测」, 想测全部节点可以在插件参数「全量体检的策略组」里填这个策略组。</Text>}>
+        {list.map(name => {
           const r = loon.nodes[name]
+          const a = availability(r)
           const isGroup = groupNames.has(name)
           return (
             <Button action={() => { pick(name) }} buttonStyle="plain">
@@ -355,9 +396,10 @@ function GroupPage(props: { group: Group; loon: LoonData; act: (q: { group: stri
                 <Image systemName={name === g.now ? 'checkmark.circle.fill' : isGroup ? 'folder' : 'circle'} foregroundStyle={name === g.now ? 'systemBlue' : 'tertiaryLabel'} />
                 <VStack alignment="leading" spacing={1}>
                   <Text foregroundStyle="label" lineLimit={1}>{nodeLabel(name, r)}</Text>
-                  {r?.ip ? <Text font={11} foregroundStyle="secondaryLabel" lineLimit={1}>{`${r.ip} · ${asnText(r)}`}</Text> : null}
+                  {r ? <Text font={11} foregroundStyle={r.ok ? 'secondaryLabel' : BAD} lineLimit={1}>{r.ok ? [a === null ? '' : `可用 ${Math.round(a * 100)}%`, asnText(r)].filter(Boolean).join(' · ') : `连续 ${r.fail ?? 1} 次超时`}</Text> : null}
                 </VStack>
                 <Spacer />
+                {r?.h?.length ? <Spark ctx={appCtx(null, [])} h={r.h} width={40} height={14} /> : null}
                 {busy === name ? <Text font={12} foregroundStyle="secondaryLabel">切换中</Text>
                   : isGroup ? <Text font={12} foregroundStyle="tertiaryLabel">策略组</Text>
                   : <Text font={13} monospacedDigit foregroundStyle={latencyColor(r)}>{latencyText(r)}</Text>}
@@ -366,6 +408,111 @@ function GroupPage(props: { group: Group; loon: LoonData; act: (q: { group: stri
           )
         })}
       </Section>
+
+      <Section header={<Text>{`当前节点 · ${g.leaf}`}</Text>}>
+        {loon.nodes[g.leaf]?.ip ? <LabeledContent label={<Text>出口</Text>} value={`${loon.nodes[g.leaf].cc ?? ''} ${loon.nodes[g.leaf].ip}`} /> : null}
+        {media.length ? (
+          <VStack alignment="leading" spacing={6}>
+            <Text font={13} foregroundStyle="secondaryLabel">解锁</Text>
+            {chunk(media, 3).map(row => (
+              <HStack spacing={8}>
+                {row.map(m => <Text font={12} foregroundStyle={mediaColor(m)} frame={{ maxWidth: 'infinity', alignment: 'leading' }} lineLimit={1}>{`${m.name} ${mediaWord(m)}`}</Text>)}
+              </HStack>
+            ))}
+          </VStack>
+        ) : null}
+        <NavigationLink destination={<DeepPage node={g.leaf} loon={loon} reload={props.reload} />}><Text>深度检测</Text></NavigationLink>
+      </Section>
+    </List>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// 深度检测: 手动跑, 结果也给小组件用
+// ─────────────────────────────────────────────────────────────
+const ISP_NAME = { ct: '电信', cu: '联通', cm: '移动' }
+
+function DeepPage(props: { node: string; loon: LoonData; reload: (force?: boolean) => Promise<void> }) {
+  const [d, setD] = useState<Deep | null>(props.loon.deep?.[props.node] ?? null)
+  const [nat, setNat] = useState<Nat | null>(lastNat())
+  const [note, setNote] = useState('')
+
+  async function run(speed: boolean) {
+    setNote(speed ? '检测和测速中, 约一分钟, 会用掉十几 MB 流量...' : '检测中, 约一分钟...')
+    try {
+      const data = await deepCheck(props.node, speed)
+      setD(data.deep?.[props.node] ?? null)
+      setNote('')
+      await props.reload()
+    } catch (e) {
+      setNote((e as Error).message)
+    }
+  }
+
+  async function nat2() {
+    setNote('NAT 检测中...')
+    try {
+      setNat(await checkNat())
+      setNote('')
+    } catch (e) {
+      setNote(`NAT 检测失败: ${(e as Error).message}`)
+    }
+  }
+
+  const rows = (title: string, list: { k: string; v: string; color?: string }[]) => (list.length ? (
+    <Section header={<Text>{title}</Text>}>
+      {list.map(x => <HStack><Text font={14}>{x.k}</Text><Spacer /><Text font={13} foregroundStyle={x.color ?? 'secondaryLabel'} lineLimit={2}>{x.v}</Text></HStack>)}
+    </Section>
+  ) : null)
+  const yes = (b?: boolean) => (b ? '是' : '否')
+
+  return (
+    <List navigationTitle="深度检测" navigationBarTitleDisplayMode="inline">
+      <Section header={<Text>{props.node}</Text>} footer={<Text>{note || '检测会把这个节点的出口 IP 提交给第三方查询服务。结果会显示在 IP 质量、三网延迟、网络安全、线路体检报告这些样式上。'}</Text>}>
+        <Button title="开始检测" action={() => { run(false) }} />
+        <Button title="检测并测速 (用十几 MB 流量)" action={() => { run(true) }} />
+        <Button title={nat ? `NAT 类型 · ${nat.text}` : '检测 NAT 类型'} action={nat2} />
+      </Section>
+      {d ? rows('基础', [
+        ...(d.basic?.ip ? [{ k: '出口', v: `${d.basic.cc ?? ''} ${d.basic.ip}` }] : []),
+        ...(d.basic?.org ? [{ k: '运营商', v: `${d.basic.asn ? `AS${d.basic.asn} ` : ''}${d.basic.org}` }] : []),
+        ...(d.bgp?.prefix ? [{ k: 'BGP', v: `${d.bgp.prefix}${d.bgp.rpki ? ` · RPKI ${d.bgp.rpki}` : ''}` }] : []),
+        ...ipTags(d).map(t => ({ k: '标记', v: t.text, color: t.color })),
+        ...(d.egress && d.egress.length > 1 ? [{ k: '出口分流', v: `${d.egress.length} 个出口`, color: WARN }] : []),
+      ]) : null}
+      {d ? rows('IP 类型和风险 (各来源原样)', [
+        ...(d.types ?? []).map(t => ({ k: t.source, v: t.type })),
+        ...(d.scores ?? []).map(t => ({ k: t.source, v: `风险 ${t.score ?? '-'}${t.text ? ` · ${t.text}` : ''}` })),
+        ...(d.factors ?? []).map(f => ({ k: f.source, v: `代理 ${yes(f.proxy)} · VPN ${yes(f.vpn)} · Tor ${yes(f.tor)} · 机房 ${yes(f.hosting)}` })),
+      ]) : null}
+      {d ? rows('解锁', (d.media ?? []).map(m => ({ k: m.name, v: mediaWord(m), color: mediaColor(m) }))) : null}
+      {d ? rows('三网 (外部探针到出口)', (d.ping ?? []).map(p => {
+        const w = d.inbound?.find(x => x.isp === p.isp)
+        return { k: ISP_NAME[p.isp], v: `${p.avg !== undefined ? `${Math.round(p.avg)}ms` : '-'} · 丢包 ${p.loss ?? 0}%${w?.summary ? ` · ${w.summary}` : ''}` }
+      })) : null}
+      {d ? rows('回程 (同网络探针, 不是节点本机)', (d.backhaul ?? []).map(b => ({ k: ISP_NAME[b.isp], v: `${b.summary ?? ''}${b.hops ? ` · ${b.hops} 跳` : ''}${b.probe ? ` · ${b.probe}` : ''}` }))) : null}
+      {d ? rows('DNS 和黑名单', [
+        ...(d.dnsleak?.servers ?? []).map(x => ({ k: 'DNS 服务器', v: `${x.cc ?? ''} ${x.org ?? x.ip}` })),
+        ...(d.dnsbl ? [{ k: 'IP 黑名单', v: d.dnsbl.listed.length ? d.dnsbl.listed.map(x => x.list).join('、') : `${d.dnsbl.checked} 家未命中`, color: d.dnsbl.listed.length ? WARN : OK }] : []),
+      ]) : null}
+      {d ? rows('速度', [
+        ...(d.speed?.down ? [{ k: '下载', v: `${Math.round(d.speed.down)}Mbps${d.speed.conns ? ` · ${d.speed.conns} 连接` : ''}` }] : []),
+        ...(d.stability ?? []).map(x => ({ k: `HTTPS ${x.target}`, v: `成功 ${x.ok}/${x.total}${x.median ? ` · ${x.median}ms` : ''}` })),
+      ]) : null}
+      {d?.errors && Object.keys(d.errors).length ? rows('没拿到的项目', Object.entries(d.errors).map(([k, v]) => ({ k, v: String(v) }))) : null}
+    </List>
+  )
+}
+
+function EventsPage(props: { events: { t: number; k: string; msg: string }[] }) {
+  return (
+    <List navigationTitle="发生了什么" navigationBarTitleDisplayMode="inline">
+      {props.events.map(e => (
+        <VStack alignment="leading" spacing={2}>
+          <Text font={14}>{e.msg}</Text>
+          <Text font={12} foregroundStyle="secondaryLabel">{`${md(e.t)} ${hhmm(e.t)}`}</Text>
+        </VStack>
+      ))}
     </List>
   )
 }
@@ -385,6 +532,7 @@ async function askURL(title: string): Promise<string | null> {
 }
 
 function SubsPage(props: Shared) {
+  const title = '机场'
   const [list, setList] = useState<SubView[]>(props.subs)
   const [note, setNote] = useState('')
 
@@ -426,10 +574,10 @@ function SubsPage(props: Shared) {
   }
 
   return (
-    <List navigationTitle="订阅" navigationBarTitleDisplayMode="inline" toolbar={{ topBarTrailing: <EditButton /> }}>
+    <List navigationTitle={title} navigationBarTitleDisplayMode="inline" toolbar={{ topBarTrailing: <EditButton /> }}>
       <Section
         header={<Text>{`机场 · ${list.length}`}</Text>}
-        footer={<Text>第一个是主订阅 (小号、中号、锁屏显示它); 点右上角「编辑」拖动排序。用量 30 分钟内复用上次结果, 下拉刷新或点「立即刷新」会重新读取。</Text>}
+        footer={<Text>第一个是主订阅 (小号、中号、锁屏显示它); 点右上角「编辑」拖动排序。用量 10 分钟内复用上次结果, 点「立即刷新」会重新读取。</Text>}
       >
         <ForEach
           count={list.length}
@@ -465,14 +613,14 @@ function SubDetail(props: { sub: SubView; onChanged: () => Promise<void> }) {
   const [s, setS] = useState(props.sub)
   const [note, setNote] = useState('')
   const u = s.usage
-  const days30 = s.daily
+  const days30 = s.daily.slice(-30)
   const known = days30.filter((v): v is number => v !== null)
   const first = shiftDay(todayStr(), -29)
 
   async function rename() {
     const name = await Dialog.prompt({ title: '改名', defaultValue: s.name, selectAll: true })
     if (!name?.trim()) return
-    updateSub(s.id, name)
+    updateSub(s.id, { name: name.trim() })
     setS({ ...s, name: name.trim() })
     await props.onChanged()
   }
@@ -480,8 +628,19 @@ function SubDetail(props: { sub: SubView; onChanged: () => Promise<void> }) {
   async function changeURL() {
     const url = await askURL(`${s.name} 的新链接`)
     if (!url) return
-    updateSub(s.id, s.name, url)
+    updateSub(s.id, {}, url)
     setNote('已更换链接, 返回列表后刷新用量')
+    await props.onChanged()
+  }
+
+  async function editNumber(title: string, message: string, current: number, key: 'resetDay' | 'price', max: number) {
+    const v = await Dialog.prompt({ title, message, defaultValue: current ? String(current) : '', placeholder: '留空清除', keyboardType: 'decimalPad' })
+    if (v === null) return
+    const n = Number(v.trim())
+    const value = v.trim() && Number.isFinite(n) && n > 0 && n <= max ? n : 0
+    updateSub(s.id, { [key]: key === 'resetDay' ? Math.floor(value) : value })
+    setS({ ...s, [key]: value })
+    setNote('已保存, 返回列表后生效')
     await props.onChanged()
   }
 
@@ -505,11 +664,21 @@ function SubDetail(props: { sub: SubView; onChanged: () => Promise<void> }) {
             {s.err ? <Text font={12} foregroundStyle={u ? WARN : BAD}>{`最近一次读取失败: ${s.err}`}</Text> : null}
           </VStack>
         </HStack>
+        {u?.plan ? <LabeledContent label={<Text>套餐</Text>} value={u.plan} /> : null}
         {u ? <LabeledContent label={<Text>已用</Text>} value={`${fmtBytes(s.used)} (上传 ${fmtBytes(u.up)} · 下载 ${fmtBytes(u.down)})`} /> : null}
         {u && u.total > 0 ? <LabeledContent label={<Text>总量</Text>} value={fmtBytes(u.total)} /> : null}
         {u?.expire ? <LabeledContent label={<Text>到期</Text>} value={expireText(u)} /> : null}
         {s.fc.avg ? <LabeledContent label={<Text>近 7 天日均</Text>} value={fmtBytes(s.fc.avg)} /> : null}
+        {s.budget ? <LabeledContent label={<Text>{`到${s.deadlineWord}前每天`}</Text>} value={fmtBytes(s.budget.today)} /> : null}
+        {s.price > 0 && u && u.total > 0 ? <LabeledContent label={<Text>每 G</Text>} value={`¥${(s.price / (u.total / 1024 ** 3)).toFixed(2)} · 剩余价值 ¥${(s.price * (1 - s.ratio)).toFixed(1)}`} /> : null}
         {u ? <LabeledContent label={<Text>读取时间</Text>} value={`${new Date(u.t).getMonth() + 1}月${new Date(u.t).getDate()}日 ${hhmm(u.t)}`} /> : null}
+      </Section>
+
+      <Section header={<Text>今天每小时</Text>} footer={<Text>{`${rateText(s.recent)}${s.interval ? ` · 这个机场约 ${s.interval} 分钟更新一次用量` : ''}。精度取决于机场多久更新一次。`}</Text>}>
+        <VStack spacing={6} padding={{ vertical: 6 }}>
+          <HourBars ctx={appCtx(null, [])} values={s.hourly} height={64} />
+          <HStack><Text font={11} foregroundStyle="secondaryLabel">0 点</Text><Spacer /><Text font={11} foregroundStyle="secondaryLabel">{`今天 ${fmtBytes(s.today)}`}</Text></HStack>
+        </VStack>
       </Section>
 
       <Section header={<Text>近 30 天每天用量</Text>} footer={<Text>{known.length ? `已记录 ${recordedDays(s)} 天。每次读到用量按北京时间记一笔, 前后两天相减得到日用量; 中间几天没记录会平均摊开。` : '每次读到用量都会记一笔, 明天起这里显示每天用了多少。'}</Text>}>
@@ -526,6 +695,9 @@ function SubDetail(props: { sub: SubView; onChanged: () => Promise<void> }) {
       </Section>
 
       <Section footer={note ? <Text>{note}</Text> : undefined}>
+        <Button title={s.resetDay ? `每月重置日 · ${s.resetDay} 号` : '设置每月重置日'} action={() => { editNumber('每月几号重置流量', '填 1 到 31; 填了之后预测和每天额度按重置日算', s.resetDay, 'resetDay', 31) }} />
+        <Button title={s.price ? `每期价格 · ¥${s.price}` : '设置每期价格'} action={() => { editNumber('每期多少钱', '用来算每 G 多少钱和性价比', s.price, 'price', 100000) }} />
+        {u?.site ? <Button title="打开机场官网" action={() => { Safari.openURL(u.site!) }} /> : null}
         <Button title="改名" action={rename} />
         <Button title="更换订阅链接" action={changeURL} />
         <Button title="删除这个订阅" role="destructive" action={remove} />
@@ -562,7 +734,7 @@ function StyleLibrary(props: Shared & { onChanged: () => void }) {
   // 小号两列原尺寸, 中号一列原尺寸, 大号一列缩小, 锁屏两列原尺寸
   const grid = (f: Family) => {
     const list = stylesFor(f)
-    const cols = f === 'systemSmall' || f === 'accessoryCircular' || f === 'accessoryRectangular' ? 2 : 1
+    const cols = f === 'systemSmall' || f === 'accessoryCircular' || f === 'accessoryRectangular' || f === 'accessoryInline' ? 2 : 1
     const scale = f === 'systemLarge' ? 0.92 : 1
     return (
       <VStack spacing={16}>
@@ -590,6 +762,7 @@ function StyleLibrary(props: Shared & { onChanged: () => void }) {
           <VStack alignment="leading" spacing={24}>
             <VStack alignment="leading" spacing={12}><Text font={17} fontWeight="semibold" padding={{ horizontal: 4 }}>圆形</Text>{grid('accessoryCircular')}</VStack>
             <VStack alignment="leading" spacing={12}><Text font={17} fontWeight="semibold" padding={{ horizontal: 4 }}>长条</Text>{grid('accessoryRectangular')}</VStack>
+            <VStack alignment="leading" spacing={12}><Text font={17} fontWeight="semibold" padding={{ horizontal: 4 }}>单行</Text>{grid('accessoryInline')}</VStack>
           </VStack>
         ) : grid(tab)}
       </VStack>
@@ -602,7 +775,7 @@ function StyleDetail(props: { style: StyleDef; family: Family; loon: LoonData | 
   const [note, setNote] = useState('')
   const param = paramOf(style, family)
   const sizes = (Object.keys(style.views) as Family[]).map(f => FAMILY_NAME[f]).join('、')
-  const lock = family === 'accessoryCircular' || family === 'accessoryRectangular'
+  const lock = family.startsWith('accessory')
 
   async function use() {
     setDefault(family, style.id)
@@ -799,6 +972,8 @@ function SettingsPage(props: Shared & { onChanged: () => void }) {
   }
 
   const shown = prefs.groups.length ? prefs.groups : groups.slice(0, 4)
+  const opts = props.loon?.opts
+  const onOff = (v?: boolean) => (v === undefined ? '-' : v ? '开' : '关')
 
   return (
     <Form navigationTitle="设置" navigationBarTitleDisplayMode="inline">
@@ -823,6 +998,15 @@ function SettingsPage(props: Shared & { onChanged: () => void }) {
       ) : null}
 
       {groups.length ? (
+        <Section header={<Text>解锁样式看哪个策略组</Text>} footer={<Text>比如选流媒体组, 解锁样式就显示这个组当前节点的结果。</Text>}>
+          <Picker title="策略组" value={prefs.unlock} onChanged={(v: any) => update({ unlock: String(v) })}>
+            <Text tag="">主策略组</Text>
+            {groups.map(n => <Text tag={n}>{n}</Text>)}
+          </Picker>
+        </Section>
+      ) : null}
+
+      {groups.length ? (
         <Section header={<Text>{`大号看板显示的策略组 · ${shown.length}`}</Text>} footer={<Text>最多显示前 4 个, 按勾选顺序。都不勾就显示前 4 个。</Text>}>
           {groups.map(n => (
             <Button action={() => toggleGroup(n)} buttonStyle="plain">
@@ -837,7 +1021,23 @@ function SettingsPage(props: Shared & { onChanged: () => void }) {
         </Section>
       ) : null}
 
-      <Section header={<Text>用量历史</Text>} footer={<Text>每次读到用量按北京时间记一笔, 同一天覆盖, 保留约 60 天; 只存用量数字, 不存订阅链接。</Text>}>
+      <Section header={<Text>用量提醒</Text>} footer={<Text>小组件刷新时检查, 条件成立时发一次通知。</Text>}>
+        <Toggle title="用到 80% 和 90%" value={prefs.alerts.usage} onChanged={(v: boolean) => update({ alerts: { ...prefs.alerts, usage: v } })} />
+        <Toggle title="预计 3 天内用完" value={prefs.alerts.runout} onChanged={(v: boolean) => update({ alerts: { ...prefs.alerts, runout: v } })} />
+        <Toggle title="到期前 3 天" value={prefs.alerts.expire} onChanged={(v: boolean) => update({ alerts: { ...prefs.alerts, expire: v } })} />
+      </Section>
+
+      <Section header={<Text>节点</Text>} footer={<Text>这几项是 Loon 在后台做的, 在 Loon 的「Loon 面板」插件参数里改, 这里只显示当前状态。</Text>}>
+        <LabeledContent label={<Text>网络切换后自动复测</Text>} value={onOff(opts?.net)} />
+        <LabeledContent label={<Text>节点异常发通知</Text>} value={onOff(opts?.notify)} />
+        <LabeledContent label={<Text>挂了自动切到最快</Text>} value={onOff(opts?.auto)} />
+      </Section>
+
+      <Section header={<Text>刷新</Text>} footer={<Text>{`控制中心 → 左上角 + → 添加控制 → Scripting → loon-panel, 按钮切到最快, 开关切分流和全局。`}</Text>}>
+        <NavigationLink destination={<AutoRefreshPage />}><Text>{`体检完自动刷新小组件${opts?.push ? ' · 已设置' : ''}`}</Text></NavigationLink>
+      </Section>
+
+      <Section header={<Text>用量历史</Text>} footer={<Text>每次读到用量都记一笔 (最近 3 天的每次读数, 约 60 天的每日读数); 只存用量数字, 不存订阅链接。</Text>}>
         <Button title="清除用量历史" role="destructive" action={async () => {
           if (!(await Dialog.confirm({ title: '清除全部用量历史?', message: '趋势图和预测会从头记录', cancelLabel: '取消', confirmLabel: '清除' }))) return
           clearHistory()
@@ -853,6 +1053,60 @@ function SettingsPage(props: Shared & { onChanged: () => void }) {
       <Section header={<Text>关于</Text>}>
         <LabeledContent label={<Text>版本</Text>} value={version} />
         <Button title={updateText ? `检查更新 · ${updateText}` : '检查更新'} action={checkUpdate} />
+      </Section>
+    </Form>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// 体检完自动刷新 (Remote Updates): 接收端准备 + 给 Loon 插件的参数; 发送密钥只在复制时经手, 不保存
+// ─────────────────────────────────────────────────────────────
+function AutoRefreshPage() {
+  const major = Number((Device.systemVersion || '0').split('.')[0])
+  const [ids, setIds] = useState<string[]>(getRemoteTargets())
+  const [note, setNote] = useState('')
+  const err = (e: unknown) => (e as Error)?.message ?? String(e)
+
+  async function enable() {
+    setNote('授权中...')
+    try {
+      await Widget.remoteUpdates.enable()
+      setNote('已授权, 接着在桌面小组件的编辑页里打开 Remote Updates')
+    } catch (e) {
+      setNote(`授权失败: ${err(e)}`)
+    }
+  }
+
+  async function load() {
+    setNote('读取中...')
+    try {
+      const list: any[] = await Widget.remoteUpdates.listTargets()
+      const next = list.filter(t => String(t?.status ?? '') !== 'disabled').map(t => String(t?.targetId ?? '')).filter(Boolean)
+      setIds(next)
+      setRemoteTargets(next)
+      setNote(next.length ? `读到 ${next.length} 个小组件` : '还没有 target: 确认桌面小组件的配置里已打开 Remote Updates')
+    } catch (e) {
+      setNote(`读取失败: ${err(e)}`)
+    }
+  }
+
+  async function copy() {
+    const key = await Dialog.prompt({ title: '粘贴发送密钥', message: '在 Remote Updates 里为这些 target 生成, 只勾 widgets:reload。这里不保存。', placeholder: '发送密钥' })
+    if (!key?.trim()) return
+    await Pasteboard.setString(`push_key=${key.trim()}\nwidget_targets=${ids.join(',')}`)
+    setNote('已复制, 到 Loon 的「Loon 面板」插件参数里, 把 = 后面的值分别填进两个输入框')
+  }
+
+  return (
+    <Form navigationTitle="自动刷新" navigationBarTitleDisplayMode="inline">
+      <Section footer={<Text>{note || 'Loon 体检完马上刷新桌面小组件, 不用等系统定时。需要 iOS 26 以上和 Scripting 的 Remote Push, 和推送通知共用每日额度。'}</Text>}>
+        {major < 26 ? <Text foregroundStyle={WARN}>当前系统低于 iOS 26, 暂时不能用。</Text> : null}
+        <Text font={14}>1. Scripting → 工具 → Remote Push 连接这台设备</Text>
+        <Button title="2. 授权小组件远程刷新" action={enable} />
+        <Text font={14}>3. 长按桌面 loon-panel 小组件 → 编辑小组件 → 打开 Remote Updates</Text>
+        <Button title={`4. 读取小组件 target${ids.length ? ` · ${ids.length} 个` : ''}`} action={load} />
+        <Text font={14}>5. 在 Remote Updates 里生成发送密钥 (Create Sender Key), 只勾 widgets:reload</Text>
+        <Button title="6. 复制 Loon 插件参数" action={copy} disabled={!ids.length} />
       </Section>
     </Form>
   )

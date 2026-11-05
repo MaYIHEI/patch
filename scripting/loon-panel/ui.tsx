@@ -2,12 +2,14 @@
 // 外观 (素净 / 自定义) + 各样式共用的部件, 写法和 checkin 一致. 小组件和 App 内预览共用同一套视图
 // 背景图只放在背景层 (background), 不参与内容布局
 
-import { VStack, HStack, ZStack, Text, Spacer, Image, Circle, Capsule, Rectangle, RoundedRectangle } from 'scripting'
+import { VStack, HStack, ZStack, Text, Spacer, Image, Button, Circle, Capsule, Rectangle, RoundedRectangle } from 'scripting'
 import type { Color, DynamicShapeStyle } from 'scripting'
 
 import type { Look, Prefs } from './settings'
-import type { LoonData, NodeResult } from './loon'
-import type { SubView } from './subs'
+import type { LoonData, Media, NodeResult } from './loon'
+import type { Overview, SubView } from './subs'
+import { RefreshIntent } from './app_intents'
+import type { Nat } from './net'
 
 // ─────────────────────────────────────────────────────────────
 // 配色
@@ -105,7 +107,10 @@ export type Ctx = {
   loon: LoonData | null
   loonErr: string
   subs: SubView[]
+  all: Overview        // 全部机场汇总
   prefs: Prefs
+  nat: Nat | null
+  events: { t: number; k: string; msg: string }[]   // Loon 事件 + 本机用量提醒, 新的在前
 }
 
 export const hhmm = (t: number) => {
@@ -210,7 +215,18 @@ export function Header(props: { ctx: Ctx; title: string; icon?: string; right?: 
       <Text font={props.font ?? 13} fontWeight="semibold" foregroundStyle={th.t1} lineLimit={1}>{props.title}</Text>
       <Spacer minLength={4} />
       {props.right ? <Text font={11} foregroundStyle={props.rightColor ?? th.t3} lineLimit={1}>{props.right}</Text> : null}
+      <RefreshButton ctx={props.ctx} />
     </HStack>
+  )
+}
+
+/** 右上角刷新: 后台重读数据, 不打开 App */
+export function RefreshButton(props: { ctx: Ctx }) {
+  if (props.ctx.inApp) return null
+  return (
+    <Button intent={RefreshIntent(undefined)} buttonStyle="plain">
+      <Image systemName="arrow.clockwise" font={10} fontWeight="semibold" foregroundStyle={props.ctx.th.t3} />
+    </Button>
   )
 }
 
@@ -264,23 +280,62 @@ export function UsageRing(props: { ctx: Ctx; ratio: number; size: number; line: 
   )
 }
 
-/** 日用量柱状图: null 画一条细轨道; 最后一根 (今天) 用强调色 */
-export function DailyBars(props: { ctx: Ctx; values: (number | null)[]; height: number; spacing?: number }) {
+/** 用量柱状图: null 画一条细轨道; 最后一根 (今天) 或 peak 时最高的一根用强调色; avg 画一条日均线 */
+export function DailyBars(props: { ctx: Ctx; values: (number | null)[]; height: number; spacing?: number; avg?: number; peak?: boolean }) {
   const { th } = props.ctx
   const max = Math.max(1, ...props.values.map(v => v ?? 0))
-  const last = props.values.length - 1
-  return (
+  const top = props.peak ? props.values.indexOf(Math.max(...props.values.map(v => v ?? 0))) : props.values.length - 1
+  const bars = (
     <HStack alignment="bottom" spacing={props.spacing ?? 3} frame={{ maxWidth: 'infinity', height: props.height, alignment: 'bottom' }}>
       {props.values.map((v, i) => (
         <RoundedRectangle
           cornerRadius={2}
-          fill={v === null ? th.track : i === last ? th.accent : withAlpha(th.accent, 0.45)}
+          fill={v === null ? th.track : i === top ? th.accent : withAlpha(th.accent, 0.45)}
           frame={{ maxWidth: 'infinity', height: v === null ? 2 : Math.max(2, (v / max) * props.height) }}
         />
       ))}
     </HStack>
   )
+  if (!props.avg) return bars
+  return (
+    <ZStack frame={{ maxWidth: 'infinity', height: props.height }}>
+      {bars}
+      <VStack spacing={0} frame={{ maxWidth: 'infinity', height: props.height }}>
+        <Spacer minLength={0} />
+        <Rectangle fill={th.t3} frame={{ maxWidth: 'infinity', height: 0.5 }} />
+        <VStack frame={{ height: Math.min(props.height, (props.avg / max) * props.height) }} />
+      </VStack>
+    </ZStack>
+  )
 }
+
+/** 24 小时柱状图: 今天每小时, 还没到的小时画细轨道 */
+export function HourBars(props: { ctx: Ctx; values: (number | null)[]; height: number }) {
+  return <DailyBars ctx={props.ctx} values={props.values} height={props.height} spacing={2} peak />
+}
+
+/** 最近几次延迟的迷你柱: 高度 = 延迟, 超时画红色满格 */
+export function Spark(props: { ctx: Ctx; h?: number[]; width: number; height: number }) {
+  const list = (props.h ?? []).slice(-12)
+  const max = Math.max(1, ...list)
+  return (
+    <HStack alignment="bottom" spacing={1} frame={{ width: props.width, height: props.height, alignment: 'bottomTrailing' }}>
+      {list.map(v => <Rectangle fill={v < 0 ? BAD : v < 200 ? OK : v < 500 ? WARN : BAD} frame={{ maxWidth: 'infinity', height: v < 0 ? props.height : Math.max(1, (v / max) * props.height) }} />)}
+    </HStack>
+  )
+}
+
+/** 可用性格子: 每次体检一格, 绿 / 橙 / 红 */
+export function Uptime(props: { h?: number[]; height?: number }) {
+  return (
+    <HStack spacing={1} frame={{ maxWidth: 'infinity', height: props.height ?? 9 }}>
+      {(props.h ?? []).slice(-16).map(v => <Rectangle fill={v < 0 ? BAD : v < 300 ? OK : WARN} frame={{ maxWidth: 'infinity' }} />)}
+    </HStack>
+  )
+}
+
+export const mediaColor = (m: Media) => (m.status === 'yes' ? OK : m.status === 'partial' ? WARN : m.status === 'no' ? BAD : '#8E8E93')
+export const mediaWord = (m: Media) => (m.status === 'yes' ? (m.region || '可用') : m.status === 'partial' ? '部分' : m.status === 'no' ? '不可用' : '未知')
 
 /** 胶囊标签 */
 export function Pill(props: { text: string; fg: Paint; bg: Paint; font?: number }) {
