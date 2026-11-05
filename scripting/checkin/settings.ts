@@ -67,6 +67,16 @@ export const BUILTIN_DEFAULTS: Record<Family, string> = {
 export const getDefaults = () => read<Record<Family, string>>(DEFAULTS_KEY, BUILTIN_DEFAULTS)
 export const setDefault = (f: Family, style: string) => write(DEFAULTS_KEY, { ...getDefaults(), [f]: style })
 
-/** 0.3.0 的预设数据直接丢弃 */
-AppStorage.remove('checkin.presets')
-AppStorage.remove('checkin.mock')
+/** 0.3.0 的预设数据直接丢弃; App 启动时调 (实时活动渲染器会冻结引用到的模块, 模块加载时不能有副作用) */
+export function dropLegacy(): void {
+  AppStorage.remove('checkin.presets')
+  AppStorage.remove('checkin.mock')
+}
+
+// ────────────────────────────────────────────────────────────
+// 自动刷新 (Remote Updates): 只存不敏感的 target 信息, 发送密钥不落地
+// ────────────────────────────────────────────────────────────
+export type RemoteInfo = { startTargetId: string; templateVersion: string; status: string }
+const REMOTE_KEY = 'checkin.remote'
+export const getRemote = () => read<RemoteInfo>(REMOTE_KEY, { startTargetId: '', templateVersion: '', status: '' })
+export const setRemote = (r: RemoteInfo) => write(REMOTE_KEY, r)

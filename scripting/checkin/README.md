@@ -66,6 +66,15 @@ https://www.scripting.fun/import_scripts/?urls=%5B%22https%3A%2F%2Fwww.imarkr.co
 
 **实时活动**：设置里点「开始早间签到实时活动」，锁屏和灵动岛显示今日进度和需处理项，可以直接「补签」「打开」「刷新」「全部补签」。适合每天签到后开启；iOS 实时活动最长 8 小时，到时由系统结束，想常驻锁屏请用锁屏小组件。设置里「预览四种状态」可以先看效果。
 
+**自动刷新**：Loon 签到跑完后自动刷新桌面小组件，并在锁屏弹出或更新实时活动。设置 → 自动刷新，按页面步骤操作：
+1. Scripting → 工具 → Remote Push 连接这台设备
+2. 授权小组件远程刷新，再在桌面 checkin 小组件的配置里打开 Remote Updates（不同参数的小组件各自打开）
+3. 准备远程启动实时活动
+4. 在 Remote Updates 里为这些 target 生成发送密钥（Create Sender Key），只勾 `widgets:reload`、`activities:start`、`activities:read-state`、`activities:update`、`activities:end`
+5. 点「复制 Loon 插件参数」，粘贴发送密钥，到签到合集插件的参数里粘贴
+
+小组件远程刷新需要 iOS 26+，远程启动实时活动需要 iOS 17.2+，系统版本不够时对应步骤会隐藏。远程刷新和推送通知共用 Remote Push 的每日额度。发送密钥只在复制时用一次，checkin 不保存；不要使用主密钥。
+
 **控制中心按钮**：控制中心 → 左上角 + → 添加控制 → Scripting → `checkin`。点一下会读数据、刷新小组件，并开启或刷新实时活动。
 
 ---
@@ -93,3 +102,4 @@ https://www.scripting.fun/import_scripts/?urls=%5B%22https%3A%2F%2Fwww.imarkr.co
 | 2026-10-28 | 0.5.0 | 去掉过期倒计时样式和详情里的过期时间; 实时活动重做: 锁屏横幅按有无问题切换, 灵动岛收起 / 最小 / 展开带圆环和需处理数, 可直接补签、打开、刷新、全部补签; 设置里加四种状态预览 |
 | 2026-10-28 | 1.0.0 | 正式版: 新手引导和文档链接指向 paperclip main; 说明目前仅支持 Loon, 加读不到数据的排查方法 |
 | 2026-10-28 | 1.0.1 | 修实时活动在锁屏上报「重复注册 CheckinActivity」 |
+| 2026-11-05 | 1.1.0 | 接入 Scripting Remote Updates: Loon 签到后自动刷新小组件、远程启动和更新实时活动; 设置里加自动刷新引导和「复制 Loon 插件参数」; 实时活动 state 改为和远程推送同一格式 |
