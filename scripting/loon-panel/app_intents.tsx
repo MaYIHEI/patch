@@ -1,0 +1,48 @@
+// loon-panel / app_intents.tsx
+// 小组件按钮的动作 (官方要求全部写在这个文件): 切换模式、切换节点, 都走 Loon 插件的操作地址
+
+import { AppIntentManager, AppIntentProtocol, Widget } from 'scripting'
+
+import { setLoon } from './loon'
+
+const AppStorage = Storage as unknown as {
+  get<T = unknown>(key: string): T | null
+  set(key: string, value: unknown): void
+}
+
+/** 最近一次按钮操作的结果, 小组件重绘时显示 (失败原因 / 成功提示), 1 分钟后不再显示 */
+export const NOTE_KEY = 'loonpanel.note'
+export type Note = { t: number; ok: boolean; text: string }
+export function readNote(): Note | null {
+  const n = AppStorage.get<Note>(NOTE_KEY)
+  return n && Date.now() - n.t < 60_000 ? n : null
+}
+
+// 小组件按钮在后台跑, 有时间限制 (系统没公开具体秒数, 留足余量)
+const TIMEOUT_S = 20
+
+async function run(q: { mode?: number; group?: string; node?: string }, okText: string) {
+  try {
+    await setLoon(q, TIMEOUT_S)
+    AppStorage.set(NOTE_KEY, { t: Date.now(), ok: true, text: okText })
+  } catch (e) {
+    AppStorage.set(NOTE_KEY, { t: Date.now(), ok: false, text: (e as Error).message.slice(0, 40) })
+  }
+  Widget.reloadAll()
+}
+
+export const ModeIntent = AppIntentManager.register({
+  name: 'LoonPanelModeIntent',
+  protocol: AppIntentProtocol.AppIntent,
+  perform: async ({ mode }: { mode: number }) => {
+    await run({ mode }, '已切换模式')
+  },
+})
+
+export const SwitchIntent = AppIntentManager.register({
+  name: 'LoonPanelSwitchIntent',
+  protocol: AppIntentProtocol.AppIntent,
+  perform: async ({ group, node }: { group: string; node: string }) => {
+    await run({ group, node }, `${group} → ${node}`)
+  },
+})
