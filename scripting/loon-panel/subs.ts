@@ -49,7 +49,7 @@ export const saveSubs = (list: Sub[]) => AppStorage.set(LIST_KEY, JSON.stringify
 export const subURL = (id: string) => Keychain.get(secretKey(id)) ?? ''
 
 export function addSub(name: string, url: string): Sub {
-  const sub = { id: `s${Date.now().toString(36)}`, name: name.trim() }
+  const sub = { id: `s${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name: name.trim() }
   if (!Keychain.set(secretKey(sub.id), url.trim())) throw new Error('写入钥匙串失败')
   saveSubs([...listSubs(), sub])
   return sub
@@ -81,6 +81,33 @@ function dropUsage(id: string) {
 // ────────────────────────────────────────────────────────────
 // 读用量
 // ────────────────────────────────────────────────────────────
+/**
+ * 从 Loon 配置里找订阅: [Remote Proxy] 段的「名字 = 链接,参数...」, enabled=false 的跳过;
+ * 没有这一段时按粘贴的内容逐行找, 也认只有一条链接的行 (名字用域名)
+ */
+export function parseSubs(text: string): { name: string; url: string }[] {
+  const lines = text.split(/\r?\n/).map(l => l.trim())
+  let on = !lines.includes('[Remote Proxy]')
+  const out: { name: string; url: string }[] = []
+  for (const line of lines) {
+    if (/^\[.*\]$/.test(line)) { on = line === '[Remote Proxy]'; continue }
+    if (!on || !line || line.startsWith('#') || /,\s*enabled\s*=\s*false/i.test(line)) continue
+    const m = line.match(/^(?:([^=]+?)\s*=\s*)?(https?:\/\/[^,\s]+)/i)
+    if (m) out.push({ name: (m[1] ?? m[2].replace(/^https?:\/\//i, '').split(/[/?#:]/)[0]).trim(), url: m[2] })
+  }
+  return out
+}
+
+/** 只添加读得到用量的 (节点转换、自建订阅常常没有 Subscription-Userinfo); 同名的跳过 */
+export async function importSubs(found: { name: string; url: string }[]): Promise<{ added: string[]; noUsage: string[]; same: string[] }> {
+  const have = new Set(listSubs().map(s => s.name))
+  const same = found.filter(x => have.has(x.name)).map(x => x.name)
+  const fresh = found.filter(x => !have.has(x.name))
+  const tried = await Promise.all(fresh.map(x => fetchUsage(x.url).then(() => true, () => false)))
+  fresh.forEach((x, i) => { if (tried[i]) addSub(x.name, x.url) })
+  return { added: fresh.filter((_, i) => tried[i]).map(x => x.name), noUsage: fresh.filter((_, i) => !tried[i]).map(x => x.name), same }
+}
+
 /** "upload=1; download=2; total=3; expire=4" → 用量; 没有 total 和 download 时返回 null */
 export function parseUserinfo(text: string, t = Date.now()): Usage | null {
   const num = (k: string) => {

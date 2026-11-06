@@ -149,13 +149,14 @@ export function flag(cc?: string): string {
 }
 
 /** 节点名自带国旗时不再重复加 */
-export function nodeLabel(name: string, r?: NodeResult): string {
+/** 全名: 选节点的列表里用, 倍率和机场都要看得到 */
+export function fullLabel(name: string, r?: NodeResult): string {
   const f = flag(r?.cc)
   return f && !name.includes(f) ? `${f} ${name}` : name
 }
 
-/** 列表里看的短名: 去掉开头的 [标签] 和 | 后面的倍率 */
-export const shortNode = (name: string) => name.replace(/^\[[^\]]*\]\s*/, '').replace(/\s*\|.*$/, '') || name
+/** 短名: 小组件和首页用, 去掉开头的 [标签] 和 | 后面的倍率 */
+export const nodeLabel = (name: string, r?: NodeResult) => fullLabel(name.replace(/^\[[^\]]*\]\s*/, '').replace(/\s*\|.*$/, '') || name, r)
 
 export const asnText = (r?: NodeResult) => [r?.asn ? `AS${r.asn}` : '', r?.org ?? ''].filter(Boolean).join(' ')
 
@@ -211,7 +212,7 @@ export function Dot(props: { color: Paint; size?: number }) {
 }
 
 /** 标题行: 左标题, 右灰字 */
-export function Header(props: { ctx: Ctx; title: string; icon?: string; right?: string; rightColor?: Paint; font?: number }) {
+export function Header(props: { ctx: Ctx; title: string; icon?: string; right?: string; rightColor?: Paint; font?: number; trailing?: any }) {
   const { th } = props.ctx
   return (
     <HStack spacing={5}>
@@ -219,6 +220,7 @@ export function Header(props: { ctx: Ctx; title: string; icon?: string; right?: 
       <Text font={props.font ?? 13} fontWeight="semibold" foregroundStyle={th.t1} lineLimit={1}>{props.title}</Text>
       <Spacer minLength={4} />
       {props.right ? <Text font={11} foregroundStyle={props.rightColor ?? th.t3} lineLimit={1}>{props.right}</Text> : null}
+      {props.trailing}
       <RefreshButton ctx={props.ctx} />
     </HStack>
   )
