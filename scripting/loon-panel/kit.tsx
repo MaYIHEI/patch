@@ -6,8 +6,9 @@ import {
 } from 'scripting'
 import type { Color } from 'scripting'
 
-const RADIUS = 16
 const HAS_GLASS = Number((Device.systemVersion || '0').split('.')[0]) >= 26
+const RADIUS = HAS_GLASS ? 26 : 12   // 和系统 List 的卡片一致, 两种页面切换时不跳
+const MARGIN = HAS_GLASS ? 20 : 16
 
 const SEPARATOR: Color = 'separator'
 const CARD: Color = 'secondarySystemGroupedBackground'
@@ -22,7 +23,7 @@ export function Page(props: { title: string; large?: boolean; bar?: any; childre
       toolbar={props.bar}
       background={<Rectangle fill="systemGroupedBackground" ignoresSafeArea />}
     >
-      <VStack alignment="leading" spacing={22} padding={{ horizontal: 16, vertical: 12 }}>{props.children}</VStack>
+      <VStack alignment="leading" spacing={22} padding={{ horizontal: MARGIN, vertical: 12 }}>{props.children}</VStack>
     </ScrollView>
   )
 }
@@ -47,11 +48,11 @@ export function Group(props: { title?: string; note?: string; inset?: number; ch
   const rows = (Array.isArray(props.children) ? props.children : [props.children]).flat().filter(Boolean)
   return (
     <VStack alignment="leading" spacing={8}>
-      {props.title ? <Text font={14} fontWeight="bold" foregroundStyle="secondaryLabel" padding={{ leading: 10 }}>{props.title}</Text> : null}
+      {props.title ? <Text font={14} fontWeight="bold" foregroundStyle="secondaryLabel" padding={{ leading: MARGIN }}>{props.title}</Text> : null}
       <Card>
         {rows.flatMap((row: any, i: number) => (i ? [<Rectangle fill={SEPARATOR} frame={{ height: 0.5 }} padding={{ leading: props.inset ?? 56 }} />, row] : [row]))}
       </Card>
-      {props.note ? <Text font={12} foregroundStyle="secondaryLabel" padding={{ horizontal: 10 }}>{props.note}</Text> : null}
+      {props.note ? <Text font={12} foregroundStyle="secondaryLabel" padding={{ horizontal: MARGIN }}>{props.note}</Text> : null}
     </VStack>
   )
 }

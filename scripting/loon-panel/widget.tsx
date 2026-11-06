@@ -32,7 +32,7 @@ function ErrorView(props: { message: string }) {
     <VStack spacing={6} padding={14} frame={{ maxWidth: 'infinity', maxHeight: 'infinity' }} widgetBackground={{ light: '#F2F2F7', dark: '#1C1C1E' }}>
       <Image systemName="exclamationmark.triangle.fill" font={20} foregroundStyle="#FF9F0A" />
       <Text font={11} foregroundStyle={{ light: '#6E6E73', dark: '#98989F' }} multilineTextAlignment="center" lineLimit={4}>
-        {`${props.message.slice(0, 60)}\n打开 loon-panel 完成设置`}
+        {`${props.message.slice(0, 60)}\n打开 Loon 面板完成设置`}
       </Text>
     </VStack>
   )
