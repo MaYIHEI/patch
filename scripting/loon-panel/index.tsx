@@ -317,7 +317,7 @@ function GroupTile(props: { group: Group; loon: LoonData }) {
 function HeroCard(props: { group: Group; loon: LoonData }) {
   const { group: g, loon } = props
   const r = loon.nodes[g.leaf]
-  const a = availability(r)
+  const c = healthCount(loon)
   return (
     <Card inner={18}>
       <VStack alignment="leading" spacing={6}>
@@ -329,7 +329,7 @@ function HeroCard(props: { group: Group; loon: LoonData }) {
         <Text font={15} foregroundStyle="label" lineLimit={1}>{nodeLabel(g.leaf, r)}</Text>
         {r?.h?.length ? <Spark ctx={appCtx(null, [])} h={r.h} height={30} count={24} tone="tertiaryLabel" /> : null}
         <HStack>
-          {a === null ? null : <Text font={12} foregroundStyle="secondaryLabel">{`可用 ${Math.round(a * 100)}%`}</Text>}
+          {c.total ? <Text font={12} foregroundStyle="secondaryLabel">{`${c.ok}/${c.total} 个节点可用`}</Text> : null}
           <Spacer />
           {loon.check ? <Text font={12} foregroundStyle="secondaryLabel">{`${ago(loon.check.t)} 体检`}</Text> : null}
         </HStack>

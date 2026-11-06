@@ -157,14 +157,13 @@ export function RoundLink(props: { icon: string; title: string; destination: any
   return <NavigationLink destination={props.destination} buttonStyle="plain" frame={{ maxWidth: 'infinity' }}><Round icon={props.icon} title={props.title} /></NavigationLink>
 }
 
-/** 舞台: 比页面略深的底, 放预览 */
+/** 舞台: 预览居中, 和桌面上一样直接放在底色上 */
 export function Stage(props: { children?: any }) {
   return (
     <VStack
       spacing={12}
-      padding={{ vertical: 22 }}
+      padding={{ vertical: 6 }}
       frame={{ maxWidth: 'infinity' }}
-      background={<RoundedRectangle cornerRadius={RADIUS} style="continuous" fill="tertiarySystemFill" />}
     >
       {props.children}
     </VStack>

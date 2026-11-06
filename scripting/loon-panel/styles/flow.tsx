@@ -5,7 +5,7 @@ import { VStack, HStack, ZStack, Text, Spacer, Circle, RoundedRectangle } from '
 
 import { fmtBytes, md, type SubView } from '../subs'
 import { mainSub, fcColor, staleMark } from './usage'
-import { Root, Header, Num, Empty, Bar, HourBars, usageColor, withAlpha, chunk, OK, BAD, WARN, type Ctx } from '../ui'
+import { Root, Header, Num, Empty, Cell, Bar, HourBars, usageColor, withAlpha, chunk, OK, BAD, WARN, type Ctx } from '../ui'
 
 const NO_SUB = '在 App 里添加机场订阅'
 const G = 1024 ** 3
@@ -104,16 +104,17 @@ export function MultiMedium(props: { ctx: Ctx }) {
   if (!ctx.subs.length) return <NoSub ctx={ctx} title="机场对比" icon="square.stack.3d.up.fill" />
   return (
     <Root ctx={ctx} spacing={7}>
-      <Header ctx={ctx} title="机场对比" icon="square.stack.3d.up.fill" right="今天 · 已用 · 预测" />
-      {ctx.subs.slice(0, 3).map(s => (
-        <HStack spacing={6}>
-          <Text font={12} foregroundStyle={th.t1} lineLimit={1} frame={{ width: 58, alignment: 'leading' }}>{`${staleMark(s)}${s.name}`}</Text>
-          <Bar ctx={ctx} value={s.ratio} color={usageColor(s.ratio)} height={5} />
-          <Text font={10} monospacedDigit foregroundStyle={th.t3} lineLimit={1} frame={{ width: 34, alignment: 'trailing' }}>{fmtBytes(s.today)}</Text>
-          <Text font={10} monospacedDigit foregroundStyle={th.t2} lineLimit={1} minScaleFactor={0.7} frame={{ width: 62, alignment: 'trailing' }}>{s.usage ? (s.usage.total > 0 ? `${fmtBytes(s.used)}/${fmtBytes(s.usage.total)}` : fmtBytes(s.used)) : s.err ? '失败' : '-'}</Text>
-          <Text font={10} fontWeight="medium" foregroundStyle={fcColor(s) ?? th.t3} lineLimit={1} minScaleFactor={0.7} frame={{ width: 50, alignment: 'trailing' }}>{s.fc.short}</Text>
-        </HStack>
-      ))}
+      <Header ctx={ctx} title="机场对比" icon="square.stack.3d.up.fill" right="剩余" />
+      <HStack spacing={6}>
+        {ctx.subs.slice(0, 3).map(s => (
+          <Cell ctx={ctx} gap={3}>
+            <Text font={11} foregroundStyle={th.t2} lineLimit={1}>{`${staleMark(s)}${s.name}`}</Text>
+            <Num value={s.usage ? remainText(s) : s.err ? '失败' : '-'} size={18} color={th.t1} />
+            <Bar ctx={ctx} value={s.ratio} color={usageColor(s.ratio)} height={4} />
+            <Text font={10} foregroundStyle={fcColor(s) ?? th.t3} lineLimit={1} minScaleFactor={0.7}>{s.fc.short}</Text>
+          </Cell>
+        ))}
+      </HStack>
       <Spacer minLength={0} />
       <Text font={10} foregroundStyle={th.t3} lineLimit={1}>{`合计今天 ${fmtBytes(all.today)} · 本月 ${fmtBytes(all.month.total)}`}</Text>
     </Root>
@@ -206,15 +207,17 @@ export function ValueStyle(props: { ctx: Ctx }) {
   const sorted = priced.slice().sort((a, b) => perG(a) - perG(b))
   return (
     <Root ctx={ctx} spacing={7}>
-      <Header ctx={ctx} title="性价比" icon="yensign.circle.fill" right="每 G · 剩余价值" />
-      {sorted.slice(0, 3).map((s, i) => (
-        <HStack spacing={6}>
-          <Text font={12} foregroundStyle={th.t1} lineLimit={1} frame={{ width: 72, alignment: 'leading' }}>{s.name}</Text>
-          <Bar ctx={ctx} value={s.ratio} color={usageColor(s.ratio)} height={5} />
-          <Text font={11} fontWeight="medium" monospacedDigit foregroundStyle={i === 0 ? OK : th.t1} lineLimit={1} frame={{ width: 58, alignment: 'trailing' }}>{`¥${perG(s).toFixed(2)}/G`}</Text>
-          <Text font={11} monospacedDigit foregroundStyle={th.t2} lineLimit={1} frame={{ width: 50, alignment: 'trailing' }}>{`¥${(s.price * (1 - s.ratio)).toFixed(1)}`}</Text>
-        </HStack>
-      ))}
+      <Header ctx={ctx} title="性价比" icon="yensign.circle.fill" right="每 G" />
+      <HStack spacing={6}>
+        {sorted.slice(0, 3).map((s, i) => (
+          <Cell ctx={ctx} gap={3}>
+            <Text font={11} foregroundStyle={th.t2} lineLimit={1}>{s.name}</Text>
+            <Num value={`¥${perG(s).toFixed(2)}`} size={18} color={i === 0 ? OK : th.t1} />
+            <Bar ctx={ctx} value={s.ratio} color={usageColor(s.ratio)} height={4} />
+            <Text font={10} monospacedDigit foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.7}>{`还值 ¥${(s.price * (1 - s.ratio)).toFixed(1)}`}</Text>
+          </Cell>
+        ))}
+      </HStack>
       <Spacer minLength={0} />
       <Text font={10} foregroundStyle={th.t3} lineLimit={1}>{`最划算: ${sorted[0].name}`}</Text>
     </Root>
@@ -227,10 +230,10 @@ export function ValueStyle(props: { ctx: Ctx }) {
 function Stat(props: { ctx: Ctx; label: string; value: string; color?: any }) {
   const { th } = props.ctx
   return (
-    <VStack alignment="leading" spacing={1} padding={{ horizontal: 9, vertical: 6 }} frame={{ maxWidth: 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={10} fill={th.card} />}>
+    <Cell ctx={props.ctx}>
       <Text font={10} foregroundStyle={th.t3}>{props.label}</Text>
-      <Text font={15} fontWeight="semibold" monospacedDigit foregroundStyle={props.color ?? th.t1} lineLimit={1} minScaleFactor={0.7}>{props.value}</Text>
-    </VStack>
+      <Text font={15} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={props.color ?? th.t1} lineLimit={1} minScaleFactor={0.7}>{props.value}</Text>
+    </Cell>
   )
 }
 

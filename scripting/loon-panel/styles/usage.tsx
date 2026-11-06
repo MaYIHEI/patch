@@ -34,9 +34,9 @@ export function RingStyle(props: { ctx: Ctx }) {
       <Header ctx={ctx} title={`${staleMark(s)}${s.name}`} icon="chart.pie.fill" font={12} />
       <HStack frame={{ maxWidth: 'infinity' }}>
         <Spacer minLength={0} />
-        <UsageRing ctx={ctx} ratio={unlimited ? 0 : s.ratio} size={60} line={8}>
+        <UsageRing ctx={ctx} ratio={unlimited ? 0 : s.ratio} size={72} line={9}>
           <VStack spacing={0}>
-            <Num value={unlimited ? fmtBytes(s.used) : pct(s.ratio)} size={unlimited ? 15 : 19} color={th.t1} weight="bold" />
+            <Num value={unlimited ? fmtBytes(s.used) : pct(s.ratio)} size={unlimited ? 16 : 21} color={th.t1} weight="bold" />
             <Text font={10} foregroundStyle={th.t3}>已用</Text>
           </VStack>
         </UsageRing>
@@ -46,7 +46,6 @@ export function RingStyle(props: { ctx: Ctx }) {
       <Text font={11} fontWeight="medium" monospacedDigit foregroundStyle={th.t1} lineLimit={1} minScaleFactor={0.7}>
         {unlimited ? '不限流量' : `剩 ${fmtBytes(s.remain)} / ${fmtBytes(s.usage.total)}`}
       </Text>
-      {s.budget ? <Text font={10} monospacedDigit foregroundStyle={th.t2} lineLimit={1} minScaleFactor={0.7}>{`每天可用 ${fmtBytes(s.budget.today)}`}</Text> : null}
       <Text font={10} foregroundStyle={fcColor(s) ?? th.t3} lineLimit={1} minScaleFactor={0.7}>{s.fc.text}</Text>
     </Root>
   )
@@ -74,7 +73,6 @@ export function TrendStyle(props: { ctx: Ctx }) {
           </HStack>
           <Text font={11} monospacedDigit foregroundStyle={th.t2} lineLimit={1} minScaleFactor={0.7}>{usedText(s)}</Text>
           <Bar ctx={ctx} value={s.ratio} color={usageColor(s.ratio)} height={5} />
-          {s.usage ? <Text font={10} monospacedDigit foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.7}>{`↓${fmtBytes(s.usage.down)} ↑${fmtBytes(s.usage.up)}`}</Text> : null}
           <Spacer minLength={0} />
           <Text font={11} fontWeight="medium" foregroundStyle={fcColor(s) ?? th.t2} lineLimit={1} minScaleFactor={0.7}>{s.fc.text}</Text>
           {s.budget ? <Text font={10} foregroundStyle={th.t2} lineLimit={1} minScaleFactor={0.7}>{`到${s.deadlineWord}前每天 ${fmtBytes(s.budget.today)}`}</Text> : null}

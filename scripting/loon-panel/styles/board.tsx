@@ -1,15 +1,15 @@
 // loon-panel / styles/board.tsx
 // E 全景看板 (大): 模式切换 · 多机场对比 · 策略组当前节点和延迟 (点行切到最快) · 出口信息
 
-import { VStack, HStack, Text, Spacer, Image, Button, Capsule, Rectangle, RoundedRectangle } from 'scripting'
+import { VStack, HStack, Text, Spacer, Image, Capsule, Rectangle } from 'scripting'
 
-import { MODES, groupPage, switchTarget, healthCount, unlockNode, loonStatus, type Group } from '../loon'
+import { MODES, groupPage, healthCount, unlockNode, loonStatus } from '../loon'
 import { fmtBytes } from '../subs'
-import { ModeIntent, SwitchIntent, CheckIntent, readNote } from '../app_intents'
+import { ModeIntent, CheckIntent, readNote } from '../app_intents'
 import { mainGroupLeaf } from './node'
-import { PageButton } from './net'
+import { PageButton, GroupCell, Tap } from './net'
 import { pct, fcColor, staleMark } from './usage'
-import { Root, Bar, RefreshButton, chunk, usageColor, mediaColor, latencyColor, latencyText, nodeLabel, asnText, flag, syncText, withAlpha, OK, BAD, WARN, type Ctx } from '../ui'
+import { Root, Bar, RefreshButton, chunk, usageColor, mediaColor, asnText, flag, syncText, OK, BAD, WARN, type Ctx } from '../ui'
 
 function Section(props: { ctx: Ctx; title: string; right?: string; trailing?: any }) {
   const { th } = props.ctx
@@ -21,12 +21,6 @@ function Section(props: { ctx: Ctx; title: string; right?: string; trailing?: an
       {props.trailing}
     </HStack>
   )
-}
-
-/** 小组件里是按钮, App 预览里只是样子 */
-function Tap(props: { ctx: Ctx; intent: any; children?: any }) {
-  if (props.ctx.inApp || !props.intent) return props.children
-  return <Button intent={props.intent} buttonStyle="plain">{props.children}</Button>
 }
 
 function ModeBar(props: { ctx: Ctx }) {
@@ -50,22 +44,6 @@ function ModeBar(props: { ctx: Ctx }) {
         <Image systemName="stethoscope" font={12} fontWeight="semibold" foregroundStyle={th.t2} padding={{ horizontal: 9, vertical: 7 }} background={<Capsule fill={th.card} />} />
       </Tap>
     </HStack>
-  )
-}
-
-function GroupCell(props: { ctx: Ctx; g: Group }) {
-  const { ctx, g } = props
-  const { th } = ctx
-  const r = ctx.loon!.nodes[g.leaf]
-  const target = ctx.loon!.stale ? undefined : switchTarget(ctx.loon!, g)
-  return (
-    <Tap ctx={ctx} intent={target ? SwitchIntent({ group: g.name, node: target }) : undefined}>
-      <VStack alignment="leading" spacing={1} padding={{ horizontal: 10, vertical: 7 }} frame={{ maxWidth: 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={12} style="continuous" fill={th.card} />}>
-        <Text font={10} foregroundStyle={th.t2} lineLimit={1}>{g.name}</Text>
-        <Text font={15} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={r && (!r.ok || r.ms >= 800) ? latencyColor(r) : th.t1} lineLimit={1}>{latencyText(r)}</Text>
-        <Text font={10} foregroundStyle={th.t3} lineLimit={1}>{nodeLabel(g.leaf, r)}</Text>
-      </VStack>
-    </Tap>
   )
 }
 
@@ -137,7 +115,7 @@ export function BoardStyle(props: { ctx: Ctx }) {
       ) : null}
       <Spacer minLength={0} />
       {leaf?.r?.ip ? (
-        <HStack spacing={6} padding={{ horizontal: 10, vertical: 5 }} background={<Capsule fill={withAlpha(th.accent, 0.12)} />}>
+        <HStack spacing={6} padding={{ horizontal: 10, vertical: 5 }} background={<Capsule fill={th.card} />}>
           <Text font={10} foregroundStyle={th.t2}>出口</Text>
           <Text font={10} fontWeight="semibold" monospacedDigit foregroundStyle={th.t1} lineLimit={1} minScaleFactor={0.7}>{`${flag(leaf.r.cc)} ${leaf.r.ip}`}</Text>
           <Text font={10} foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.7}>{loon?.direct?.org ? `直连 ${loon.direct.org}` : asnText(leaf.r)}</Text>

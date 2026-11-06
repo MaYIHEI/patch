@@ -140,6 +140,8 @@ export const usageColor = (ratio: number) => (ratio >= 0.8 ? BAD : ratio >= 0.5 
 /** 体检测的是经节点完整请求一次的耗时, 比 ping 高得多: < 800 绿, < 1500 橙, 其余 / 不可用红 */
 const msColor = (ms: number) => (ms < 800 ? OK : ms < 1500 ? WARN : BAD)
 export const latencyColor = (r?: NodeResult) => (!r ? '#8E8E93' : !r.ok ? BAD : msColor(r.ms))
+/** 延迟数字: 正常用正文色, 慢和超时才给颜色 */
+export const latencyInk = (ctx: Ctx, r?: NodeResult): Paint => (r && (!r.ok || r.ms >= 800) ? latencyColor(r) : ctx.th.t1)
 export const latencyText = (r?: NodeResult) => (!r ? '未测' : !r.ok ? '超时' : `${r.ms}ms`)
 
 /** "HK" → 🇭🇰 */
@@ -216,7 +218,7 @@ export function Header(props: { ctx: Ctx; title: string; icon?: string; right?: 
   const { th } = props.ctx
   return (
     <HStack spacing={5}>
-      {props.icon ? <Image systemName={props.icon} font={(props.font ?? 13) - 1} fontWeight="semibold" foregroundStyle={th.accent} /> : null}
+      {props.icon ? <Image systemName={props.icon} font={(props.font ?? 13) - 1} fontWeight="semibold" foregroundStyle={th.t3} /> : null}
       <Text font={props.font ?? 13} fontWeight="semibold" foregroundStyle={th.t1} lineLimit={1}>{props.title}</Text>
       <Spacer minLength={4} />
       {props.right ? <Text font={11} foregroundStyle={props.rightColor ?? th.t3} lineLimit={1}>{props.right}</Text> : null}
@@ -233,6 +235,15 @@ export function RefreshButton(props: { ctx: Ctx }) {
     <Button intent={RefreshIntent(undefined)} buttonStyle="plain">
       <Image systemName="arrow.clockwise" font={10} fontWeight="semibold" foregroundStyle={props.ctx.th.t3} />
     </Button>
+  )
+}
+
+/** 小卡片: 网格和并排对比都用它 */
+export function Cell(props: { ctx: Ctx; gap?: number; children?: any }) {
+  return (
+    <VStack alignment="leading" spacing={props.gap ?? 1} padding={{ horizontal: 10, vertical: 7 }} frame={{ maxWidth: 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={12} style="continuous" fill={props.ctx.th.card} />}>
+      {props.children}
+    </VStack>
   )
 }
 
