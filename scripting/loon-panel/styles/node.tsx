@@ -39,8 +39,12 @@ export function NodeStyle(props: { ctx: Ctx }) {
         <Spark ctx={ctx} h={r?.h} width={46} height={18} />
       </HStack>
       <Spacer minLength={0} />
-      {availability(r) !== null ? <Text font={10} foregroundStyle={th.t2}>{`24 次可用 ${Math.round(availability(r)! * 100)}%`}</Text> : null}
-      <Text font={10} foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.7}>{r?.ip ? `${flag(r.cc)} ${asnText(r) || r.ip}` : checkText(ctx)}</Text>
+      <HStack spacing={4}>
+        {availability(r) !== null ? <Text font={10} foregroundStyle={th.t2} lineLimit={1}>{`可用 ${Math.round(availability(r)! * 100)}%`}</Text> : null}
+        <Spacer minLength={2} />
+        <Text font={10} monospacedDigit foregroundStyle={th.t2} lineLimit={1} minScaleFactor={0.7}>{r?.ip ?? ''}</Text>
+      </HStack>
+      <Text font={10} foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.7}>{r?.ip ? `${flag(r.cc)} ${r.org ?? asnText(r)}` : checkText(ctx)}</Text>
     </Root>
   )
 }

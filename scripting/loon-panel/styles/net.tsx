@@ -6,7 +6,7 @@ import { VStack, HStack, ZStack, Text, Spacer, Image, Button, Link, Capsule, Rec
 import type { Color } from 'scripting'
 
 import {
-  MODES, groupPage, shownGroups, pickerView, focusOf, pathTo, isAuto, mainGroup, rankedNodes, healthCount, availability, unlockNode, latestDeep, loonStatus,
+  MODES, groupPage, pickerView, focusOf, pathTo, isAuto, mainGroup, rankedNodes, healthCount, availability, unlockNode, latestDeep, loonStatus,
   type Deep, type Group, type Isp,
 } from '../loon'
 import { fmtBytes, md, type SubView } from '../subs'
@@ -14,7 +14,7 @@ import { ModeIntent, SwitchIntent, CheckIntent, FastestIntent, TurnGroupsIntent,
 import { mainGroupLeaf, checkText } from './node'
 import {
   Root, Header, Num, Empty, Cell, Dot, Pill, Spark, Uptime, RefreshButton, ModeTap, Bar, usageColor, latencyColor, latencyInk, latencyText, nodeLabel, asnText, flag, ago, hhmm,
-  mediaColor, mediaWord, chunk, withAlpha, OK, BAD, WARN, type Ctx,
+  mediaColor, mediaWord, chunk, withAlpha, OK, BAD, WARN, type Ctx, type Paint,
 } from '../ui'
 
 const NO_LOON = '读不到 Loon 数据\n打开 App 看排查步骤'
@@ -386,58 +386,49 @@ function healthText(ctx: Ctx): string {
 /** 今天用了多少和到期 / 重置日 */
 const subLine = (s: SubView) => [`今天 ${fmtBytes(s.today)}`, s.deadline ? `${md(s.deadline)} ${s.deadlineWord}` : ''].filter(Boolean).join(' · ')
 
-/** 小号总览: 有机场时剩余流量是主角, 没有时当前节点是主角 */
+/** 总览的小卡片: 标题和一个数字 */
+function Tile(props: { ctx: Ctx; label: string; value: string; color?: Paint }) {
+  const { ctx } = props
+  const { th } = ctx
+  return (
+    <VStack alignment="leading" spacing={1} padding={{ horizontal: 9, vertical: 6 }} frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={12} style="continuous" fill={th.card} />}>
+      <Text font={10} foregroundStyle={th.t2} lineLimit={1}>{props.label}</Text>
+      <Num value={props.value} size={16} color={props.color ?? th.t1} />
+    </VStack>
+  )
+}
+
+/** 小号总览: 四张小卡片一眼看完; 有机场时看流量, 没有时看网络状况 */
 export function OverviewSmall(props: { ctx: Ctx }) {
   const { ctx } = props
-  const { th, loon } = ctx
+  const { loon } = ctx
   if (!loon) return <NoLoon ctx={ctx} title="总览" />
   const s = ctx.subs[0]
   const u = s?.usage
   const leaf = mainGroupLeaf(ctx)
-  const others = shownGroups(loon, ctx.prefs).filter(g => g.leaf !== leaf?.name).slice(0, 3)
+  const r = leaf?.r
+  const a = availability(r)
+  const c = healthCount(loon)
+  const ms = r?.ok ? String(r.ms) : latencyText(r)
+  const tiles: { label: string; value: string; color?: Paint }[] = u ? [
+    { label: u.total > 0 ? '剩余' : '已用', value: fmtBytes(u.total > 0 ? s.remain : s.used), color: u.total > 0 ? usageColor(s.ratio) : undefined },
+    { label: '今天', value: fmtBytes(s.today) },
+    { label: s.deadline ? s.deadlineWord : '节点', value: s.deadline ? md(s.deadline) : `${c.ok}/${c.total}` },
+    { label: '延迟', value: ms, color: latencyInk(ctx, r) },
+  ] : [
+    { label: '延迟', value: ms, color: latencyInk(ctx, r) },
+    { label: '可用', value: a === null ? '-' : `${Math.round(a * 100)}%` },
+    { label: '节点', value: `${c.ok}/${c.total}` },
+    { label: '出口', value: r?.cc ? `${flag(r.cc)} ${r.cc}` : '-' },
+  ]
   return (
-    <Root ctx={ctx} spacing={4}>
+    <Root ctx={ctx} spacing={6}>
       <Header ctx={ctx} title={s?.name ?? leaf?.group ?? 'Loon'} font={12} trailing={<ModeTap ctx={ctx} />} />
-      {u ? (
-        <VStack alignment="leading" spacing={3} padding={{ top: 4 }}>
-          <HStack alignment="lastTextBaseline" spacing={4}>
-            <Num value={fmtBytes(u.total > 0 ? s.remain : s.used)} size={26} />
-            <Text font={11} foregroundStyle={th.t2} lineLimit={1}>{u.total > 0 ? `/ ${fmtBytes(u.total)}` : '已用'}</Text>
-          </HStack>
-          {u.total > 0 ? <Bar ctx={ctx} value={s.ratio} color={usageColor(s.ratio)} height={4} /> : null}
-          <Text font={11} foregroundStyle={th.t2} lineLimit={1} minScaleFactor={0.8}>{subLine(s)}</Text>
-        </VStack>
-      ) : (
-        <VStack spacing={5} padding={{ top: 4 }}>
-          <HStack alignment="lastTextBaseline" spacing={4}>
-            <Text font={14} fontWeight="semibold" foregroundStyle={th.t1} lineLimit={1} minScaleFactor={0.7}>{leaf ? nodeLabel(leaf.name, leaf.r) : '-'}</Text>
-            <Spacer minLength={2} />
-            <Text font={14} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={latencyInk(ctx, leaf?.r)} lineLimit={1}>{leaf?.r?.ok ? String(leaf.r.ms) : latencyText(leaf?.r)}</Text>
-          </HStack>
-          <Uptime h={leaf?.r?.h} height={4} />
-        </VStack>
-      )}
-      <Spacer minLength={0} />
-      {u ? (
-        <HStack spacing={4}>
-          <Text font={11} foregroundStyle={th.t1} lineLimit={1} minScaleFactor={0.8}>{leaf ? nodeLabel(leaf.name, leaf.r) : '-'}</Text>
-          <Spacer minLength={2} />
-          <Text font={11} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={latencyInk(ctx, leaf?.r)} lineLimit={1}>{latencyText(leaf?.r)}</Text>
+      {chunk(tiles, 2).map(row => (
+        <HStack spacing={6} frame={{ maxWidth: 'infinity', maxHeight: 'infinity' }}>
+          {row.map(t => <Tile ctx={ctx} label={t.label} value={t.value} color={t.color} />)}
         </HStack>
-      ) : (
-        <VStack spacing={5}>
-          {others.map(g => {
-            const r = loon.nodes[g.leaf]
-            return (
-              <HStack spacing={4}>
-                <Text font={11} foregroundStyle={th.t2} lineLimit={1} minScaleFactor={0.8}>{g.name}</Text>
-                <Spacer minLength={2} />
-                <Text font={11} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={g.leaf === 'DIRECT' ? OK : latencyInk(ctx, r)} lineLimit={1}>{g.leaf === 'DIRECT' ? '直连' : r?.ok ? String(r.ms) : latencyText(r)}</Text>
-              </HStack>
-            )
-          })}
-        </VStack>
-      )}
+      ))}
     </Root>
   )
 }
@@ -455,16 +446,15 @@ export function OverviewStyle(props: { ctx: Ctx }) {
   return (
     <Root ctx={ctx} spacing={6}>
       <Header ctx={ctx} title="总览" trailing={<HStack spacing={6}><PageButton ctx={ctx} page={page} pages={pages} /><ModeTap ctx={ctx} /></HStack>} />
-      <HStack spacing={10} alignment="top" frame={{ maxHeight: 'infinity' }}>
-        <VStack alignment="leading" spacing={3} frame={{ minWidth: 104, maxWidth: 104, maxHeight: 'infinity', alignment: 'topLeading' }}>
-          <Text font={11} foregroundStyle={th.t2} lineLimit={1}>{u ? (u.total > 0 ? `${s.name} 剩余` : `${s.name} 已用`) : leaf?.group ?? '当前节点'}</Text>
-          <Num value={u ? fmtBytes(u.total > 0 ? s.remain : s.used) : latencyText(leaf?.r)} size={24} color={u ? th.t1 : latencyInk(ctx, leaf?.r)} />
+      <HStack spacing={6} alignment="top" fixedSize={{ horizontal: false, vertical: true }}>
+        <VStack alignment="leading" spacing={2} padding={{ horizontal: 10, vertical: 7 }} frame={{ minWidth: 112, maxWidth: 112, maxHeight: 'infinity', alignment: 'topLeading' }} background={<RoundedRectangle cornerRadius={12} style="continuous" fill={th.card} />}>
+          <Text font={10} foregroundStyle={th.t2} lineLimit={1}>{u ? (u.total > 0 ? `${s.name} 剩余` : `${s.name} 已用`) : leaf?.group ?? '当前节点'}</Text>
+          <Num value={u ? fmtBytes(u.total > 0 ? s.remain : s.used) : latencyText(leaf?.r)} size={22} color={u ? th.t1 : latencyInk(ctx, leaf?.r)} />
+          {u ? null : <Text font={10} foregroundStyle={th.t2} lineLimit={1} minScaleFactor={0.75}>{leaf ? nodeLabel(leaf.name, leaf.r) : ''}</Text>}
           {u && u.total > 0 ? <Bar ctx={ctx} value={s.ratio} color={usageColor(s.ratio)} height={4} /> : null}
-          {u ? <Text font={10} foregroundStyle={th.t2} lineLimit={1} minScaleFactor={0.8}>{subLine(s)}</Text> : <Text font={11} foregroundStyle={th.t1} lineLimit={1} minScaleFactor={0.75}>{leaf ? nodeLabel(leaf.name, leaf.r) : ''}</Text>}
-          {u ? null : <Text font={10} monospacedDigit foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.8}>{leaf?.r?.ip ?? ''}</Text>}
-          <Spacer minLength={0} />
-          {u ? null : <Uptime h={leaf?.r?.h} height={5} />}
-          {u ? <Text font={10} foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.75}>{leaf ? `${nodeLabel(leaf.name, leaf.r)} ${latencyText(leaf.r)}` : ''}</Text> : <Text font={10} foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.75}>{healthText(ctx)}</Text>}
+          <Spacer minLength={2} />
+          {u ? null : <Uptime h={leaf?.r?.h} height={4} />}
+          <Text font={10} foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.75}>{u ? subLine(s) : healthText(ctx)}</Text>
         </VStack>
         <VStack spacing={6} frame={{ maxWidth: 'infinity' }}>
           {chunk(groups, 2).map(row => (
