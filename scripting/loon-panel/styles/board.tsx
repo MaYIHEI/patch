@@ -6,7 +6,7 @@ import { VStack, HStack, Text, Spacer, Image, Button, Capsule, Rectangle, Rounde
 import { MODES, groupPage, switchTarget, healthCount, unlockNode, loonStatus, type Group } from '../loon'
 import { fmtBytes } from '../subs'
 import { ModeIntent, SwitchIntent, CheckIntent, readNote } from '../app_intents'
-import { mainGroupLeaf, checkText } from './node'
+import { mainGroupLeaf } from './node'
 import { PageButton } from './net'
 import { pct, fcColor, staleMark } from './usage'
 import { Root, Bar, RefreshButton, chunk, usageColor, mediaColor, latencyColor, latencyText, nodeLabel, asnText, flag, syncText, withAlpha, OK, BAD, WARN, type Ctx } from '../ui'
@@ -115,7 +115,7 @@ export function BoardStyle(props: { ctx: Ctx }) {
         <Text font={11} foregroundStyle={th.t3}>在 App 里添加机场订阅</Text>
       )}
 
-      <Section ctx={ctx} title="策略组" right={health && health.total ? `${health.ok}/${health.total} 可用 · ${checkText(ctx)}` : undefined} trailing={<PageButton ctx={ctx} page={page} pages={pages} />} />
+      <Section ctx={ctx} title="策略组" right={health && health.total ? `${health.ok}/${health.total} 可用` : undefined} trailing={<PageButton ctx={ctx} page={page} pages={pages} />} />
       {loon ? (
         <VStack spacing={6}>
           {chunk(groups, 2).map(row => (

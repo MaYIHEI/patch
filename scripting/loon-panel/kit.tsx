@@ -127,7 +127,7 @@ export function NavTile(props: { icon: string; title: string; value?: string; de
     <NavigationLink destination={props.destination} buttonStyle="plain">
       <Card inner={14} tall={92}>
         <VStack alignment="leading" spacing={3}>
-          <Image systemName={props.icon} font={18} foregroundStyle="secondaryLabel" padding={{ bottom: 6 }} />
+          <Image systemName={props.icon} font={18} foregroundStyle="secondaryLabel" frame={{ height: 24 }} padding={{ bottom: 6 }} />
           <Text font={15} foregroundStyle="label" lineLimit={1}>{props.title}</Text>
           {props.value ? <Text font={12} foregroundStyle="secondaryLabel" lineLimit={1}>{props.value}</Text> : null}
         </VStack>

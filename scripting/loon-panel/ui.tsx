@@ -326,7 +326,8 @@ export function Spark(props: { ctx: Ctx; h?: number[]; width?: number; height: n
   const max = Math.max(1, ...list)
   return (
     <HStack alignment="bottom" spacing={props.tone ? 2 : 1} frame={{ width: props.width, maxWidth: props.width ? undefined : 'infinity', height: props.height, alignment: 'bottomTrailing' }}>
-      {list.map(v => <Rectangle fill={v < 0 ? BAD : props.tone ?? msColor(v)} frame={{ maxWidth: 'infinity', height: v < 0 ? props.height : Math.max(1, (v / max) * props.height) }} />)}
+      {props.width ? null : <Spacer />}
+      {list.map(v => <Rectangle fill={v < 0 ? BAD : props.tone ?? msColor(v)} frame={{ width: props.width ? undefined : 6, maxWidth: props.width ? 'infinity' : undefined, height: v < 0 ? props.height : Math.max(1, (v / max) * props.height) }} />)}
     </HStack>
   )
 }

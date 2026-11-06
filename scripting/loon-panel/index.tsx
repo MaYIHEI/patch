@@ -19,6 +19,7 @@ import {
   NavigationStack,
   Picker,
   Circle,
+  ScrollView,
   Script,
   Section,
   Slider,
@@ -179,6 +180,8 @@ function Home() {
   )
 }
 
+const GALLERY: Partial<Record<Family, number>> = { systemSmall: 0.8, systemMedium: 0.62, systemLarge: 0.5 }
+
 /** 小组件页: 当前样式的预览 + 选样式和外观; 打开 App 默认在这里 */
 function WidgetTab(props: { shared: Shared; act: (q: {}, label: string) => Promise<void>; busy: string; close: any; onChanged: () => void; toSubs: () => void }) {
   const { shared } = props
@@ -188,6 +191,7 @@ function WidgetTab(props: { shared: Shared; act: (q: {}, label: string) => Promi
   const look = getLook()
   const data = previewData(shared)
   const style = styleById(getDefaults()[family]) ?? stylesFor(family)[0]
+  const more = stylesFor(family).filter(x => x.id !== style.id)
   return (
     <Page title="小组件" large bar={{ cancellationAction: props.close, topBarTrailing: <Button title="刷新" systemImage="arrow.clockwise" action={() => shared.reload(true)} /> }}>
       {!live || !subs.length || !loon?.check ? <Guide shared={shared} act={props.act} busy={props.busy} toSubs={props.toSubs} /> : null}
@@ -203,6 +207,22 @@ function WidgetTab(props: { shared: Shared; act: (q: {}, label: string) => Promi
           <Text font={12} foregroundStyle="secondaryLabel">{`${style.name} · ${FAMILY_NAME[family]}${!loon || !subs.length ? ' · 示例数据' : ''}`}</Text>
         </Stage>
       </VStack>
+      {more.length ? (
+        <Block title="这个尺寸还有">
+          <ScrollView axes="horizontal" scrollIndicator="hidden">
+            <HStack spacing={12} alignment="top">
+              {more.map(x => (
+                <NavigationLink destination={<StyleDetail style={x} family={family} loon={data.loon} subs={data.subs} onChanged={props.onChanged} />} buttonStyle="plain">
+                  <VStack spacing={6}>
+                    <Preview style={x} family={family} loon={data.loon} subs={data.subs} scale={GALLERY[family] ?? 1} />
+                    <Text font={12} foregroundStyle="secondaryLabel" lineLimit={1}>{x.name}</Text>
+                  </VStack>
+                </NavigationLink>
+              ))}
+            </HStack>
+          </ScrollView>
+        </Block>
+      ) : null}
       <VStack alignment="leading" spacing={8}>
         <Grid>
           <NavTile icon="square.grid.2x2" title="换个样式" value={`${stylesFor(family).length} 种`} destination={<StyleLibrary {...shared} start={family.startsWith('accessory') ? 'lock' : family as SizeTab} onChanged={props.onChanged} />} />
@@ -227,6 +247,16 @@ function NodesTab(props: { shared: Shared; act: (q: Act, label: string) => Promi
   const main = mainGroup(loon, getPrefs())
   const others = common.filter(g => g.name !== main?.name)
   const link = (g: Group, body: any) => <NavigationLink destination={<GroupPage group={g} loon={loon} act={act} reload={reload} />} buttonStyle="plain">{body}</NavigationLink>
+  const allTile = (
+    <NavigationLink destination={<AllGroupsPage loon={loon} act={act} reload={reload} />} buttonStyle="plain">
+      <Card inner={14} tall={92}>
+        <VStack alignment="leading" spacing={3}>
+          <Text font={12} foregroundStyle="secondaryLabel">策略组</Text>
+          <Text font={22} fontWeight="semibold" fontDesign="rounded" foregroundStyle="label">{`全部 ${loon.groups.length}`}</Text>
+        </VStack>
+      </Card>
+    </NavigationLink>
+  )
   return (
     <Page title="节点" large bar={bar}>
       {st.level !== 'ok' ? (
@@ -241,17 +271,11 @@ function NodesTab(props: { shared: Shared; act: (q: Act, label: string) => Promi
       </Picker>
       <Grid>
         {others.map(g => link(g, <GroupTile group={g} loon={loon} />))}
-        {loon.groups.length > 1 ? (
-          <NavigationLink destination={<AllGroupsPage loon={loon} act={act} reload={reload} />} buttonStyle="plain">
-            <Card inner={14} tall={92}>
-              <VStack alignment="leading" spacing={3}>
-                <Text font={12} foregroundStyle="secondaryLabel">策略组</Text>
-                <Text font={22} fontWeight="semibold" fontDesign="rounded" foregroundStyle="label">{`全部 ${loon.groups.length}`}</Text>
-              </VStack>
-            </Card>
-          </NavigationLink>
-        ) : null}
+        {others.length % 2 ? allTile : null}
       </Grid>
+      {others.length % 2 ? null : (
+        <KitGroup><NavRow icon="square.grid.2x2" title="全部策略组" value={`${loon.groups.length} 个`} destination={<AllGroupsPage loon={loon} act={act} reload={reload} />} /></KitGroup>
+      )}
       <VStack spacing={8}>
         <HStack>
           <RoundButton icon="stethoscope" title="立即体检" disabled={!!busy || !live} action={() => { act({}, '体检当前节点') }} />
@@ -1142,7 +1166,7 @@ function SettingsPage(props: Shared & { close: any; onChanged: () => void }) {
       </Card>
 
       <HStack>
-        <RoundButton icon="bolt.horizontal" title="测试连接" action={test} />
+        <RoundButton icon="checkmark.circle" title="测试连接" action={test} />
         <RoundButton icon="square.and.arrow.down" title="更新插件" action={() => { Safari.openURL(LOON_IMPORT) }} />
         <RoundButton icon="arrow.down.circle" title="检查更新" action={checkUpdate} />
       </HStack>
