@@ -1,4 +1,4 @@
-// kit.tsx — patch 的页面骨架: 系统底色 + 分组卡片 + 行. 蓝色强调, 只有状态大卡用大面积颜色; 液态玻璃交给系统底栏、工具栏和按钮
+// kit.tsx — patch 的页面骨架: 系统底色 + 分组卡片 + 行. 蓝色强调和蓝色线条图标, 红绿橙只表示状态; 液态玻璃交给系统底栏、工具栏和按钮
 // 只给 App 页面用, 不进小组件. 新组件把这个文件复制过去就能用, 不依赖组件里的其他文件
 
 import {
@@ -29,14 +29,14 @@ export function Page(props: { title: string; large?: boolean; bar?: any; childre
 }
 
 /** 卡片 */
-export function Card(props: { radius?: number; inner?: number; tall?: number; fill?: Color; children?: any }) {
+export function Card(props: { radius?: number; inner?: number; tall?: number; children?: any }) {
   return (
     <VStack
       alignment="leading"
       spacing={0}
       padding={props.inner ?? 0}
       frame={{ maxWidth: 'infinity', minHeight: props.tall, alignment: 'topLeading' }}
-      background={<RoundedRectangle cornerRadius={props.radius ?? RADIUS} style="continuous" fill={props.fill ?? CARD} />}
+      background={<RoundedRectangle cornerRadius={props.radius ?? RADIUS} style="continuous" fill={CARD} />}
     >
       {props.children}
     </VStack>
@@ -99,7 +99,7 @@ export function ToggleTile(props: { icon: string; title: string; sub?: string; v
     <Card inner={14} tall={104}>
       <VStack alignment="leading" spacing={3}>
         <HStack padding={{ bottom: 6 }}>
-          <Image systemName={props.icon} font={18} foregroundStyle="secondaryLabel" />
+          <Image systemName={props.icon} font={18} foregroundStyle="systemBlue" />
           <Spacer />
           <Toggle title={props.title} labelsHidden value={props.value} onChanged={props.onChanged} disabled={props.disabled} />
         </HStack>
@@ -127,7 +127,7 @@ export function NavTile(props: { icon: string; title: string; value?: string; de
     <NavigationLink destination={props.destination} buttonStyle="plain">
       <Card inner={14} tall={92}>
         <VStack alignment="leading" spacing={3}>
-          <Image systemName={props.icon} font={18} foregroundStyle="secondaryLabel" frame={{ height: 24 }} padding={{ bottom: 6 }} />
+          <Image systemName={props.icon} font={18} foregroundStyle="systemBlue" frame={{ height: 24 }} padding={{ bottom: 6 }} />
           <Text font={15} foregroundStyle="label" lineLimit={1}>{props.title}</Text>
           {props.value ? <Text font={12} foregroundStyle="secondaryLabel" lineLimit={1}>{props.value}</Text> : null}
         </VStack>
@@ -141,7 +141,7 @@ function Round(props: { icon: string; title: string }) {
     <VStack spacing={6}>
       <ZStack frame={{ width: 52, height: 52 }}>
         <Circle fill={CARD} />
-        <Image systemName={props.icon} font={20} foregroundStyle="label" />
+        <Image systemName={props.icon} font={20} foregroundStyle="systemBlue" />
       </ZStack>
       <Text font={12} foregroundStyle="secondaryLabel" lineLimit={1}>{props.title}</Text>
     </VStack>
@@ -184,10 +184,10 @@ export function Group(props: { title?: string; note?: string; inset?: number; ch
   )
 }
 
-/** 行首图标: 默认灰色, 只有状态才给颜色 */
+/** 行首图标: 默认蓝色, 状态才换颜色 */
 export function Chip(props: { icon: string; color?: Color; size?: number }) {
   const size = props.size ?? 28
-  return <Image systemName={props.icon} font={size * 0.62} foregroundStyle={props.color ?? 'secondaryLabel'} frame={{ width: size, height: size }} />
+  return <Image systemName={props.icon} font={size * 0.62} foregroundStyle={props.color ?? 'systemBlue'} frame={{ width: size, height: size }} />
 }
 
 type Label = { icon: string; color?: Color; title: string; sub?: string }
