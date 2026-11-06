@@ -1,81 +1,65 @@
-// kit.tsx — patch 自己的界面风格: 流光渐变底 + 液态玻璃卡片 + 圆形渐变图标 + 圆体字
+// kit.tsx — patch 的页面骨架: 系统底色 + 分组卡片 + 行. 液态玻璃交给系统底栏和工具栏; 配色风格定稿后只改这个文件
 // 只给 App 页面用, 不进小组件. 新组件把这个文件复制过去就能用, 不依赖组件里的其他文件
-// iOS 26 以下没有液态玻璃, 卡片换成系统材质
 
 import {
-  Button, Circle, HStack, Image, NavigationLink, Picker, Rectangle, RoundedRectangle, ScrollView, Spacer, Text, Toggle, VStack, ZStack, gradient,
+  Button, Circle, HStack, Image, NavigationLink, Picker, Rectangle, RoundedRectangle, ScrollView, Spacer, Text, Toggle, VStack,
 } from 'scripting'
-import type { Color, DynamicShapeStyle } from 'scripting'
+import type { Color } from 'scripting'
 
-const RADIUS = 28
+const RADIUS = 16
 const HAS_GLASS = Number((Device.systemVersion || '0').split('.')[0]) >= 26
 
-const GRID = [0, 0.5, 1].flatMap(y => [0, 0.5, 1].map(x => ({ x, y })))
-const mesh = (colors: Color[]) => gradient('mesh', { width: 3, height: 3, points: GRID, colors })
-const AMBIENT = {
-  light: mesh(['#BFD8FF', '#E3DAFF', '#FFE1CC', '#CDEBFF', '#F4F6FC', '#FFDCE8', '#BDEBE3', '#DDE6FF', '#EBD9FF']),
-  dark: mesh(['#10244F', '#241A52', '#3C1C40', '#0E2F4C', '#0C1222', '#2B1A44', '#0D3A3C', '#142450', '#2D1A50']),
-}
+const SEPARATOR: Color = 'separator'
+const CARD: Color = 'secondarySystemGroupedBackground'
 
-const EDGE: DynamicShapeStyle = { light: 'rgba(255,255,255,0.75)', dark: 'rgba(255,255,255,0.16)' }
-const SEPARATOR: DynamicShapeStyle = { light: 'rgba(40,50,80,0.1)', dark: 'rgba(255,255,255,0.1)' }
-
-/** 页面: 渐变底 + 可滚动内容 */
-export function Page(props: { title: string; large?: boolean; toolbar?: any; children?: any }) {
+/** 页面: 系统底色 + 可滚动内容 */
+// 注意: 自定义组件上的 padding、toolbar、frame 这类属性名, Scripting 会再当修饰符应用一次, 这里的属性都避开这些名字
+export function Page(props: { title: string; large?: boolean; bar?: any; children?: any }) {
   return (
     <ScrollView
       navigationTitle={props.title}
       navigationBarTitleDisplayMode={props.large ? 'large' : 'inline'}
-      toolbar={props.toolbar}
-      background={<Rectangle fill={AMBIENT} ignoresSafeArea />}
+      toolbar={props.bar}
+      background="systemGroupedBackground"
     >
       <VStack alignment="leading" spacing={22} padding={{ horizontal: 16, vertical: 12 }}>{props.children}</VStack>
     </ScrollView>
   )
 }
 
-/** 玻璃面板 */
-export function Glass(props: { radius?: number; padding?: number; children?: any }) {
-  const cornerRadius = props.radius ?? RADIUS
-  const shape = { type: 'rect' as const, cornerRadius, style: 'continuous' as const }
-  const surface = HAS_GLASS
-    ? { glassEffect: { glass: UIGlass.regular(), shape } }
-    : { background: <RoundedRectangle cornerRadius={cornerRadius} style="continuous" fill="regularMaterial" /> }
+/** 卡片 */
+export function Card(props: { radius?: number; inner?: number; children?: any }) {
   return (
-    <ZStack
+    <VStack
+      alignment="leading"
+      spacing={0}
+      padding={props.inner ?? 0}
       frame={{ maxWidth: 'infinity', alignment: 'leading' }}
-      overlay={<RoundedRectangle cornerRadius={cornerRadius} style="continuous" stroke={{ shapeStyle: EDGE, strokeStyle: { lineWidth: 1 } }} />}
-      {...surface}
+      background={<RoundedRectangle cornerRadius={props.radius ?? RADIUS} style="continuous" fill={CARD} />}
     >
-      <VStack alignment="leading" spacing={0} padding={props.padding ?? 0} frame={{ maxWidth: 'infinity', alignment: 'leading' }}>{props.children}</VStack>
-    </ZStack>
+      {props.children}
+    </VStack>
   )
 }
 
-/** 一组设置: 小标题 + 玻璃卡片 + 说明. 行之间自动加分隔线 */
+/** 一组设置: 小标题 + 卡片 + 说明. 行之间自动加分隔线 */
 export function Group(props: { title?: string; note?: string; inset?: number; children?: any }) {
   const rows = (Array.isArray(props.children) ? props.children : [props.children]).flat().filter(Boolean)
   return (
     <VStack alignment="leading" spacing={8}>
-      {props.title ? <Text font={14} fontWeight="bold" fontDesign="rounded" foregroundStyle="secondaryLabel" padding={{ leading: 10 }}>{props.title}</Text> : null}
-      <Glass>
-        {rows.flatMap((row: any, i: number) => (i ? [<Rectangle fill={SEPARATOR} frame={{ height: 0.5 }} padding={{ leading: props.inset ?? 60 }} />, row] : [row]))}
-      </Glass>
+      {props.title ? <Text font={14} fontWeight="bold" foregroundStyle="secondaryLabel" padding={{ leading: 10 }}>{props.title}</Text> : null}
+      <Card>
+        {rows.flatMap((row: any, i: number) => (i ? [<Rectangle fill={SEPARATOR} frame={{ height: 0.5 }} padding={{ leading: props.inset ?? 56 }} />, row] : [row]))}
+      </Card>
       {props.note ? <Text font={12} foregroundStyle="secondaryLabel" padding={{ horizontal: 10 }}>{props.note}</Text> : null}
     </VStack>
   )
 }
 
-/** 圆形渐变图标: 上亮下实, 这套风格的标记 */
+/** 行首图标 */
 export function Chip(props: { icon: string; color: Color; size?: number }) {
-  const size = props.size ?? 32
-  return (
-    <ZStack frame={{ width: size, height: size }}>
-      <Circle fill={props.color} />
-      <Circle fill={gradient('linear', { colors: ['rgba(255,255,255,0.38)', 'rgba(255,255,255,0)'], startPoint: 'top', endPoint: 'bottom' })} />
-      <Image systemName={props.icon} font={size * 0.48} fontWeight="semibold" foregroundStyle="white" />
-    </ZStack>
-  )
+  const size = props.size ?? 28
+  return <Image systemName={props.icon} font={size * 0.62} foregroundStyle={props.color} frame={{ width: size, height: size }} />
 }
 
 type Label = { icon: string; color: Color; title: string; sub?: string }
@@ -85,7 +69,7 @@ function Line(props: Label & { children?: any }) {
     <HStack spacing={14} padding={{ horizontal: 14, vertical: 11 }} frame={{ maxWidth: 'infinity', minHeight: 56 }}>
       <Chip icon={props.icon} color={props.color} />
       <VStack alignment="leading" spacing={2}>
-        <Text font={16} fontWeight="medium" fontDesign="rounded" foregroundStyle="label" lineLimit={1}>{props.title}</Text>
+        <Text font={16} fontWeight="medium" foregroundStyle="label" lineLimit={1}>{props.title}</Text>
         {props.sub ? <Text font={12} foregroundStyle="secondaryLabel" lineLimit={2}>{props.sub}</Text> : null}
       </VStack>
       <Spacer minLength={8} />
@@ -146,12 +130,12 @@ export function PickerRow<T extends string | number>(props: Label & { value: T; 
 /** 页面顶部: 大图标 + 名字 + 状态 */
 export function Hero(props: { icon: string; color: Color; title: string; status: string; statusColor: Color; children?: any }) {
   return (
-    <Glass padding={18}>
+    <Card inner={18}>
       <VStack alignment="leading" spacing={16}>
         <HStack spacing={14}>
           <Chip icon={props.icon} color={props.color} size={54} />
           <VStack alignment="leading" spacing={4}>
-            <Text font={23} fontWeight="bold" fontDesign="rounded" foregroundStyle="label" lineLimit={1}>{props.title}</Text>
+            <Text font={23} fontWeight="bold" foregroundStyle="label" lineLimit={1}>{props.title}</Text>
             <HStack spacing={6}>
               <Circle fill={props.statusColor} frame={{ width: 7, height: 7 }} />
               <Text font={13} foregroundStyle="secondaryLabel" lineLimit={2}>{props.status}</Text>
@@ -161,24 +145,7 @@ export function Hero(props: { icon: string; color: Color; title: string; status:
         </HStack>
         {props.children ? <HStack spacing={10}>{props.children}</HStack> : null}
       </VStack>
-    </Glass>
-  )
-}
-
-/** 入口方块: 两个一行 */
-export function Tile(props: { icon: string; color: Color; title: string; sub: string; destination: any }) {
-  return (
-    <NavigationLink destination={props.destination} buttonStyle="plain">
-      <Glass padding={16}>
-        <VStack alignment="leading" spacing={14}>
-          <Chip icon={props.icon} color={props.color} size={38} />
-          <VStack alignment="leading" spacing={2}>
-            <Text font={17} fontWeight="semibold" fontDesign="rounded" foregroundStyle="label" lineLimit={1}>{props.title}</Text>
-            <Text font={12} foregroundStyle="secondaryLabel" lineLimit={1}>{props.sub}</Text>
-          </VStack>
-        </VStack>
-      </Glass>
-    </NavigationLink>
+    </Card>
   )
 }
 
@@ -193,7 +160,7 @@ export function GlassButton(props: { title: string; icon: string; action: () => 
     <Button action={props.action} buttonStyle={!HAS_GLASS ? 'bordered' : props.prominent ? 'glassProminent' : 'glass'} disabled={props.disabled} frame={{ maxWidth: 'infinity' }}>
       <HStack spacing={6} frame={{ maxWidth: 'infinity' }} padding={{ vertical: 3 }}>
         <Image systemName={props.icon} font={14} />
-        <Text font={14} fontWeight="semibold" fontDesign="rounded" lineLimit={1}>{props.title}</Text>
+        <Text font={14} fontWeight="semibold" lineLimit={1}>{props.title}</Text>
       </HStack>
     </Button>
   )
