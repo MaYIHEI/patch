@@ -333,12 +333,16 @@ export function HourBars(props: { ctx: Ctx; values: (number | null)[]; height: n
 
 /** 最近几次延迟的迷你柱: 高度 = 延迟, 超时画红色满格 */
 export function Spark(props: { ctx: Ctx; h?: number[]; width?: number; height: number; count?: number; tone?: Color }) {
-  const list = (props.h ?? []).slice(-(props.count ?? 12))
+  const count = props.count ?? 12
+  const list = (props.h ?? []).slice(-count)
   const max = Math.max(1, ...list)
+  // 不定宽时撑满一行, 次数不够的位置留空, 柱子宽度不变
+  const slots: (number | null)[] = props.width ? list : [...Array(count - list.length).fill(null), ...list]
   return (
-    <HStack alignment="bottom" spacing={props.tone ? 2 : 1} frame={{ width: props.width, maxWidth: props.width ? undefined : 'infinity', height: props.height, alignment: 'bottomTrailing' }}>
-      {props.width ? null : <Spacer />}
-      {list.map(v => <Rectangle fill={v < 0 ? BAD : props.tone ?? msColor(v)} frame={{ width: props.width ? undefined : 6, maxWidth: props.width ? 'infinity' : undefined, height: v < 0 ? props.height : Math.max(1, (v / max) * props.height) }} />)}
+    <HStack alignment="bottom" spacing={props.tone ? 2 : 1} frame={props.width ? { width: props.width, height: props.height, alignment: 'bottomTrailing' } : { maxWidth: 'infinity', height: props.height, alignment: 'bottomTrailing' }}>
+      {slots.map(v => (v === null
+        ? <Rectangle fill="rgba(0,0,0,0)" frame={{ maxWidth: 'infinity', height: 1 }} />
+        : <Rectangle fill={v < 0 ? BAD : props.tone ?? msColor(v)} frame={{ maxWidth: 'infinity', height: v < 0 ? props.height : Math.max(1, (v / max) * props.height) }} />))}
     </HStack>
   )
 }
