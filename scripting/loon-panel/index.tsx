@@ -288,6 +288,7 @@ function NodesTab(props: { shared: Shared; act: (q: Act, label: string) => Promi
       <VStack spacing={8}>
         <HStack>
           <RoundButton icon="stethoscope" title="立即体检" disabled={!!busy || !live} action={() => { act({}, '体检当前节点') }} />
+          {main ? <RoundLink icon="magnifyingglass" title="深度检测" destination={<DeepPage node={main.leaf} loon={loon} reload={reload} />} /> : null}
           <RoundButton icon="arrow.down.circle" title="更新订阅" action={() => { Safari.openURL('loon://update?sub=all') }} />
           {events.length ? <RoundLink icon="list.bullet" title={`事件 ${events.length}`} destination={<EventsPage events={events} />} /> : null}
         </HStack>
@@ -428,13 +429,14 @@ function Guide(props: { shared: Shared; act: (q: {}, label: string) => Promise<v
 // ─────────────────────────────────────────────────────────────
 // 策略组: 按延迟排序, 点一下切换; 可锁定; 当前节点的解锁和深度检测
 // ─────────────────────────────────────────────────────────────
-function GroupPage(props: { group: Group; loon: LoonData; act: (q: Act, label: string) => Promise<void>; reload: (force?: boolean) => Promise<void> }) {
+/** via: 从上一层点进来的路径; 这里选了节点, 上面几层也跟着指过来, 选的才生效. changed: 选完告诉上一层刷新 */
+function GroupPage(props: { group: Group; loon: LoonData; act: (q: Act, label: string) => Promise<void>; reload: (force?: boolean) => Promise<void>; via?: { group: string; node: string }[]; changed?: () => void }) {
   const [g, setG] = useState(props.group)
   const [loon, setLoonData] = useState(props.loon)
   const [busy, setBusy] = useState('')
-  const groupNames = new Set(loon.groups.map(x => x.name))
   const locked = loon.locks?.[g.name]
-  const ms = (n: string) => { const r = loon.nodes[n]; return !r ? 1e7 : r.ok ? r.ms : 1e6 }
+  const resultOf = (n: string) => loon.nodes[loon.groups.find(x => x.name === n)?.leaf ?? n]   // 成员是策略组时看它正在用的节点
+  const ms = (n: string) => { const r = resultOf(n); return !r ? 1e7 : r.ok ? r.ms : 1e6 }
   const list = g.subs.slice().sort((a, b) => ms(a) - ms(b))
   const media = loon.media?.[g.leaf]?.list ?? []
 
@@ -465,20 +467,28 @@ function GroupPage(props: { group: Group; loon: LoonData; act: (q: Act, label: s
     }
   }
 
-  async function after(q: Act, label: string) {
-    await props.act(q, label)
+  function sync() {
     const fresh = cachedLoon()
     if (fresh) {
       setLoonData(fresh)
       const x = fresh.groups.find(y => y.name === g.name)
       if (x) setG(x)
     }
+    props.changed?.()
+  }
+
+  async function after(q: Act, label: string) {
+    await props.act(q, label)
+    sync()
   }
 
   async function pick(node: string) {
-    if (node === g.now || busy) return
+    const path = (props.via ?? []).filter(v => cachedLoon()?.groups.find(x => x.name === v.group)?.now !== v.node)
+    if (busy || (node === g.now && !path.length)) return
     setBusy(node)
-    await after({ group: g.name, node }, `切换到 ${node}`)
+    if (node !== g.now) await props.act({ group: g.name, node }, `切换到 ${node}`)
+    for (const v of path) await props.act({ group: v.group, node: v.node }, `${v.group} → ${v.node}`)
+    sync()
     setBusy('')
   }
 
@@ -487,26 +497,36 @@ function GroupPage(props: { group: Group; loon: LoonData; act: (q: Act, label: s
     <Page title={g.name}>
       <HeroCard group={g} loon={loon} />
 
-      <KitGroup title={loon.check ? `按延迟排序 · ${ago(loon.check.t)} 体检` : '节点'} note="点一行切换。没测过的显示「未测」, 打开下面的「全量体检」就会测全部节点。" inset={44}>
+      <KitGroup>
+        <NavRow icon="magnifyingglass" title="深度检测" sub={`测 ${nodeLabel(g.leaf, out)}`} destination={<DeepPage node={g.leaf} loon={loon} reload={props.reload} />} />
+      </KitGroup>
+
+      <KitGroup title={loon.check ? `按延迟排序 · ${ago(loon.check.t)} 体检` : '节点'} note="点一行切换, 点右边的 › 进去选里面的节点。没测过的显示「未测」, 打开下面的「全量体检」就会测全部节点。" inset={44}>
         {list.map(name => {
-          const r = loon.nodes[name]
+          const r = resultOf(name)
           const a = availability(r)
-          const isGroup = groupNames.has(name)
+          const inner = loon.groups.find(x => x.name === name)
           return (
-            <Button action={() => { pick(name) }} buttonStyle="plain">
-              <HStack spacing={10} padding={{ horizontal: 14, vertical: 10 }} frame={{ maxWidth: 'infinity' }}>
-                <Image systemName={name === g.now ? 'checkmark.circle.fill' : isGroup ? 'folder' : 'circle'} foregroundStyle={name === g.now ? 'systemBlue' : 'tertiaryLabel'} />
-                <VStack alignment="leading" spacing={1}>
-                  <Text font={15} foregroundStyle="label" lineLimit={1}>{fullLabel(name, r)}</Text>
-                  {r ? <Text font={11} foregroundStyle={r.ok ? 'secondaryLabel' : BAD} lineLimit={1}>{r.ok ? [a === null ? '' : `可用 ${Math.round(a * 100)}%`, asnText(r)].filter(Boolean).join(' · ') : `连续 ${r.fail ?? 1} 次超时`}</Text> : null}
-                </VStack>
-                <Spacer />
-                {r?.h?.length ? <Spark ctx={appCtx(null, [])} h={r.h} width={40} height={14} tone="tertiaryLabel" /> : null}
-                {busy === name ? <Text font={12} foregroundStyle="secondaryLabel">切换中</Text>
-                  : isGroup ? <Text font={12} foregroundStyle="tertiaryLabel">策略组</Text>
-                  : <Latency r={r} />}
-              </HStack>
-            </Button>
+            <HStack spacing={0}>
+              <Button action={() => { pick(name) }} buttonStyle="plain" frame={{ maxWidth: 'infinity' }}>
+                <HStack spacing={10} padding={{ leading: 14, trailing: inner ? 6 : 14, vertical: 10 }} frame={{ maxWidth: 'infinity' }}>
+                  <Image systemName={name === g.now ? 'checkmark.circle.fill' : inner ? 'folder' : 'circle'} foregroundStyle={name === g.now ? 'systemBlue' : 'tertiaryLabel'} />
+                  <VStack alignment="leading" spacing={1}>
+                    <Text font={15} foregroundStyle="label" lineLimit={1}>{inner ? name : fullLabel(name, r)}</Text>
+                    {inner ? <Text font={11} foregroundStyle="secondaryLabel" lineLimit={1}>{`正在用 ${nodeLabel(inner.leaf, r)}`}</Text>
+                      : r ? <Text font={11} foregroundStyle={r.ok ? 'secondaryLabel' : BAD} lineLimit={1}>{r.ok ? [a === null ? '' : `可用 ${Math.round(a * 100)}%`, asnText(r)].filter(Boolean).join(' · ') : `连续 ${r.fail ?? 1} 次超时`}</Text> : null}
+                  </VStack>
+                  <Spacer />
+                  {!inner && r?.h?.length ? <Spark ctx={appCtx(null, [])} h={r.h} width={40} height={14} tone="tertiaryLabel" /> : null}
+                  {busy === name ? <Text font={12} foregroundStyle="secondaryLabel">切换中</Text> : <Latency r={r} />}
+                </HStack>
+              </Button>
+              {inner ? (
+                <NavigationLink destination={<GroupPage group={inner} loon={loon} act={props.act} reload={props.reload} via={[...(props.via ?? []), { group: g.name, node: name }]} changed={sync} />} buttonStyle="plain">
+                  <Image systemName="chevron.right" font={13} fontWeight="semibold" foregroundStyle="systemBlue" padding={{ horizontal: 14, vertical: 16 }} />
+                </NavigationLink>
+              ) : null}
+            </HStack>
           )
         })}
       </KitGroup>
@@ -533,7 +553,6 @@ function GroupPage(props: { group: Group; loon: LoonData; act: (q: Act, label: s
             ))}
           </VStack>
         ) : null}
-        <NavRow icon="magnifyingglass" title="深度检测" destination={<DeepPage node={g.leaf} loon={loon} reload={props.reload} />} />
       </KitGroup>
     </Page>
   )
