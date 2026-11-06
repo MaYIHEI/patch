@@ -37,7 +37,7 @@ import {
 import type { Color } from 'scripting'
 
 import {
-  loadLoon, cachedLoon, setLoon, deepCheck, sampleLoon, mainGroup, healthCount, availability, loonStatus, clearLoonCache, MODES, DATA_URL,
+  loadLoon, cachedLoon, setLoon, deepCheck, sampleLoon, mainGroup, shownGroups, healthCount, availability, loonStatus, clearLoonCache, MODES, DATA_URL,
   type Deep, type LoonData, type Group,
 } from './loon'
 import {
@@ -49,7 +49,7 @@ import {
   getPrefs, setPrefs, getLook, setLook, getDefaults, setDefault, getRemoteTargets, setRemoteTargets,
   DEFAULT_LOOK, RECOMMENDED_BG, RECOMMENDED_ACCENT, type Look, type Family, type Prefs,
 } from './settings'
-import { makeTheme, UsageRing, DailyBars, HourBars, Spark, mediaColor, mediaWord, latencyColor, latencyText, nodeLabel, asnText, ago, hhmm, chunk, usageColor, OK, BAD, WARN, type Ctx } from './ui'
+import { makeTheme, UsageRing, DailyBars, HourBars, Spark, mediaColor, mediaWord, latencyColor, latencyText, nodeLabel, shortNode, asnText, ago, hhmm, chunk, usageColor, OK, BAD, WARN, type Ctx } from './ui'
 import { ipTags } from './styles/net'
 import { rateText } from './styles/flow'
 import { STYLES, stylesFor, styleById, paramOf, renderStyle, type StyleDef } from './styles/index'
@@ -166,6 +166,7 @@ function Home() {
   const live = loon && !loon.stale
   const soon = subs.filter(x => x.fc.kind === 'runout' && (x.fc.date ?? 0) - Date.now() < 7 * 86_400_000).length
   const events = [...(loon?.events ?? []), ...localEvents()].sort((a, b) => b.t - a.t)
+  const common = loon ? shownGroups(loon, prefs).slice(0, 4) : []
 
   return (
     <NavigationStack>
@@ -186,7 +187,7 @@ function Home() {
           <VStack spacing={12}>
             <HStack spacing={12}>
               <NavigationLink destination={<StyleLibrary {...shared} onChanged={() => setTick(tick + 1)} />}>
-                <EntryCard icon="square.grid.2x2.fill" color="systemBlue" title="样式库" sub={`${STYLES.length} 种样式`} />
+                <EntryCard icon="square.grid.2x2.fill" color="systemBlue" title="样式库" sub={`${STYLES.reduce((n, s) => n + Object.keys(s.views).length, 0)} 种样式`} />
               </NavigationLink>
               <NavigationLink destination={<AppearancePage {...shared} onChanged={() => setTick(tick + 1)} />}>
                 <EntryCard icon="paintpalette.fill" color="systemOrange" title="外观" sub={look.mode === 'plain' ? '素净' : look.bgType === 'image' ? '自定义 · 图片' : '自定义 · 纯色'} />
@@ -212,11 +213,21 @@ function Home() {
                     {MODES.map(m => <Text tag={m.id}>{m.name}</Text>)}
                   </Picker>
                 </HStack>
-                {loon.groups.map(g => (
+                {common.map(g => (
                   <NavigationLink destination={<GroupPage group={g} loon={loon} act={act} reload={reload} />}>
                     <GroupLine group={g} loon={loon} />
                   </NavigationLink>
                 ))}
+                {loon.groups.length > common.length ? (
+                  <NavigationLink destination={<AllGroupsPage loon={loon} act={act} reload={reload} />}>
+                    <HStack padding={{ horizontal: 14, vertical: 12 }}>
+                      <Text font={15} foregroundStyle="label">全部策略组</Text>
+                      <Spacer />
+                      <Text font={13} foregroundStyle="secondaryLabel">{`${loon.groups.length} 个`}</Text>
+                      <Image systemName="chevron.right" font={13} foregroundStyle="tertiaryLabel" />
+                    </HStack>
+                  </NavigationLink>
+                ) : null}
                 <HStack spacing={16} padding={{ horizontal: 14, vertical: 13 }}>
                   <Button action={() => { act({}, '体检当前节点') }} buttonStyle="plain" disabled={!!busy || !live}>
                     <Text font={15} foregroundStyle={busy || !live ? 'tertiaryLabel' : 'systemBlue'}>立即体检</Text>
@@ -304,12 +315,25 @@ function GroupLine(props: { group: Group; loon: LoonData }) {
     <HStack spacing={10} padding={{ horizontal: 14, vertical: 11 }}>
       <VStack alignment="leading" spacing={1}>
         <Text font={15} foregroundStyle="label" lineLimit={1}>{g.name}</Text>
-        <Text font={12} foregroundStyle="secondaryLabel" lineLimit={1}>{g.now === g.leaf ? nodeLabel(g.leaf, r) : `${g.now} → ${nodeLabel(g.leaf, r)}`}</Text>
+        <Text font={12} foregroundStyle="secondaryLabel" lineLimit={1}>{nodeLabel(shortNode(g.leaf), r)}</Text>
       </VStack>
       <Spacer />
       <Text font={13} fontWeight="medium" monospacedDigit foregroundStyle={latencyColor(r)}>{latencyText(r)}</Text>
       <Image systemName="chevron.right" font={13} foregroundStyle="tertiaryLabel" />
     </HStack>
+  )
+}
+
+function AllGroupsPage(props: { loon: LoonData; act: (q: Act, label: string) => Promise<void>; reload: (force?: boolean) => Promise<void> }) {
+  const { loon, act, reload } = props
+  return (
+    <List navigationTitle="全部策略组" navigationBarTitleDisplayMode="inline">
+      {loon.groups.map(g => (
+        <NavigationLink destination={<GroupPage group={g} loon={loon} act={act} reload={reload} />}>
+          <GroupLine group={g} loon={loon} />
+        </NavigationLink>
+      ))}
+    </List>
   )
 }
 
@@ -1008,7 +1032,7 @@ function SettingsPage(props: Shared & { onChanged: () => void }) {
       ) : null}
 
       {groups.length ? (
-        <Section header={<Text>{`大号看板显示的策略组 · ${shown.length}`}</Text>} footer={<Text>最多显示前 4 个, 按勾选顺序。都不勾就显示前 4 个。</Text>}>
+        <Section header={<Text>{`常用策略组 · ${shown.length}`}</Text>} footer={<Text>首页和大号看板显示这些, 最多 4 个, 按勾选顺序; 都不勾就显示前 4 个。其余在首页「全部策略组」里。</Text>}>
           {groups.map(n => (
             <Button action={() => toggleGroup(n)} buttonStyle="plain">
               <HStack>
