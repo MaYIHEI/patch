@@ -5,7 +5,7 @@
 // 请求 http://1.1.1.1/loon-panel/set: ?mode=0|1|2 切模式; ?group=…&node=… 切节点; ?group=…&node=…&lock=1 锁定, ?group=…&lock=0 解锁; 不带参数只复测
 // 请求 http://1.1.1.1/loon-panel/deep?node=…: 对节点跑一次深度检测 (加 &speed=1 同时测速)
 
-const VERSION = '0.2.0'
+const VERSION = '0.2.1'
 const STORE_KEY = 'loon_panel'
 const CORE_KEY = 'loon_panel_core'
 // 检测核心库 (paperclip ipquality-web-test), 解锁和深度检测都用它, 这里不另写一份

@@ -3,6 +3,7 @@
 //         节点全景 · 线路体检报告 · 锁屏 (圆形延迟 / 圆形今日 / 长条三网)
 
 import { VStack, HStack, ZStack, Text, Spacer, Image, Button, Link, Capsule, Rectangle, RoundedRectangle, Gauge, AccessoryWidgetBackground } from 'scripting'
+import type { Color } from 'scripting'
 
 import {
   MODES, shownGroups, switchTarget, rankedNodes, healthCount, availability, unlockNode, latestDeep, loonStatus, modeName,
@@ -109,8 +110,8 @@ export function ModeStyle(props: { ctx: Ctx }) {
 // IP 质量 (小): 多来源原样显示, 不自己打分
 // ─────────────────────────────────────────────────────────────
 /** 类型: 各来源里最多的那个 */
-export function ipTags(d: Deep): { text: string; color: string }[] {
-  const tags: { text: string; color: string }[] = []
+export function ipTags(d: Deep): { text: string; color: Color }[] {
+  const tags: { text: string; color: Color }[] = []
   const types = (d.types ?? []).map(t => t.type.toLowerCase())
   if (types.length) {
     const home = types.filter(t => /isp|residential|home|住宅|家宽/.test(t)).length
@@ -154,7 +155,7 @@ export function SafetyStyle(props: { ctx: Ctx }) {
   const nat = ctx.nat
   const leakCC = d?.dnsleak?.servers.map(s => s.cc).filter(Boolean) ?? []
   const exit = d?.basic?.cc
-  const rows: { name: string; text: string; color: string }[] = [
+  const rows: { name: string; text: string; color: Color }[] = [
     { name: 'NAT', text: nat ? nat.text : '未测', color: !nat ? '#8E8E93' : nat.type === 'blocked' ? BAD : nat.type === 'symmetric' ? WARN : OK },
     { name: 'DNS', text: !d?.dnsleak ? '未测' : leakCC.includes('CN') && exit !== 'CN' ? '疑似泄漏' : '未见泄漏', color: !d?.dnsleak ? '#8E8E93' : leakCC.includes('CN') && exit !== 'CN' ? BAD : OK },
     { name: '黑名单', text: !d?.dnsbl ? '未测' : d.dnsbl.listed.length ? `命中 ${d.dnsbl.listed.length}/${d.dnsbl.checked}` : `${d.dnsbl.checked} 家未命中`, color: !d?.dnsbl ? '#8E8E93' : d.dnsbl.listed.length ? WARN : OK },

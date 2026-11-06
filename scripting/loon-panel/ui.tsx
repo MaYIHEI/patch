@@ -17,9 +17,9 @@ import type { Nat } from './net'
 type Pair = { light: string; dark: string }
 type Paint = Color | DynamicShapeStyle
 
-export const OK = '#30D158'
-export const BAD = '#FF453A'
-export const WARN = '#FF9F0A'
+export const OK: Color = '#30D158'
+export const BAD: Color = '#FF453A'
+export const WARN: Color = '#FF9F0A'
 
 const PLAIN = {
   bg: { light: '#F2F2F7', dark: '#1C1C1E' },
@@ -35,7 +35,7 @@ export type Theme = {
   custom: boolean
   dark: boolean        // 自定义背景是深色 (文字用白)
   bg: Paint; card: Paint; border: Paint; t1: Paint; t2: Paint; t3: Paint; track: Paint
-  accent: string
+  accent: Color
   image?: { path: string; blur: number; dim: number }
   /** 硬停点渐变要分别给浅色 / 深色 */
   trackPair: Pair
@@ -56,14 +56,14 @@ export function luminance(c: string): number {
 }
 
 /** "#RRGGBB" / "#RGB" / rgba() → 指定透明度的 rgba, 次要文字用 */
-export function withAlpha(c: string, a: number): string {
+export function withAlpha(c: Color, a: number): Color {
   const hex = c.match(/^#([0-9a-f]{6}|[0-9a-f]{3})([0-9a-f]{2})?$/i)
   const rgb = c.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i)
   if (hex) {
     const h = hex[1].length === 3 ? hex[1].split('').map(x => x + x).join('') : hex[1]
     return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`
   }
-  if (rgb) return `rgba(${rgb[1]},${rgb[2]},${rgb[3]},${a})`
+  if (rgb) return `rgba(${Number(rgb[1])},${Number(rgb[2])},${Number(rgb[3])},${a})`
   return c
 }
 
@@ -249,7 +249,7 @@ export function Empty(props: { ctx: Ctx; icon: string; text: string }) {
 }
 
 /** 横向进度条 (0-1), 颜色单一 (硬停点渐变, 同 checkin) */
-export function Bar(props: { ctx: Ctx; value: number; color: string; height?: number }) {
+export function Bar(props: { ctx: Ctx; value: number; color: Color; height?: number }) {
   const p = Math.max(0, Math.min(1, props.value))
   const barH = props.height ?? 6
   const fill = (track: string) => ({
@@ -262,7 +262,7 @@ export function Bar(props: { ctx: Ctx; value: number; color: string; height?: nu
 }
 
 /** 用量环: 已用部分按用量着色 */
-export function UsageRing(props: { ctx: Ctx; ratio: number; size: number; line: number; color?: string; children?: any }) {
+export function UsageRing(props: { ctx: Ctx; ratio: number; size: number; line: number; color?: Color; children?: any }) {
   const p = Math.max(0, Math.min(1, props.ratio))
   return (
     <ZStack frame={{ width: props.size + props.line, height: props.size + props.line }}>

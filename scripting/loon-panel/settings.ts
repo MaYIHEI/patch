@@ -1,6 +1,8 @@
 // loon-panel / settings.ts
 // 全局设置, 所有小组件共用. 改完调 Widget.reloadAll 让桌面跟着变
 
+import type { Color } from 'scripting'
+
 const AppStorage = Storage as unknown as {
   get<T = unknown>(key: string): T | null
   set(key: string, value: unknown): void
@@ -35,21 +37,21 @@ export const setPrefs = (p: Prefs) => write(PREFS_KEY, p)
 export type Look = {
   mode: 'plain' | 'custom'
   bgType: 'color' | 'image'
-  color: string        // 自定义纯色
+  color: Color         // 自定义纯色
   image: string        // 背景图文件路径 (App Group 目录, 小组件能读)
   blur: number         // 0-20
   dim: number          // 0-0.7, 叠一层黑
-  accent: string
+  accent: Color
   text: 'auto' | 'white' | 'black' | 'custom'   // 自动: 纯色按亮度选黑白, 图片用白
-  textColor: string    // text 为 custom 时用
+  textColor: Color     // text 为 custom 时用
 }
 const LOOK_KEY = 'loonpanel.look'
 export const DEFAULT_LOOK: Look = { mode: 'plain', bgType: 'color', color: '#141A2E', image: '', blur: 6, dim: 0.3, accent: '#0A84FF', text: 'auto', textColor: '#FFFFFF' }
 export const getLook = () => read<Look>(LOOK_KEY, DEFAULT_LOOK)
 export const setLook = (l: Look) => write(LOOK_KEY, l)
 
-export const RECOMMENDED_BG = ['#141A2E', '#0B1F3A', '#1D3B2A', '#3A1E2E', '#F2F2F7', '#FFF4E0', '#E8F0FE', '#FDE7EF']
-export const RECOMMENDED_ACCENT = ['#0A84FF', '#30D158', '#FF9F0A', '#BF5AF2', '#FF375F', '#64D2FF']
+export const RECOMMENDED_BG: Color[] = ['#141A2E', '#0B1F3A', '#1D3B2A', '#3A1E2E', '#F2F2F7', '#FFF4E0', '#E8F0FE', '#FDE7EF']
+export const RECOMMENDED_ACCENT: Color[] = ['#0A84FF', '#30D158', '#FF9F0A', '#BF5AF2', '#FF375F', '#64D2FF']
 
 // ────────────────────────────────────────────────────────────
 // 各尺寸不填参数时用的样式
