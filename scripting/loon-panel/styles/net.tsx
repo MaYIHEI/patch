@@ -14,7 +14,7 @@ import { ModeIntent, SwitchIntent, CheckIntent, FastestIntent, TurnGroupsIntent,
 import { mainGroupLeaf, checkText } from './node'
 import {
   Root, Header, Num, Empty, Cell, Dot, Pill, Spark, Uptime, RefreshButton, ModeTap, Bar, usageColor, latencyColor, latencyInk, latencyText, nodeLabel, asnText, flag, ago, hhmm,
-  mediaColor, mediaWord, chunk, withAlpha, OK, BAD, WARN, type Ctx, type Paint,
+  mediaColor, mediaWord, chunk, withAlpha, OK, BAD, WARN, type Ctx,
 } from '../ui'
 
 const NO_LOON = '读不到 Loon 数据\n打开 App 看排查步骤'
@@ -393,14 +393,16 @@ function exitTag(name: string, cc?: string): string {
   return f ? `${f} ${Array.from(f, c => String.fromCharCode(c.codePointAt(0)! - 0x1F1E6 + 65)).join('')}` : '-'
 }
 
-/** 总览的小卡片: 标题和一个数字 */
-function Tile(props: { ctx: Ctx; label: string; value: string; color?: Paint }) {
-  const { ctx } = props
-  const { th } = ctx
+/** 总览的小卡片: 底色和图标用同一个颜色, 数字保持正文色 */
+function Tile(props: { ctx: Ctx; icon: string; label: string; value: string; tone: Color }) {
+  const { ctx, tone } = props
   return (
-    <VStack alignment="leading" spacing={1} padding={{ horizontal: 9, vertical: 6 }} frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={12} style="continuous" fill={th.card} />}>
-      <Text font={10} foregroundStyle={th.t2} lineLimit={1}>{props.label}</Text>
-      <Num value={props.value} size={16} color={props.color ?? th.t1} />
+    <VStack alignment="leading" spacing={2} padding={{ horizontal: 9, vertical: 6 }} frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={12} style="continuous" fill={withAlpha(tone, 0.16)} />}>
+      <HStack spacing={3}>
+        <Image systemName={props.icon} font={9} fontWeight="semibold" foregroundStyle={tone} />
+        <Text font={10} fontWeight="medium" foregroundStyle={tone} lineLimit={1}>{props.label}</Text>
+      </HStack>
+      <Num value={props.value} size={17} color={ctx.th.t1} />
     </VStack>
   )
 }
@@ -417,23 +419,25 @@ export function OverviewSmall(props: { ctx: Ctx }) {
   const a = availability(r)
   const c = healthCount(loon)
   const ms = r?.ok ? String(r.ms) : latencyText(r)
-  const tiles: { label: string; value: string; color?: Paint }[] = u ? [
-    { label: u.total > 0 ? '剩余' : '已用', value: fmtBytes(u.total > 0 ? s.remain : s.used), color: u.total > 0 ? usageColor(s.ratio) : undefined },
-    { label: '今天', value: fmtBytes(s.today) },
-    { label: s.deadline ? s.deadlineWord : '节点', value: s.deadline ? md(s.deadline) : `${c.ok}/${c.total}` },
-    { label: '延迟', value: ms, color: latencyInk(ctx, r) },
+  const speed = r ? latencyColor(r) : ctx.th.accent
+  const INDIGO: Color = '#5E5CE6'
+  const tiles: { icon: string; label: string; value: string; tone: Color }[] = u ? [
+    { icon: 'chart.pie.fill', label: u.total > 0 ? '剩余' : '已用', value: fmtBytes(u.total > 0 ? s.remain : s.used), tone: u.total > 0 ? usageColor(s.ratio) : ctx.th.accent },
+    { icon: 'arrow.up.arrow.down', label: '今天', value: fmtBytes(s.today), tone: ctx.th.accent },
+    { icon: 'calendar', label: s.deadline ? s.deadlineWord : '节点', value: s.deadline ? md(s.deadline) : `${c.ok}/${c.total}`, tone: INDIGO },
+    { icon: 'bolt.fill', label: '延迟', value: ms, tone: speed },
   ] : [
-    { label: '延迟', value: ms, color: latencyInk(ctx, r) },
-    { label: '可用', value: a === null ? '-' : `${Math.round(a * 100)}%` },
-    { label: '节点', value: `${c.ok}/${c.total}` },
-    { label: '出口', value: leaf ? exitTag(leaf.name, r?.cc) : '-' },
+    { icon: 'bolt.fill', label: '延迟', value: ms, tone: speed },
+    { icon: 'checkmark.shield.fill', label: '可用', value: a === null ? '-' : `${Math.round(a * 100)}%`, tone: a === null || a >= 0.9 ? OK : WARN },
+    { icon: 'circle.grid.2x2.fill', label: '节点', value: `${c.ok}/${c.total}`, tone: ctx.th.accent },
+    { icon: 'globe.americas.fill', label: '出口', value: leaf ? exitTag(leaf.name, r?.cc) : '-', tone: INDIGO },
   ]
   return (
     <Root ctx={ctx} spacing={6}>
       <Header ctx={ctx} title={s?.name ?? leaf?.group ?? 'Loon'} font={12} trailing={<ModeTap ctx={ctx} />} />
       {chunk(tiles, 2).map(row => (
         <HStack spacing={6} frame={{ maxWidth: 'infinity', maxHeight: 'infinity' }}>
-          {row.map(t => <Tile ctx={ctx} label={t.label} value={t.value} color={t.color} />)}
+          {row.map(t => <Tile ctx={ctx} icon={t.icon} label={t.label} value={t.value} tone={t.tone} />)}
         </HStack>
       ))}
     </Root>
@@ -454,7 +458,7 @@ export function OverviewStyle(props: { ctx: Ctx }) {
     <Root ctx={ctx} spacing={6}>
       <Header ctx={ctx} title="总览" trailing={<HStack spacing={6}><PageButton ctx={ctx} page={page} pages={pages} /><ModeTap ctx={ctx} /></HStack>} />
       <HStack spacing={6} alignment="top" fixedSize={{ horizontal: false, vertical: true }}>
-        <VStack alignment="leading" spacing={2} padding={{ horizontal: 10, vertical: 7 }} frame={{ minWidth: 112, maxWidth: 112, maxHeight: 'infinity', alignment: 'topLeading' }} background={<RoundedRectangle cornerRadius={12} style="continuous" fill={th.card} />}>
+        <VStack alignment="leading" spacing={2} padding={{ trailing: 6 }} frame={{ minWidth: 108, maxWidth: 108, maxHeight: 'infinity', alignment: 'topLeading' }}>
           <Text font={10} foregroundStyle={th.t2} lineLimit={1}>{u ? (u.total > 0 ? `${s.name} 剩余` : `${s.name} 已用`) : leaf?.group ?? '当前节点'}</Text>
           <Num value={u ? fmtBytes(u.total > 0 ? s.remain : s.used) : latencyText(leaf?.r)} size={22} color={u ? th.t1 : latencyInk(ctx, leaf?.r)} />
           {u ? null : <Text font={10} foregroundStyle={th.t2} lineLimit={1} minScaleFactor={0.75}>{leaf ? nodeLabel(leaf.name, leaf.r) : ''}</Text>}
