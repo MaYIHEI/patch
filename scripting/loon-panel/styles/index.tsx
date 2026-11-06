@@ -10,7 +10,7 @@ import { RingStyle, TrendStyle, LockCircular, LockRect, LockInline } from './usa
 import { NodeStyle, HealthStyle } from './node'
 import { BoardStyle } from './board'
 import { TodayStyle, BudgetStyle, MultiSmall, MultiMedium, CountdownStyle, CompareStyle, HoursStyle, ValueStyle, MonthStyle } from './flow'
-import { UnlockSmall, UnlockMedium, PickerStyle, ModeStyle, IpStyle, SafetyStyle, RankStyle, ConsoleStyle, GroupsStyle, EventsStyle, OverviewStyle, PingStyle, NodesStyle, ReportStyle, LockLatency, LockToday, LockPing } from './net'
+import { UnlockSmall, UnlockMedium, PickerStyle, ModeStyle, IpStyle, SafetyStyle, RankStyle, ConsoleStyle, GroupsStyle, EventsStyle, OverviewStyle, OverviewSmall, PingStyle, NodesStyle, ReportStyle, LockLatency, LockToday, LockPing } from './net'
 
 type View = (props: { ctx: Ctx }) => any
 
@@ -23,6 +23,7 @@ export type StyleDef = {
 }
 
 export const STYLES: StyleDef[] = [
+  { id: 'AF', name: '总览', icon: 'rectangle.split.2x1.fill', desc: '剩余流量、今天用量、到期、当前节点和延迟, 点右上角换模式; 中号还有常用策略组', views: { systemSmall: OverviewSmall, systemMedium: OverviewStyle } },
   { id: 'A', name: '用量环', icon: 'chart.pie.fill', desc: '主订阅已用比例、剩余流量、每天可用额度和预测', views: { systemSmall: RingStyle } },
   { id: 'B', name: '当前节点', icon: 'antenna.radiowaves.left.and.right', desc: '主策略组正在用的节点、延迟折线、可用率和解锁', views: { systemSmall: NodeStyle } },
   { id: 'G', name: '今日流量', icon: 'arrow.up.arrow.down', desc: '全部机场今天合计、近 1 小时速度和每小时用量', views: { systemSmall: TodayStyle } },
@@ -39,7 +40,6 @@ export const STYLES: StyleDef[] = [
   { id: 'Q', name: '今日时段', icon: 'clock.fill', desc: '今天每小时用了多少, 高峰在几点', views: { systemMedium: HoursStyle } },
   { id: 'S', name: '延迟排行', icon: 'trophy.fill', desc: '最快的 5 个节点, 点一行切过去', views: { systemMedium: RankStyle } },
   { id: 'T', name: '控制台', icon: 'slider.horizontal.below.rectangle', desc: '切模式、切最快、体检、更新订阅', views: { systemMedium: ConsoleStyle } },
-  { id: 'AF', name: '总览', icon: 'rectangle.split.2x1.fill', desc: '主订阅剩余、当前延迟和常用策略组, 右上角点一下换模式', views: { systemMedium: OverviewStyle } },
   { id: 'U', name: '策略组卡片', icon: 'square.grid.2x2.fill', desc: '常用策略组的当前节点, 点卡片切到最快, 可以翻页', views: { systemMedium: GroupsStyle } },
   { id: 'AE', name: '切换器', icon: 'arrow.triangle.swap', desc: '常用策略组的全部节点, 点哪个切哪个, 可以换组和翻页', views: { systemMedium: PickerStyle, systemLarge: PickerStyle } },
   { id: 'V', name: '事件时间线', icon: 'list.bullet.rectangle.fill', desc: '切网络、节点挂了、自动切换、用量提醒', views: { systemMedium: EventsStyle } },
