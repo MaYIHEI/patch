@@ -36,7 +36,7 @@ export type Usage = { up: number; down: number; total: number; expire: number; t
 type UsageEntry = { usage?: Usage; err?: string; at: number }
 type Sample = [number, number]   // 读取时间, 已用量
 
-const readJSON = <T>(key: string, fallback: T): T => {
+function readJSON<T>(key: string, fallback: T): T {
   const raw = AppStorage.get<string>(key)
   return raw ? JSON.parse(raw) as T : fallback
 }
