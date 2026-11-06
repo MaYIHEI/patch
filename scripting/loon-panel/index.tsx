@@ -17,7 +17,6 @@ import {
   NavigationLink,
   NavigationStack,
   Picker,
-  RoundedRectangle,
   Circle,
   Script,
   ScrollView,
@@ -45,7 +44,7 @@ import {
   fmtBytes, expireText, md, shiftDay, todayStr, type SubView,
 } from './subs'
 import { checkNat, lastNat, type Nat } from './net'
-import { Page, Group as KitGroup, Hero, GlassButton, NavRow, ActionRow, InfoRow, ToggleRow, PickerRow } from './kit'
+import { Page, Glass, Group as KitGroup, Hero, Chip, Tile, SmallButton, GlassButton, NavRow, ActionRow, InfoRow, ToggleRow, PickerRow } from './kit'
 import {
   getPrefs, setPrefs, getLook, setLook, getDefaults, setDefault, getRemoteTargets, setRemoteTargets,
   DEFAULT_LOOK, RECOMMENDED_BG, RECOMMENDED_ACCENT, type Look, type Family, type Prefs,
@@ -71,7 +70,6 @@ async function main() {
 // ─────────────────────────────────────────────────────────────
 // 共用
 // ─────────────────────────────────────────────────────────────
-const CARD = 'secondarySystemGroupedBackground'
 
 type Act = { mode?: number; group?: string; node?: string; lock?: number }
 type Shared = { loon: LoonData | null; loonErr: string; subs: SubView[]; reload: (force?: boolean) => Promise<void> }
@@ -105,10 +103,6 @@ function Preview(props: { style: StyleDef; family: Family; loon: LoonData | null
 
 function appCtx(loon: LoonData | null, subs: SubView[]): Ctx {
   return { th: makeTheme(DEFAULT_LOOK), size: 'm', inApp: true, loon, loonErr: '', subs, all: overview(subs), prefs: getPrefs(), nat: null, events: [] }
-}
-
-function SectionTitle(props: { title: string }) {
-  return <Text font={13} fontWeight="medium" foregroundStyle="secondaryLabel" padding={{ horizontal: 16 }}>{props.title}</Text>
 }
 
 function isNewer(remote: string, local: string): boolean {
@@ -171,90 +165,71 @@ function Home() {
 
   return (
     <NavigationStack>
-      <ScrollView
-        navigationTitle="Loon 面板"
-        background="systemGroupedBackground"
+      <Page
+        title="Loon 面板"
+        large
         toolbar={{
           cancellationAction: <Button title="关闭" action={dismiss} />,
           topBarTrailing: <Button title="刷新" systemImage="arrow.clockwise" action={() => reload(true)} />,
         }}
       >
-        <VStack alignment="leading" spacing={20} padding={16}>
-          {!live || !subs.length || !loon?.check ? <Guide shared={shared} act={act} busy={busy} /> : null}
+        {!live || !subs.length || !loon?.check ? <Guide shared={shared} act={act} busy={busy} /> : null}
 
-          <StatusCard loon={loon} loonErr={loonErr} subs={subs} />
+        <StatusCard loon={loon} loonErr={loonErr} subs={subs} />
 
-          {/* 四个大入口 */}
-          <VStack spacing={12}>
-            <HStack spacing={12}>
-              <NavigationLink destination={<StyleLibrary {...shared} onChanged={() => setTick(tick + 1)} />}>
-                <EntryCard icon="square.grid.2x2.fill" color="systemBlue" title="样式库" sub={`${STYLES.reduce((n, s) => n + Object.keys(s.views).length, 0)} 种样式`} />
-              </NavigationLink>
-              <NavigationLink destination={<AppearancePage {...shared} onChanged={() => setTick(tick + 1)} />}>
-                <EntryCard icon="paintpalette.fill" color="systemOrange" title="外观" sub={look.mode === 'plain' ? '素净' : look.bgType === 'image' ? '自定义 · 图片' : '自定义 · 纯色'} />
-              </NavigationLink>
-            </HStack>
-            <HStack spacing={12}>
-              <NavigationLink destination={<SubsPage {...shared} />}>
-                <EntryCard icon="airplane" color="systemGreen" title="机场" sub={subs.length ? `${subs.length} 个${soon ? ` · ${soon} 个快用完` : ''}` : '还没添加'} />
-              </NavigationLink>
-              <NavigationLink destination={<SettingsPage {...shared} onChanged={() => setTick(tick + 1)} />}>
-                <EntryCard icon="gearshape.fill" color="gray" title="设置" sub={`每 ${prefs.refresh} 分钟刷新`} />
-              </NavigationLink>
-            </HStack>
-          </VStack>
-
-          {/* Loon: 模式 + 策略组 */}
-          {loon ? (
-            <VStack alignment="leading" spacing={8}>
-              <SectionTitle title={loon.stale ? `Loon · 连不上, 显示 ${hhmm(loon.t)} 的数据` : 'Loon'} />
-              <VStack spacing={0} background={<RoundedRectangle cornerRadius={14} fill={CARD} />}>
-                <HStack padding={{ horizontal: 14, vertical: 10 }}>
-                  <Picker title="模式" value={loon.mode} onChanged={(v: any) => { if (Number(v) !== loon.mode) act({ mode: Number(v) }, '切换模式') }} pickerStyle="segmented" disabled={!!busy || !live}>
-                    {MODES.map(m => <Text tag={m.id}>{m.name}</Text>)}
-                  </Picker>
-                </HStack>
-                {common.map(g => (
-                  <NavigationLink destination={<GroupPage group={g} loon={loon} act={act} reload={reload} />}>
-                    <GroupLine group={g} loon={loon} />
-                  </NavigationLink>
-                ))}
-                {loon.groups.length > common.length ? (
-                  <NavigationLink destination={<AllGroupsPage loon={loon} act={act} reload={reload} />}>
-                    <HStack padding={{ horizontal: 14, vertical: 12 }}>
-                      <Text font={15} foregroundStyle="label">全部策略组</Text>
-                      <Spacer />
-                      <Text font={13} foregroundStyle="secondaryLabel">{`${loon.groups.length} 个`}</Text>
-                      <Image systemName="chevron.right" font={13} foregroundStyle="tertiaryLabel" />
-                    </HStack>
-                  </NavigationLink>
-                ) : null}
-                <HStack spacing={16} padding={{ horizontal: 14, vertical: 13 }}>
-                  <Button action={() => { act({}, '体检当前节点') }} buttonStyle="plain" disabled={!!busy || !live}>
-                    <Text font={15} foregroundStyle={busy || !live ? 'tertiaryLabel' : 'systemBlue'}>立即体检</Text>
-                  </Button>
-                  <Button action={() => { Safari.openURL('loon://update?sub=all') }} buttonStyle="plain">
-                    <Text font={15} foregroundStyle="systemBlue">更新订阅</Text>
-                  </Button>
-                  <Spacer />
-                  <Text font={12} foregroundStyle="secondaryLabel">{loon.check ? `上次 ${ago(loon.check.t)}` : '还没体检过'}</Text>
-                </HStack>
-                {events.length ? (
-                  <NavigationLink destination={<EventsPage events={events} />}>
-                    <HStack padding={{ horizontal: 14, vertical: 11 }}>
-                      <Text font={14} foregroundStyle="label" lineLimit={1}>{events[0].msg}</Text>
-                      <Spacer />
-                      <Text font={12} foregroundStyle="secondaryLabel">{`${events.length} 件`}</Text>
-                      <Image systemName="chevron.right" font={13} foregroundStyle="tertiaryLabel" />
-                    </HStack>
-                  </NavigationLink>
-                ) : null}
-              </VStack>
-              {note ? <Text font={12} foregroundStyle="secondaryLabel" padding={{ horizontal: 16 }}>{note}</Text> : null}
-            </VStack>
-          ) : null}
+        <VStack spacing={12}>
+          <HStack spacing={12}>
+            <Tile icon="square.grid.2x2.fill" color="systemBlue" title="样式库" sub={`${STYLES.reduce((n, s) => n + Object.keys(s.views).length, 0)} 种样式`} destination={<StyleLibrary {...shared} onChanged={() => setTick(tick + 1)} />} />
+            <Tile icon="paintpalette.fill" color="systemOrange" title="外观" sub={look.mode === 'plain' ? '素净' : look.bgType === 'image' ? '自定义 · 图片' : '自定义 · 纯色'} destination={<AppearancePage {...shared} onChanged={() => setTick(tick + 1)} />} />
+          </HStack>
+          <HStack spacing={12}>
+            <Tile icon="airplane" color="systemGreen" title="机场" sub={subs.length ? `${subs.length} 个${soon ? ` · ${soon} 个快用完` : ''}` : '还没添加'} destination={<SubsPage {...shared} />} />
+            <Tile icon="gearshape.fill" color="gray" title="设置" sub={`每 ${prefs.refresh} 分钟刷新`} destination={<SettingsPage {...shared} onChanged={() => setTick(tick + 1)} />} />
+          </HStack>
         </VStack>
-      </ScrollView>
+
+        {loon ? (
+          <KitGroup title={loon.stale ? `Loon · 连不上, 显示 ${hhmm(loon.t)} 的数据` : 'Loon'} note={note || undefined} inset={16}>
+            <HStack padding={{ horizontal: 14, vertical: 12 }}>
+              <Picker title="模式" value={loon.mode} onChanged={(v: any) => { if (Number(v) !== loon.mode) act({ mode: Number(v) }, '切换模式') }} pickerStyle="segmented" disabled={!!busy || !live}>
+                {MODES.map(m => <Text tag={m.id}>{m.name}</Text>)}
+              </Picker>
+            </HStack>
+            {common.map(g => (
+              <NavigationLink destination={<GroupPage group={g} loon={loon} act={act} reload={reload} />} buttonStyle="plain">
+                <GroupLine group={g} loon={loon} />
+              </NavigationLink>
+            ))}
+            {loon.groups.length > common.length ? (
+              <NavigationLink destination={<AllGroupsPage loon={loon} act={act} reload={reload} />} buttonStyle="plain">
+                <HStack padding={{ horizontal: 16, vertical: 13 }}>
+                  <Text font={15} fontWeight="medium" fontDesign="rounded" foregroundStyle="label">全部策略组</Text>
+                  <Spacer />
+                  <Text font={13} foregroundStyle="secondaryLabel">{`${loon.groups.length} 个`}</Text>
+                  <Image systemName="chevron.right" font={13} fontWeight="semibold" foregroundStyle="tertiaryLabel" />
+                </HStack>
+              </NavigationLink>
+            ) : null}
+            {events.length ? (
+              <NavigationLink destination={<EventsPage events={events} />} buttonStyle="plain">
+                <HStack padding={{ horizontal: 16, vertical: 13 }}>
+                  <Text font={14} foregroundStyle="label" lineLimit={1}>{events[0].msg}</Text>
+                  <Spacer />
+                  <Text font={12} foregroundStyle="secondaryLabel">{`${events.length} 件`}</Text>
+                  <Image systemName="chevron.right" font={13} fontWeight="semibold" foregroundStyle="tertiaryLabel" />
+                </HStack>
+              </NavigationLink>
+            ) : null}
+            <VStack spacing={10} padding={14}>
+              <HStack spacing={10}>
+                <GlassButton title="立即体检" icon="stethoscope" prominent disabled={!!busy || !live} action={() => { act({}, '体检当前节点') }} />
+                <GlassButton title="更新订阅" icon="arrow.down.circle" action={() => { Safari.openURL('loon://update?sub=all') }} />
+              </HStack>
+              <Text font={12} foregroundStyle="secondaryLabel">{loon.check ? `上次体检 ${ago(loon.check.t)}` : '还没体检过'}</Text>
+            </VStack>
+          </KitGroup>
+        ) : null}
+      </Page>
     </NavigationStack>
   )
 }
@@ -268,44 +243,34 @@ function StatusCard(props: { loon: LoonData | null; loonErr: string; subs: SubVi
   const status: { text: string; color: Color } = !loon && !props.loonErr ? { text: '读取中...', color: 'secondaryLabel' } : { text: st.text, color: st.level === 'ok' ? OK : st.level === 'warn' ? WARN : BAD }
   const all = overview(subs)
   return (
-    <HStack spacing={16} padding={18} frame={{ maxWidth: 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={22} fill={CARD} />}>
-      {s?.usage ? (
-        <UsageRing ctx={appCtx(loon, subs)} ratio={s.ratio} size={78} line={10}>
-          <VStack spacing={0}>
-            <Text font={20} fontWeight="bold" fontDesign="rounded" monospacedDigit>{s.usage.total > 0 ? `${Math.round(s.ratio * 100)}%` : '∞'}</Text>
-            <Text font={11} foregroundStyle="secondaryLabel">已用</Text>
-          </VStack>
-        </UsageRing>
-      ) : (
-        <ZStack frame={{ width: 88, height: 88 }}>
-          <Circle stroke={{ shapeStyle: 'tertiarySystemFill', strokeStyle: { lineWidth: 10 } }} frame={{ width: 78, height: 78 }} />
-          <Image systemName={s ? 'exclamationmark' : 'plus'} font={22} foregroundStyle="tertiaryLabel" />
-        </ZStack>
-      )}
-      <VStack alignment="leading" spacing={5}>
-        <Text font={19} fontWeight="bold" lineLimit={1}>{s ? `今天 ${fmtBytes(all.today)}` : '还没有添加机场'}</Text>
-        {s ? <Text font={12} foregroundStyle="secondaryLabel" lineLimit={1}>{`${subs.length} 个机场合计 · ${rateText(all.recent)}`}</Text> : null}
-        {s?.usage ? <Text font={14} foregroundStyle="secondaryLabel">{s.usage.total > 0 ? `${s.name}剩 ${fmtBytes(s.remain)} · ${s.fc.short}` : `${s.name}已用 ${fmtBytes(s.used)}`}</Text> : s?.err ? <Text font={13} foregroundStyle={BAD}>{s.err}</Text> : null}
-        {g ? <Text font={13} foregroundStyle="secondaryLabel" lineLimit={1}>{`${g.name}: ${nodeLabel(g.leaf, r)} · ${latencyText(r)}`}</Text> : null}
-        <HStack spacing={6}>
-          <Circle fill={status.color} frame={{ width: 7, height: 7 }} />
-          <Text font={12} foregroundStyle={status.color} lineLimit={2}>{status.text}</Text>
-        </HStack>
-      </VStack>
-      <Spacer />
-    </HStack>
-  )
-}
-
-function EntryCard(props: { icon: string; color: Color; title: string; sub: string }) {
-  return (
-    <VStack alignment="leading" spacing={14} padding={14} frame={{ maxWidth: 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={18} fill={CARD} />}>
-      <Image systemName={props.icon} font={17} fontWeight="semibold" foregroundStyle="white" frame={{ width: 34, height: 34 }} background={<RoundedRectangle cornerRadius={9} fill={props.color} />} />
-      <VStack alignment="leading" spacing={2}>
-        <Text font={17} fontWeight="semibold" foregroundStyle="label">{props.title}</Text>
-        <Text font={12} foregroundStyle="secondaryLabel" lineLimit={1}>{props.sub}</Text>
-      </VStack>
-    </VStack>
+    <Glass padding={18}>
+      <HStack spacing={16} frame={{ maxWidth: 'infinity', alignment: 'leading' }}>
+        {s?.usage ? (
+          <UsageRing ctx={appCtx(loon, subs)} ratio={s.ratio} size={78} line={10}>
+            <VStack spacing={0}>
+              <Text font={20} fontWeight="bold" fontDesign="rounded" monospacedDigit>{s.usage.total > 0 ? `${Math.round(s.ratio * 100)}%` : '∞'}</Text>
+              <Text font={11} foregroundStyle="secondaryLabel">已用</Text>
+            </VStack>
+          </UsageRing>
+        ) : (
+          <ZStack frame={{ width: 88, height: 88 }}>
+            <Circle stroke={{ shapeStyle: 'tertiarySystemFill', strokeStyle: { lineWidth: 10 } }} frame={{ width: 78, height: 78 }} />
+            <Image systemName={s ? 'exclamationmark' : 'plus'} font={22} foregroundStyle="tertiaryLabel" />
+          </ZStack>
+        )}
+        <VStack alignment="leading" spacing={5}>
+          <Text font={20} fontWeight="bold" fontDesign="rounded" lineLimit={1}>{s ? `今天 ${fmtBytes(all.today)}` : '还没有添加机场'}</Text>
+          {s ? <Text font={12} foregroundStyle="secondaryLabel" lineLimit={1}>{`${subs.length} 个机场合计 · ${rateText(all.recent)}`}</Text> : null}
+          {s?.usage ? <Text font={14} foregroundStyle="secondaryLabel">{s.usage.total > 0 ? `${s.name}剩 ${fmtBytes(s.remain)} · ${s.fc.short}` : `${s.name}已用 ${fmtBytes(s.used)}`}</Text> : s?.err ? <Text font={13} foregroundStyle={BAD}>{s.err}</Text> : null}
+          {g ? <Text font={13} foregroundStyle="secondaryLabel" lineLimit={1}>{`${g.name}: ${nodeLabel(g.leaf, r)} · ${latencyText(r)}`}</Text> : null}
+          <HStack spacing={6}>
+            <Circle fill={status.color} frame={{ width: 7, height: 7 }} />
+            <Text font={12} foregroundStyle={status.color} lineLimit={2}>{status.text}</Text>
+          </HStack>
+        </VStack>
+        <Spacer />
+      </HStack>
+    </Glass>
   )
 }
 
@@ -313,9 +278,9 @@ function GroupLine(props: { group: Group; loon: LoonData }) {
   const { group: g, loon } = props
   const r = loon.nodes[g.leaf]
   return (
-    <HStack spacing={10} padding={{ horizontal: 14, vertical: 11 }}>
+    <HStack spacing={10} padding={{ horizontal: 16, vertical: 11 }}>
       <VStack alignment="leading" spacing={1}>
-        <Text font={15} foregroundStyle="label" lineLimit={1}>{g.name}</Text>
+        <Text font={15} fontWeight="medium" fontDesign="rounded" foregroundStyle="label" lineLimit={1}>{g.name}</Text>
         <Text font={12} foregroundStyle="secondaryLabel" lineLimit={1}>{nodeLabel(g.leaf, r)}</Text>
       </VStack>
       <Spacer />
@@ -362,10 +327,10 @@ function Guide(props: { shared: Shared; act: (q: {}, label: string) => Promise<v
   const step = (n: number, done: boolean, title: string, sub: string, button: any) => (
     <HStack spacing={12} padding={{ horizontal: 14, vertical: 12 }}>
       {done
-        ? <Image systemName="checkmark.circle.fill" font={26} foregroundStyle="systemGreen" frame={{ width: 28, height: 28 }} />
-        : <Text font={15} fontWeight="bold" foregroundStyle="white" frame={{ width: 28, height: 28 }} background={<Circle fill="systemBlue" />}>{String(n)}</Text>}
+        ? <Chip icon="checkmark" color="systemGreen" size={28} />
+        : <Chip icon={`${n}.circle`} color="systemBlue" size={28} />}
       <VStack alignment="leading" spacing={2}>
-        <Text font={15} fontWeight="medium">{title}</Text>
+        <Text font={15} fontWeight="medium" fontDesign="rounded">{title}</Text>
         <Text font={12} foregroundStyle="secondaryLabel">{sub}</Text>
       </VStack>
       <Spacer />
@@ -374,15 +339,14 @@ function Guide(props: { shared: Shared; act: (q: {}, label: string) => Promise<v
   )
   return (
     <VStack alignment="leading" spacing={8}>
-      <SectionTitle title="开始使用" />
-      <VStack spacing={0} background={<RoundedRectangle cornerRadius={14} fill={CARD} />}>
+      <KitGroup title="开始使用" inset={54}>
         {step(1, live, '导入 Loon 插件', live ? '已连上插件' : '一键添加「Loon 面板」插件, 装好后回来刷新',
-          <Button title={live ? '刷新' : '导入'} buttonStyle="bordered" controlSize="small" action={() => { live ? reload() : Safari.openURL(LOON_IMPORT) }} />)}
+          <SmallButton title={live ? '刷新' : '导入'} action={() => { live ? reload() : Safari.openURL(LOON_IMPORT) }} />)}
         {step(2, subs.length > 0, '添加机场订阅', subs.length ? `已添加 ${subs.length} 个` : '订阅链接只存在钥匙串里',
-          <NavigationLink destination={<SubsPage {...props.shared} />}><Text font={14} foregroundStyle="systemBlue">添加</Text></NavigationLink>)}
+          <NavigationLink destination={<SubsPage {...props.shared} />} buttonStyle="plain"><Text font={14} fontWeight="medium" foregroundStyle="systemBlue">添加</Text></NavigationLink>)}
         {step(3, !!loon?.check, '跑一次体检', loon?.check ? `上次 ${ago(loon.check.t)}` : '测当前节点的延迟和出口; 之后插件定时体检',
-          <Button title="体检" buttonStyle="bordered" controlSize="small" disabled={!live || !!props.busy} action={() => { props.act({}, '体检当前节点') }} />)}
-      </VStack>
+          <SmallButton title="体检" disabled={!live || !!props.busy} action={() => { props.act({}, '体检当前节点') }} />)}
+      </KitGroup>
       {!live ? (
         <Text font={12} foregroundStyle="secondaryLabel" padding={{ horizontal: 16 }}>
           {`${loonErr ? `${loonErr}\n` : ''}读不到数据? 保持 Loon 开启, 用 Safari 打开 ${DATA_URL}, 能看到一段 JSON 才说明 Loon 已经接管; 看不到就检查插件是否已启用。不要把 1.1.1.1 加进 Loon 的 bypass-tun 或 skip-proxy。`}

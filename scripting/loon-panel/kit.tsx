@@ -21,11 +21,12 @@ const EDGE: DynamicShapeStyle = { light: 'rgba(255,255,255,0.75)', dark: 'rgba(2
 const SEPARATOR: DynamicShapeStyle = { light: 'rgba(40,50,80,0.1)', dark: 'rgba(255,255,255,0.1)' }
 
 /** 页面: 渐变底 + 可滚动内容 */
-export function Page(props: { title: string; children?: any }) {
+export function Page(props: { title: string; large?: boolean; toolbar?: any; children?: any }) {
   return (
     <ScrollView
       navigationTitle={props.title}
-      navigationBarTitleDisplayMode="inline"
+      navigationBarTitleDisplayMode={props.large ? 'large' : 'inline'}
+      toolbar={props.toolbar}
       background={<Rectangle fill={AMBIENT} ignoresSafeArea />}
     >
       <VStack alignment="leading" spacing={22} padding={{ horizontal: 16, vertical: 12 }}>{props.children}</VStack>
@@ -52,13 +53,13 @@ export function Glass(props: { radius?: number; padding?: number; children?: any
 }
 
 /** 一组设置: 小标题 + 玻璃卡片 + 说明. 行之间自动加分隔线 */
-export function Group(props: { title?: string; note?: string; children?: any }) {
+export function Group(props: { title?: string; note?: string; inset?: number; children?: any }) {
   const rows = (Array.isArray(props.children) ? props.children : [props.children]).flat().filter(Boolean)
   return (
     <VStack alignment="leading" spacing={8}>
       {props.title ? <Text font={14} fontWeight="bold" fontDesign="rounded" foregroundStyle="secondaryLabel" padding={{ leading: 10 }}>{props.title}</Text> : null}
       <Glass>
-        {rows.flatMap((row: any, i: number) => (i ? [<Rectangle fill={SEPARATOR} frame={{ height: 0.5 }} padding={{ leading: 60 }} />, row] : [row]))}
+        {rows.flatMap((row: any, i: number) => (i ? [<Rectangle fill={SEPARATOR} frame={{ height: 0.5 }} padding={{ leading: props.inset ?? 60 }} />, row] : [row]))}
       </Glass>
       {props.note ? <Text font={12} foregroundStyle="secondaryLabel" padding={{ horizontal: 10 }}>{props.note}</Text> : null}
     </VStack>
@@ -162,6 +163,28 @@ export function Hero(props: { icon: string; color: Color; title: string; status:
       </VStack>
     </Glass>
   )
+}
+
+/** 入口方块: 两个一行 */
+export function Tile(props: { icon: string; color: Color; title: string; sub: string; destination: any }) {
+  return (
+    <NavigationLink destination={props.destination} buttonStyle="plain">
+      <Glass padding={16}>
+        <VStack alignment="leading" spacing={14}>
+          <Chip icon={props.icon} color={props.color} size={38} />
+          <VStack alignment="leading" spacing={2}>
+            <Text font={17} fontWeight="semibold" fontDesign="rounded" foregroundStyle="label" lineLimit={1}>{props.title}</Text>
+            <Text font={12} foregroundStyle="secondaryLabel" lineLimit={1}>{props.sub}</Text>
+          </VStack>
+        </VStack>
+      </Glass>
+    </NavigationLink>
+  )
+}
+
+/** 行尾的小按钮 */
+export function SmallButton(props: { title: string; action: () => void; disabled?: boolean }) {
+  return <Button title={props.title} buttonStyle={HAS_GLASS ? 'glass' : 'bordered'} controlSize="small" disabled={props.disabled} action={props.action} />
 }
 
 /** Hero 里的玻璃按钮, 等宽 */

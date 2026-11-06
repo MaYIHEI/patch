@@ -156,7 +156,7 @@ export function fullLabel(name: string, r?: NodeResult): string {
 }
 
 /** 短名: 小组件和首页用, 去掉开头的 [标签] 和 | 后面的倍率 */
-export const nodeLabel = (name: string, r?: NodeResult) => fullLabel(name.replace(/^\[[^\]]*\]\s*/, '').replace(/\s*\|.*$/, '') || name, r)
+export const nodeLabel = (name: string, r?: NodeResult) => fullLabel(name.replace(/^\[[^\]]*\]\s*/, '').replace(/\s*[|｜丨│].*$/, '') || name, r)
 
 export const asnText = (r?: NodeResult) => [r?.asn ? `AS${r.asn}` : '', r?.org ?? ''].filter(Boolean).join(' ')
 
