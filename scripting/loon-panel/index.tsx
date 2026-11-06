@@ -34,6 +34,7 @@ import {
   useEffect,
   useState,
 } from 'scripting'
+import type { Color } from 'scripting'
 
 import {
   loadLoon, cachedLoon, setLoon, deepCheck, sampleLoon, mainGroup, healthCount, availability, loonStatus, clearLoonCache, MODES, DATA_URL,
@@ -196,7 +197,7 @@ function Home() {
                 <EntryCard icon="airplane" color="systemGreen" title="机场" sub={subs.length ? `${subs.length} 个${soon ? ` · ${soon} 个快用完` : ''}` : '还没添加'} />
               </NavigationLink>
               <NavigationLink destination={<SettingsPage {...shared} onChanged={() => setTick(tick + 1)} />}>
-                <EntryCard icon="gearshape.fill" color="systemGray" title="设置" sub={`每 ${prefs.refresh} 分钟刷新`} />
+                <EntryCard icon="gearshape.fill" color="gray" title="设置" sub={`每 ${prefs.refresh} 分钟刷新`} />
               </NavigationLink>
             </HStack>
           </VStack>
@@ -252,7 +253,7 @@ function StatusCard(props: { loon: LoonData | null; loonErr: string; subs: SubVi
   const g = loon ? mainGroup(loon, getPrefs()) : undefined
   const r = g && loon ? loon.nodes[g.leaf] : undefined
   const st = loonStatus(loon)
-  const status = !loon && !props.loonErr ? { text: '读取中...', color: 'secondaryLabel' } : { text: st.text, color: st.level === 'ok' ? OK : st.level === 'warn' ? WARN : BAD }
+  const status: { text: string; color: Color } = !loon && !props.loonErr ? { text: '读取中...', color: 'secondaryLabel' } : { text: st.text, color: st.level === 'ok' ? OK : st.level === 'warn' ? WARN : BAD }
   const all = overview(subs)
   return (
     <HStack spacing={16} padding={18} frame={{ maxWidth: 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={22} fill={CARD} />}>
@@ -284,7 +285,7 @@ function StatusCard(props: { loon: LoonData | null; loonErr: string; subs: SubVi
   )
 }
 
-function EntryCard(props: { icon: string; color: string; title: string; sub: string }) {
+function EntryCard(props: { icon: string; color: Color; title: string; sub: string }) {
   return (
     <VStack alignment="leading" spacing={14} padding={14} frame={{ maxWidth: 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={18} fill={CARD} />}>
       <Image systemName={props.icon} font={17} fontWeight="semibold" foregroundStyle="white" frame={{ width: 34, height: 34 }} background={<RoundedRectangle cornerRadius={9} fill={props.color} />} />
@@ -459,7 +460,7 @@ function DeepPage(props: { node: string; loon: LoonData; reload: (force?: boolea
     }
   }
 
-  const rows = (title: string, list: { k: string; v: string; color?: string }[]) => (list.length ? (
+  const rows = (title: string, list: { k: string; v: string; color?: Color }[]) => (list.length ? (
     <Section header={<Text>{title}</Text>}>
       {list.map(x => <HStack><Text font={14}>{x.k}</Text><Spacer /><Text font={13} foregroundStyle={x.color ?? 'secondaryLabel'} lineLimit={2}>{x.v}</Text></HStack>)}
     </Section>
@@ -811,7 +812,7 @@ function StyleDetail(props: { style: StyleDef; family: Family; loon: LoonData | 
 // ─────────────────────────────────────────────────────────────
 // 外观: 素净 / 自定义 (纯色或图片), 顶部实时预览
 // ─────────────────────────────────────────────────────────────
-function Swatches(props: { colors: string[]; value: string; onPick: (c: string) => void }) {
+function Swatches(props: { colors: Color[]; value: Color; onPick: (c: Color) => void }) {
   return (
     <HStack spacing={10}>
       {props.colors.map(c => (
@@ -882,7 +883,7 @@ function AppearancePage(props: Shared & { onChanged: () => void }) {
           {look.bgType === 'color' ? (
             <VStack alignment="leading" spacing={10}>
               <Swatches colors={RECOMMENDED_BG} value={look.color} onPick={c => update({ color: c })} />
-              <ColorPicker title="自选颜色" value={look.color} onChanged={(c: any) => update({ color: String(c) })} supportsOpacity={false} />
+              <ColorPicker title="自选颜色" value={look.color} onChanged={(c: Color) => update({ color: c })} supportsOpacity={false} />
             </VStack>
           ) : (
             <VStack alignment="leading" spacing={10}>
@@ -909,7 +910,7 @@ function AppearancePage(props: Shared & { onChanged: () => void }) {
             <Text tag="custom">自选</Text>
           </Picker>
           {look.text === 'custom' ? (
-            <ColorPicker title="自选文字颜色" value={look.textColor} onChanged={(c: any) => update({ textColor: String(c) })} supportsOpacity={false} />
+            <ColorPicker title="自选文字颜色" value={look.textColor} onChanged={(c: Color) => update({ textColor: c })} supportsOpacity={false} />
           ) : null}
         </Section>
       ) : null}
@@ -917,7 +918,7 @@ function AppearancePage(props: Shared & { onChanged: () => void }) {
       {look.mode === 'custom' ? (
         <Section header={<Text>强调色</Text>} footer={<Text>用在图标、柱状图、选中的模式按钮; 用量和延迟的红绿橙固定。</Text>}>
           <Swatches colors={RECOMMENDED_ACCENT} value={look.accent} onPick={c => update({ accent: c })} />
-          <ColorPicker title="自选强调色" value={look.accent} onChanged={(c: any) => update({ accent: String(c) })} supportsOpacity={false} />
+          <ColorPicker title="自选强调色" value={look.accent} onChanged={(c: Color) => update({ accent: c })} supportsOpacity={false} />
         </Section>
       ) : null}
     </List>
