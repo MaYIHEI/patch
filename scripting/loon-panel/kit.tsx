@@ -1,4 +1,4 @@
-// kit.tsx — patch 的页面骨架: 系统底色 + 分组卡片 + 行. 液态玻璃交给系统底栏和工具栏; 配色风格定稿后只改这个文件
+// kit.tsx — patch 的页面骨架: 系统底色 + 分组卡片 + 行. 黑白灰为主, 彩色只表示状态; 液态玻璃交给系统底栏、工具栏和按钮
 // 只给 App 页面用, 不进小组件. 新组件把这个文件复制过去就能用, 不依赖组件里的其他文件
 
 import {
@@ -43,12 +43,26 @@ export function Card(props: { radius?: number; inner?: number; children?: any })
   )
 }
 
+/** 舞台: 比页面略深的底, 放预览 */
+export function Stage(props: { children?: any }) {
+  return (
+    <VStack
+      spacing={12}
+      padding={{ vertical: 22 }}
+      frame={{ maxWidth: 'infinity' }}
+      background={<RoundedRectangle cornerRadius={RADIUS} style="continuous" fill="tertiarySystemFill" />}
+    >
+      {props.children}
+    </VStack>
+  )
+}
+
 /** 一组设置: 小标题 + 卡片 + 说明. 行之间自动加分隔线 */
 export function Group(props: { title?: string; note?: string; inset?: number; children?: any }) {
   const rows = (Array.isArray(props.children) ? props.children : [props.children]).flat().filter(Boolean)
   return (
     <VStack alignment="leading" spacing={8}>
-      {props.title ? <Text font={14} fontWeight="bold" foregroundStyle="secondaryLabel" padding={{ leading: MARGIN }}>{props.title}</Text> : null}
+      {props.title ? <Text font={13} foregroundStyle="secondaryLabel" padding={{ leading: MARGIN }}>{props.title}</Text> : null}
       <Card>
         {rows.flatMap((row: any, i: number) => (i ? [<Rectangle fill={SEPARATOR} frame={{ height: 0.5 }} padding={{ leading: props.inset ?? 56 }} />, row] : [row]))}
       </Card>
@@ -57,20 +71,20 @@ export function Group(props: { title?: string; note?: string; inset?: number; ch
   )
 }
 
-/** 行首图标 */
-export function Chip(props: { icon: string; color: Color; size?: number }) {
+/** 行首图标: 默认灰色, 只有状态才给颜色 */
+export function Chip(props: { icon: string; color?: Color; size?: number }) {
   const size = props.size ?? 28
-  return <Image systemName={props.icon} font={size * 0.62} foregroundStyle={props.color} frame={{ width: size, height: size }} />
+  return <Image systemName={props.icon} font={size * 0.62} foregroundStyle={props.color ?? 'secondaryLabel'} frame={{ width: size, height: size }} />
 }
 
-type Label = { icon: string; color: Color; title: string; sub?: string }
+type Label = { icon: string; color?: Color; title: string; sub?: string }
 
 function Line(props: Label & { children?: any }) {
   return (
     <HStack spacing={14} padding={{ horizontal: 14, vertical: 11 }} frame={{ maxWidth: 'infinity', minHeight: 48 }}>
       <Chip icon={props.icon} color={props.color} />
       <VStack alignment="leading" spacing={2}>
-        <Text font={16} fontWeight="medium" foregroundStyle="label" lineLimit={1}>{props.title}</Text>
+        <Text font={16} foregroundStyle="label" lineLimit={1}>{props.title}</Text>
         {props.sub ? <Text font={12} foregroundStyle="secondaryLabel" lineLimit={2}>{props.sub}</Text> : null}
       </VStack>
       <Spacer minLength={8} />

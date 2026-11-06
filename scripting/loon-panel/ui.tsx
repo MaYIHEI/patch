@@ -321,12 +321,12 @@ export function HourBars(props: { ctx: Ctx; values: (number | null)[]; height: n
 }
 
 /** 最近几次延迟的迷你柱: 高度 = 延迟, 超时画红色满格 */
-export function Spark(props: { ctx: Ctx; h?: number[]; width: number; height: number }) {
-  const list = (props.h ?? []).slice(-12)
+export function Spark(props: { ctx: Ctx; h?: number[]; width?: number; height: number; count?: number; tone?: Color }) {
+  const list = (props.h ?? []).slice(-(props.count ?? 12))
   const max = Math.max(1, ...list)
   return (
-    <HStack alignment="bottom" spacing={1} frame={{ width: props.width, height: props.height, alignment: 'bottomTrailing' }}>
-      {list.map(v => <Rectangle fill={v < 0 ? BAD : msColor(v)} frame={{ maxWidth: 'infinity', height: v < 0 ? props.height : Math.max(1, (v / max) * props.height) }} />)}
+    <HStack alignment="bottom" spacing={props.tone ? 2 : 1} frame={{ width: props.width, maxWidth: props.width ? undefined : 'infinity', height: props.height, alignment: 'bottomTrailing' }}>
+      {list.map(v => <Rectangle fill={v < 0 ? BAD : props.tone ?? msColor(v)} frame={{ maxWidth: 'infinity', height: v < 0 ? props.height : Math.max(1, (v / max) * props.height) }} />)}
     </HStack>
   )
 }
