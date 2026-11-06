@@ -3,7 +3,7 @@
 
 import { AppIntentManager, AppIntentProtocol, Widget, ControlWidget } from 'scripting'
 
-import { setLoon, loadLoon, mainGroup, ownerGroup, switchTarget, turnGroupPage, nextPickGroup, turnPickPage } from './loon'
+import { setLoon, loadLoon, mainGroup, ownerGroup, switchTarget, turnGroupPage, nextPickGroup, turnPickPage, enterPick, leavePick, type Hop } from './loon'
 import { loadSubs } from './subs'
 import { getPrefs } from './settings'
 
@@ -31,12 +31,14 @@ export function readPending(): { t: number; group: string; node: string } | null
 // 小组件按钮在后台跑, 有时间限制 (系统没公开具体秒数, 留足余量)
 const TIMEOUT_S = 20
 
-async function run(q: { mode?: number; group?: string; node?: string }, okText: string) {
+/** via: 上面几层也要指过来, 先切它们 (不复测), 最后一步才复测 */
+async function run(q: { mode?: number; group?: string; node?: string }, okText: string, via: Hop[] = []) {
   if (q.group && q.node) {
     AppStorage.set(PENDING_KEY, { t: Date.now(), group: q.group, node: q.node })
     Widget.reloadAll()
   }
   try {
+    for (const v of via) await setLoon({ ...v, quiet: 1 }, TIMEOUT_S)
     await setLoon(q, TIMEOUT_S)
     AppStorage.set(NOTE_KEY, { t: Date.now(), ok: true, text: okText })
   } catch (e) {
@@ -57,8 +59,8 @@ export const ModeIntent = AppIntentManager.register({
 export const SwitchIntent = AppIntentManager.register({
   name: 'LoonPanelSwitchIntent',
   protocol: AppIntentProtocol.AppIntent,
-  perform: async ({ group, node }: { group: string; node: string }) => {
-    await run({ group, node }, `${group} → ${node}`)
+  perform: async ({ group, node, via }: { group: string; node: string; via?: string }) => {
+    await run({ group, node }, `${group} → ${node}`, via ? JSON.parse(via) as Hop[] : [])
   },
 })
 
@@ -97,6 +99,25 @@ export const NextPickGroupIntent = AppIntentManager.register({
   protocol: AppIntentProtocol.AppIntent,
   perform: async (_: undefined) => {
     nextPickGroup()
+    Widget.reloadAll()
+  },
+})
+
+/** 切换器: 点进下层策略组 / 回上一层 */
+export const EnterPickIntent = AppIntentManager.register({
+  name: 'LoonPanelEnterPickIntent',
+  protocol: AppIntentProtocol.AppIntent,
+  perform: async ({ name }: { name: string }) => {
+    enterPick(name)
+    Widget.reloadAll()
+  },
+})
+
+export const LeavePickIntent = AppIntentManager.register({
+  name: 'LoonPanelLeavePickIntent',
+  protocol: AppIntentProtocol.AppIntent,
+  perform: async (_: undefined) => {
+    leavePick()
     Widget.reloadAll()
   },
 })

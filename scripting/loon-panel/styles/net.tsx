@@ -10,7 +10,7 @@ import {
   type Deep, type Group, type Isp,
 } from '../loon'
 import { fmtBytes, md, type SubView } from '../subs'
-import { ModeIntent, SwitchIntent, CheckIntent, FastestIntent, TurnGroupsIntent, NextPickGroupIntent, TurnPickPageIntent, readNote, readPending } from '../app_intents'
+import { ModeIntent, SwitchIntent, CheckIntent, FastestIntent, TurnGroupsIntent, NextPickGroupIntent, TurnPickPageIntent, EnterPickIntent, LeavePickIntent, readNote, readPending } from '../app_intents'
 import { mainGroupLeaf, checkText } from './node'
 import {
   Root, Header, Num, Empty, Cell, Dot, Pill, Spark, Uptime, RefreshButton, Bar, usageColor, latencyColor, latencyInk, latencyText, nodeLabel, asnText, flag, ago, hhmm,
@@ -290,27 +290,30 @@ function PickerNow(props: { ctx: Ctx; group: Group; full: boolean }) {
   )
 }
 
-/** 切换器: 常用策略组里的一个组, 点节点直接切; 右上角换组、翻页 */
+/** 切换器: 常用策略组里的一个组, 点节点直接切, 点策略组进下一层; 右上角换组、翻页 */
 export function PickerStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, loon } = ctx
   if (!loon) return <NoLoon ctx={ctx} title="切换器" />
-  const { group: g, nodes, page, pages, groups } = pickerView(loon, ctx.prefs, ctx.size === 'l' ? 15 : 6)
+  const { group: g, via, nodes, page, pages, groups } = pickerView(loon, ctx.prefs, ctx.size === 'l' ? 15 : 6)
   if (!g) return <NoLoon ctx={ctx} title="切换器" />
   // 上面是当前节点, 下面是选项; 选项少时卡片定高, 多时撑满, 翻页时卡片大小不变
   const few = g.subs.length <= (ctx.size === 'l' ? 6 : 3)
   const cols = g.subs.length === 4 ? 2 : 3
   const rows = chunk(nodes, cols)
   const blank = pages > 1 ? (ctx.size === 'l' ? 5 : 2) - rows.length : 0
+  const linked = via.every(v => loon.groups.find(x => x.name === v.group)?.now === v.node)   // 上面几层是不是指着这一层
+  const hops = via.length ? JSON.stringify(via) : undefined
+  const last = via[via.length - 1]
   const cell = (name: string) => {
     const sub = loon.groups.find(x => x.name === name)   // 选项可能是另一个策略组, 看它正在用的节点
     const r = loon.nodes[sub?.leaf ?? name]
     const on = name === g.now
     const going = !ctx.inApp && readPending()?.group === g.name && readPending()?.node === name
     return (
-      <Tap ctx={ctx} intent={!on && !loon.stale ? SwitchIntent({ group: g.name, node: name }) : undefined}>
+      <Tap ctx={ctx} intent={sub ? EnterPickIntent({ name }) : (!on || !linked) && !loon.stale ? SwitchIntent({ group: g.name, node: name, via: hops }) : undefined}>
         <VStack alignment="leading" spacing={2} padding={{ horizontal: 10, vertical: 4 }} frame={few ? { maxWidth: 'infinity', minHeight: 50, maxHeight: 50, alignment: 'leading' } : { maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={12} style="continuous" fill={on ? th.accent : th.card} />}>
-          <Text font={11} foregroundStyle={on ? '#FFFFFF' : th.t2} lineLimit={1} minScaleFactor={0.7}>{sub ? name : nodeLabel(name, r)}</Text>
+          <Text font={11} foregroundStyle={on ? '#FFFFFF' : th.t2} lineLimit={1} minScaleFactor={0.7}>{sub ? `${name} ›` : nodeLabel(name, r)}</Text>
           <Text font={14} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={on ? '#FFFFFF' : r ? latencyInk(ctx, r) : th.t3} lineLimit={1} minScaleFactor={0.7}>{going ? '切换中' : name === 'DIRECT' ? '直连' : latencyText(r)}</Text>
         </VStack>
       </Tap>
@@ -323,7 +326,9 @@ export function PickerStyle(props: { ctx: Ctx }) {
         title={g.name}
         trailing={(
           <HStack spacing={8}>
-            {groups > 1 ? <Tap ctx={ctx} intent={NextPickGroupIntent(undefined)}><Text font={11} foregroundStyle={th.accent} lineLimit={1}>换组</Text></Tap> : null}
+            {last ? <Tap ctx={ctx} intent={LeavePickIntent(undefined)}><Text font={11} foregroundStyle={th.accent} lineLimit={1}>上一层</Text></Tap> : null}
+            {last && !linked && !loon.stale ? <Tap ctx={ctx} intent={SwitchIntent({ group: last.group, node: last.node, via: JSON.stringify(via.slice(0, -1)) })}><Text font={11} fontWeight="semibold" foregroundStyle={th.accent} lineLimit={1}>用这组</Text></Tap> : null}
+            {!last && groups > 1 ? <Tap ctx={ctx} intent={NextPickGroupIntent(undefined)}><Text font={11} foregroundStyle={th.accent} lineLimit={1}>换组</Text></Tap> : null}
             <Pager ctx={ctx} page={page} pages={pages} turn={step => TurnPickPageIntent({ step })} />
           </HStack>
         )}

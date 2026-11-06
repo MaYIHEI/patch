@@ -2,11 +2,11 @@
 // 定时任务 / 网络切换: 节点体检 (各策略组当前节点 + App 里指定策略组的全部节点)、直连出口、解锁检测、
 //   锁定的策略组被还原就改回来、当前节点挂了发通知或自动切换, 结果写进 $persistentStore, 跑完可推送刷新小组件
 // 请求 http://1.1.1.1/loon-panel/data: 返回模式、策略组、体检结果、解锁、事件记录等
-// 请求 http://1.1.1.1/loon-panel/set: ?mode=0|1|2 切模式; ?group=…&node=… 切节点; ?group=…&node=…&lock=1 锁定, ?group=…&lock=0 解锁; 不带参数只复测
+// 请求 http://1.1.1.1/loon-panel/set: ?mode=0|1|2 切模式; ?group=…&node=… 切节点; ?group=…&node=…&lock=1 锁定, ?group=…&lock=0 解锁; 不带参数只复测; 加 quiet=1 切完不复测
 // 请求 http://1.1.1.1/loon-panel/deep?node=…: 对节点跑一次深度检测 (加 &speed=1 同时测速)
 // POST http://1.1.1.1/loon-panel/opts: 保存 App 里的设置, 正文是要改的项 (JSON); 空字符串 = 恢复默认
 
-const VERSION = '0.3.7'
+const VERSION = '0.3.15'
 const STORE_KEY = 'loon_panel'
 const CORE_KEY = 'loon_panel_core'
 // 检测核心库 (paperclip ipquality-web-test), 解锁和深度检测都用它, 这里不另写一份
@@ -452,7 +452,7 @@ async function handleSet(q) {
     result = { ok: false, error: `Loon 仍在用 ${picked.now}，这个策略组可能是自动选择的` }
     delete store.locks[q.group]
   }
-  const skip = !result.ok || q.lock === '0'
+  const skip = !result.ok || q.lock === '0' || q.quiet === '1'   // quiet: 一层层切时只有最后一步复测
   const targets = skip ? [] : via ? uniq([state.leafOf(via)]).filter(n => !state.gone.has(n)) : [...leaves(state), ...stuck(state)]
   await runChecks(store, targets, new Set(leaves(state)), REQ_BUDGET)
   writeStore(store)
