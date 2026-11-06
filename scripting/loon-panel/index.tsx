@@ -38,7 +38,7 @@ import {
 import type { Color } from 'scripting'
 
 import {
-  loadLoon, cachedLoon, setLoon, deepCheck, leafNodes, pathTo, sampleLoon, mainGroup, shownGroups, setOpts, healthCount, availability, loonStatus, clearLoonCache, MODES, DATA_URL,
+  loadLoon, cachedLoon, setLoon, deepCheck, leafNodes, pathTo, isAuto, sampleLoon, mainGroup, shownGroups, setOpts, healthCount, availability, loonStatus, clearLoonCache, MODES, DATA_URL,
   type Deep, type LoonData, type Group, type NodeResult, type OptsPatch,
 } from './loon'
 import {
@@ -483,8 +483,9 @@ function GroupPage(props: { group: Group; loon: LoonData; act: (q: Act, label: s
   }
 
   async function pick(node: string) {
-    const hops = props.via ? [...props.via, ...(pathTo(loon, g.name, node) ?? [])] : [{ group: g.name, node }]
-    if (busy || hops.every(h => cachedLoon()?.groups.find(x => x.name === h.group)?.now === h.node)) return
+    const full = props.via ? [...props.via, ...(pathTo(loon, g.name, node) ?? [])] : [{ group: g.name, node }]
+    const hops = full.filter(h => cachedLoon()?.groups.find(x => x.name === h.group)?.now !== h.node)   // 已经指着的层不用再切
+    if (busy || !hops.length) return
     setBusy(node)
     for (const [i, h] of hops.entries()) await props.act({ ...h, quiet: i < hops.length - 1 ? 1 : undefined }, `切换到 ${h.node}`)
     sync()
@@ -509,7 +510,7 @@ function GroupPage(props: { group: Group; loon: LoonData; act: (q: Act, label: s
           return (
             <HStack spacing={0}>
               <Button action={() => { pick(name) }} buttonStyle="plain" frame={{ maxWidth: 'infinity' }}>
-                <HStack spacing={10} padding={{ leading: 14, trailing: inner ? 6 : 14, vertical: 10 }} frame={{ maxWidth: 'infinity' }}>
+                <HStack spacing={10} padding={{ leading: 14, trailing: inner && !isAuto(name) ? 6 : 14, vertical: 10 }} frame={{ maxWidth: 'infinity' }}>
                   <Image systemName={on ? 'checkmark.circle.fill' : inner ? 'folder' : 'circle'} foregroundStyle={on ? 'systemBlue' : 'tertiaryLabel'} />
                   <VStack alignment="leading" spacing={1}>
                     <Text font={15} foregroundStyle="label" lineLimit={1}>{inner ? name : fullLabel(name, r)}</Text>
@@ -521,7 +522,7 @@ function GroupPage(props: { group: Group; loon: LoonData; act: (q: Act, label: s
                   {busy === name ? <Text font={12} foregroundStyle="secondaryLabel">切换中</Text> : <Latency r={r} />}
                 </HStack>
               </Button>
-              {inner ? (
+              {inner && !isAuto(name) ? (
                 <NavigationLink destination={<GroupPage group={inner} loon={loon} act={props.act} reload={props.reload} via={[{ group: g.name, node: name }]} changed={sync} />} buttonStyle="plain">
                   <Image systemName="chevron.right" font={13} fontWeight="semibold" foregroundStyle="systemBlue" padding={{ horizontal: 14, vertical: 16 }} />
                 </NavigationLink>
