@@ -2,7 +2,7 @@
 // 只给 App 页面用, 不进小组件. 新组件把这个文件复制过去就能用, 不依赖组件里的其他文件
 
 import {
-  Button, HStack, Image, NavigationLink, Picker, Rectangle, RoundedRectangle, ScrollView, Spacer, Text, Toggle, VStack,
+  Button, Circle, HStack, Image, NavigationLink, Picker, Rectangle, RoundedRectangle, ScrollView, Spacer, Text, Toggle, VStack, ZStack,
 } from 'scripting'
 import type { Color } from 'scripting'
 
@@ -29,18 +29,71 @@ export function Page(props: { title: string; large?: boolean; bar?: any; childre
 }
 
 /** 卡片 */
-export function Card(props: { radius?: number; inner?: number; children?: any }) {
+export function Card(props: { radius?: number; inner?: number; tall?: number; children?: any }) {
   return (
     <VStack
       alignment="leading"
       spacing={0}
       padding={props.inner ?? 0}
-      frame={{ maxWidth: 'infinity', alignment: 'leading' }}
+      frame={{ maxWidth: 'infinity', minHeight: props.tall, alignment: 'topLeading' }}
       background={<RoundedRectangle cornerRadius={props.radius ?? RADIUS} style="continuous" fill={CARD} />}
     >
       {props.children}
     </VStack>
   )
+}
+
+/** 两列网格 */
+export function Grid(props: { children?: any }) {
+  const items = (Array.isArray(props.children) ? props.children : [props.children]).flat().filter(Boolean)
+  const rows: any[][] = []
+  for (let i = 0; i < items.length; i += 2) rows.push(items.slice(i, i + 2))
+  return (
+    <VStack spacing={10}>
+      {rows.map(row => (
+        <HStack spacing={10} alignment="top">
+          <VStack frame={{ maxWidth: 'infinity' }}>{row[0]}</VStack>
+          <VStack frame={{ maxWidth: 'infinity' }}>{row[1] ?? null}</VStack>
+        </HStack>
+      ))}
+    </VStack>
+  )
+}
+
+/** 网格里进下一页的卡片 */
+export function NavTile(props: { icon: string; title: string; value?: string; destination: any }) {
+  return (
+    <NavigationLink destination={props.destination} buttonStyle="plain">
+      <Card inner={14} tall={92}>
+        <VStack alignment="leading" spacing={3}>
+          <Image systemName={props.icon} font={18} foregroundStyle="secondaryLabel" padding={{ bottom: 6 }} />
+          <Text font={15} foregroundStyle="label" lineLimit={1}>{props.title}</Text>
+          {props.value ? <Text font={12} foregroundStyle="secondaryLabel" lineLimit={1}>{props.value}</Text> : null}
+        </VStack>
+      </Card>
+    </NavigationLink>
+  )
+}
+
+function Round(props: { icon: string; title: string }) {
+  return (
+    <VStack spacing={6}>
+      <ZStack frame={{ width: 52, height: 52 }}>
+        <Circle fill={CARD} />
+        <Image systemName={props.icon} font={20} foregroundStyle="label" />
+      </ZStack>
+      <Text font={12} foregroundStyle="secondaryLabel" lineLimit={1}>{props.title}</Text>
+    </VStack>
+  )
+}
+
+/** 圆形操作按钮, 放在一行里平分宽度 */
+export function RoundButton(props: { icon: string; title: string; action: () => void; disabled?: boolean }) {
+  return <Button action={props.action} buttonStyle="plain" disabled={props.disabled} frame={{ maxWidth: 'infinity' }}><Round icon={props.icon} title={props.title} /></Button>
+}
+
+export function RoundLink(props: { icon: string; title: string; destination: any }) {
+  return <NavigationLink destination={props.destination} buttonStyle="plain" frame={{ maxWidth: 'infinity' }}><Round icon={props.icon} title={props.title} /></NavigationLink>
 }
 
 /** 舞台: 比页面略深的底, 放预览 */
