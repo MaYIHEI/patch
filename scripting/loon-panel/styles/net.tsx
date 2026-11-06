@@ -364,13 +364,17 @@ export function GroupCell(props: { ctx: Ctx; g: Group }) {
 /** 今天用了多少和到期 / 重置日 */
 const subLine = (s: SubView) => [`今天 ${fmtBytes(s.today)}`, s.deadline ? `${md(s.deadline)} ${s.deadlineWord}` : ''].filter(Boolean).join(' · ')
 
-/** 右上角: 点一下换模式 */
+/** 右上角的模式按钮: 点一下换到下一个模式 */
 function ModeTap(props: { ctx: Ctx }) {
   const { ctx } = props
   const loon = ctx.loon!
+  const mode = MODES.find(m => m.id === loon.mode)
   return (
     <Tap ctx={ctx} intent={!loon.stale && loon.mode >= 0 ? ModeIntent({ mode: (loon.mode + 1) % 3 }) : undefined}>
-      <Text font={11} fontWeight="medium" foregroundStyle={ctx.th.accent} lineLimit={1}>{modeName(loon.mode)}</Text>
+      <HStack spacing={3} padding={{ horizontal: 7, vertical: 3 }} background={<Capsule fill={withAlpha(ctx.th.accent, 0.16)} />}>
+        {mode ? <Image systemName={mode.icon} font={9} fontWeight="semibold" foregroundStyle={ctx.th.accent} /> : null}
+        <Text font={10} fontWeight="semibold" foregroundStyle={ctx.th.accent} lineLimit={1}>{mode?.short ?? modeName(loon.mode)}</Text>
+      </HStack>
     </Tap>
   )
 }
@@ -462,7 +466,7 @@ export function GroupsStyle(props: { ctx: Ctx }) {
   const { list: groups, page, pages } = groupPage(loon, ctx.prefs, 4)
   return (
     <Root ctx={ctx} spacing={6}>
-      <Header ctx={ctx} title="策略组" right={modeName(loon.mode)} trailing={<PageButton ctx={ctx} page={page} pages={pages} />} />
+      <Header ctx={ctx} title="策略组" trailing={<HStack spacing={6}><PageButton ctx={ctx} page={page} pages={pages} /><ModeTap ctx={ctx} /></HStack>} />
       {chunk(groups, 2).map(row => (
         <HStack spacing={6}>
           {row.map(g => <GroupCell ctx={ctx} g={g} />)}
