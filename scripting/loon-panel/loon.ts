@@ -193,6 +193,9 @@ export function pathTo(d: LoonData, root: string, node: string, seen = new Set<s
   return null
 }
 
+/** 节点由 Loon 自己选的组 (自动测速、按网络切换): 只能整组用, 不能选里面的节点; 脚本读不到组的类型, 只能看名字 */
+export const isAuto = (name: string) => /自动|auto|url-?test|fallback|load-?balance/i.test(name)
+
 /** 一个策略组下面所有真实节点, 不管套了几层 */
 export function leafNodes(d: LoonData, name: string, seen = new Set<string>()): string[] {
   const g = d.groups.find(x => x.name === name)

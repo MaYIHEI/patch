@@ -5,7 +5,6 @@ import { VStack, HStack, ZStack, Text, Spacer, Gauge, AccessoryWidgetBackground,
 
 import { fmtBytes, md, type SubView } from '../subs'
 import { mainGroupLeaf } from './node'
-import { availability } from '../loon'
 import { Root, Header, Num, Empty, Bar, UsageRing, DailyBars, usageColor, latencyText, nodeLabel, syncText, OK, BAD, WARN, type Ctx } from '../ui'
 
 const NO_SUB = '在 App 里添加机场订阅'
@@ -27,31 +26,6 @@ export function RingStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th } = ctx
   const s = mainSub(ctx)
-  const leaf = mainGroupLeaf(ctx)
-  if (!s && leaf) {   // 没有机场: 环改成当前节点的可用率
-    const a = availability(leaf.r) ?? 0
-    return (
-      <Root ctx={ctx} spacing={6}>
-        <Header ctx={ctx} title={leaf.group} font={12} />
-        <HStack frame={{ maxWidth: 'infinity' }}>
-          <Spacer minLength={0} />
-          <UsageRing ctx={ctx} ratio={a} size={72} line={9} color={OK}>
-            <VStack spacing={0}>
-              <Num value={pct(a)} size={19} color={th.t1} weight="bold" />
-              <Text font={10} foregroundStyle={th.t3}>可用</Text>
-            </VStack>
-          </UsageRing>
-          <Spacer minLength={0} />
-        </HStack>
-        <Spacer minLength={0} />
-        <HStack spacing={4}>
-          <Text font={11} foregroundStyle={th.t1} lineLimit={1} minScaleFactor={0.7}>{nodeLabel(leaf.name, leaf.r)}</Text>
-          <Spacer minLength={2} />
-          <Text font={11} monospacedDigit foregroundStyle={th.t2} lineLimit={1}>{latencyText(leaf.r)}</Text>
-        </HStack>
-      </Root>
-    )
-  }
   if (!s) return <Root ctx={ctx}><Header ctx={ctx} title="机场用量" font={12} /><Empty ctx={ctx} icon="plus.circle" text={NO_SUB} /></Root>
   if (!s.usage) return <Root ctx={ctx}><Header ctx={ctx} title={s.name} font={12} /><Empty ctx={ctx} icon="exclamationmark.triangle" text={s.err ?? '读取中'} /></Root>
   const unlimited = s.usage.total <= 0
