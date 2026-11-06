@@ -5,7 +5,7 @@ import { VStack, HStack, ZStack, Text, Spacer, Gauge, AccessoryWidgetBackground,
 
 import { fmtBytes, md, type SubView } from '../subs'
 import { mainGroupLeaf } from './node'
-import { Root, Header, Num, Empty, Bar, UsageRing, DailyBars, usageColor, latencyText, syncText, OK, BAD, WARN, type Ctx } from '../ui'
+import { Root, Header, Num, Empty, Bar, UsageRing, DailyBars, usageColor, latencyText, nodeLabel, syncText, OK, BAD, WARN, type Ctx } from '../ui'
 
 const NO_SUB = '在 App 里添加机场订阅'
 
@@ -30,11 +30,11 @@ export function RingStyle(props: { ctx: Ctx }) {
   if (!s.usage) return <Root ctx={ctx}><Header ctx={ctx} title={s.name} font={12} /><Empty ctx={ctx} icon="exclamationmark.triangle" text={s.err ?? '读取中'} /></Root>
   const unlimited = s.usage.total <= 0
   return (
-    <Root ctx={ctx} spacing={6}>
+    <Root ctx={ctx} spacing={4}>
       <Header ctx={ctx} title={`${staleMark(s)}${s.name}`} font={12} />
       <HStack frame={{ maxWidth: 'infinity' }}>
         <Spacer minLength={0} />
-        <UsageRing ctx={ctx} ratio={unlimited ? 0 : s.ratio} size={72} line={9}>
+        <UsageRing ctx={ctx} ratio={unlimited ? 0 : s.ratio} size={66} line={8}>
           <VStack spacing={0}>
             <Num value={unlimited ? fmtBytes(s.used) : pct(s.ratio)} size={unlimited ? 16 : 21} color={th.t1} weight="bold" />
             <Text font={10} foregroundStyle={th.t3}>已用</Text>
@@ -150,11 +150,12 @@ export function LockRect(props: { ctx: Ctx }) {
     <LockPreview ctx={ctx} radius={14}>
       <VStack alignment="leading" spacing={1} frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'leading' }} padding={ctx.inApp ? { horizontal: 10 } : 0}>
         <HStack spacing={4}>
-          <Text font={11} lineLimit={1} foregroundStyle={dim}>{s ? `${s.name} ${u && u.total > 0 ? '剩余' : '已用'}` : NO_SUB}</Text>
+          <Text font={11} lineLimit={1} foregroundStyle={dim}>{s ? `${s.name} ${u && u.total > 0 ? '剩余' : '已用'}` : leaf?.group ?? NO_SUB}</Text>
           <Spacer minLength={2} />
-          <Text font={11} monospacedDigit lineLimit={1} foregroundStyle={dim}>{leaf ? latencyText(leaf.r) : syncText(ctx)}</Text>
+          <Text font={11} monospacedDigit lineLimit={1} foregroundStyle={dim}>{s && leaf ? latencyText(leaf.r) : s ? syncText(ctx) : ''}</Text>
         </HStack>
-        <Text font={20} fontWeight="semibold" fontDesign="rounded" monospacedDigit lineLimit={1} minScaleFactor={0.6} foregroundStyle={fg}>{u ? fmtBytes(u.total > 0 ? Math.max(0, u.total - s!.used) : s!.used) : '-'}</Text>
+        <Text font={20} fontWeight="semibold" fontDesign="rounded" monospacedDigit lineLimit={1} minScaleFactor={0.6} foregroundStyle={fg}>{u ? fmtBytes(u.total > 0 ? Math.max(0, u.total - s!.used) : s!.used) : !s && leaf ? latencyText(leaf.r) : '-'}</Text>
+        {!s && leaf ? <Text font={11} lineLimit={1} foregroundStyle={dim}>{nodeLabel(leaf.name, leaf.r)}</Text> : null}
         {u && u.total > 0 ? <Gauge value={s!.ratio} min={0} max={1} label={<Text>已用</Text>} gaugeStyle="accessoryLinearCapacity" /> : null}
       </VStack>
     </LockPreview>

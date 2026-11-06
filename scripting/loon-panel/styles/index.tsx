@@ -76,6 +76,14 @@ export function resolveStyle(param: string | undefined, family: Family): StyleDe
   return def?.views[family] ? def : styleById(BUILTIN_DEFAULTS[family])!
 }
 
+/** 用到机场用量的样式 */
+export const TRAFFIC_STYLES = ['A', 'G', 'H', 'I', 'J', 'O', 'C', 'Q', 'X', 'E', 'Y', 'F', 'AC', 'AF']
+/** 这些样式没有机场就没内容, 小组件上换成同尺寸能显示节点的样式 */
+const fallbackOf = (style: StyleDef, family: Family) => {
+  const empty = family === 'accessoryCircular' ? ['F', 'AC'] : ['A', 'G', 'H', 'I', 'J', 'O', 'C', 'Q', 'X', 'Y']
+  return empty.includes(style.id) ? styleById(family === 'accessoryCircular' ? 'AB' : BUILTIN_DEFAULTS[family]) : undefined
+}
+
 export function renderStyle(
   style: StyleDef, family: Family,
   opts: { inApp: boolean; loon: LoonData | null; loonErr: string; subs: SubView[]; look: Look; prefs: Prefs; nat: Nat | null; local: LocalEvent[] },
@@ -92,6 +100,7 @@ export function renderStyle(
     nat: opts.nat,
     events: [...(opts.loon?.events ?? []), ...opts.local].sort((a, b) => b.t - a.t),
   }
-  const View = style.views[family] ?? styleById(BUILTIN_DEFAULTS[family])!.views[family]!
+  const shown = (opts.loon && !opts.subs.length ? fallbackOf(style, family) : undefined) ?? style
+  const View = shown.views[family] ?? styleById(BUILTIN_DEFAULTS[family])!.views[family]!
   return <View ctx={ctx} />
 }
