@@ -10,6 +10,7 @@ import { getPrefs } from './settings'
 const AppStorage = Storage as unknown as {
   get<T = unknown>(key: string): T | null
   set(key: string, value: unknown): void
+  remove(key: string): void
 }
 
 /** 最近一次按钮操作的结果, 小组件重绘时显示 (失败原因 / 成功提示), 1 分钟后不再显示 */
@@ -20,16 +21,28 @@ export function readNote(): Note | null {
   return n && Date.now() - n.t < 60_000 ? n : null
 }
 
+/** 正在切的节点: 点下去先重绘一次, 等 Loon 确认后才显示新节点; 30 秒后不再算数 */
+const PENDING_KEY = 'loonpanel.pending'
+export function readPending(): { t: number; group: string; node: string } | null {
+  const p = AppStorage.get<{ t: number; group: string; node: string }>(PENDING_KEY)
+  return p && Date.now() - p.t < 30_000 ? p : null
+}
+
 // 小组件按钮在后台跑, 有时间限制 (系统没公开具体秒数, 留足余量)
 const TIMEOUT_S = 20
 
 async function run(q: { mode?: number; group?: string; node?: string }, okText: string) {
+  if (q.group && q.node) {
+    AppStorage.set(PENDING_KEY, { t: Date.now(), group: q.group, node: q.node })
+    Widget.reloadAll()
+  }
   try {
     await setLoon(q, TIMEOUT_S)
     AppStorage.set(NOTE_KEY, { t: Date.now(), ok: true, text: okText })
   } catch (e) {
     AppStorage.set(NOTE_KEY, { t: Date.now(), ok: false, text: (e as Error).message.slice(0, 40) })
   }
+  AppStorage.remove(PENDING_KEY)
   Widget.reloadAll()
 }
 

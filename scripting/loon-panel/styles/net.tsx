@@ -10,10 +10,10 @@ import {
   type Deep, type Group, type Isp,
 } from '../loon'
 import { fmtBytes } from '../subs'
-import { ModeIntent, SwitchIntent, CheckIntent, FastestIntent, NextGroupsIntent, NextPickGroupIntent, NextPickPageIntent, readNote } from '../app_intents'
+import { ModeIntent, SwitchIntent, CheckIntent, FastestIntent, NextGroupsIntent, NextPickGroupIntent, NextPickPageIntent, readNote, readPending } from '../app_intents'
 import { mainGroupLeaf, checkText } from './node'
 import {
-  Root, Header, Num, Empty, Cell, Dot, Pill, Spark, Uptime, RefreshButton, latencyColor, latencyInk, latencyText, nodeLabel, asnText, flag, ago, hhmm,
+  Root, Header, Num, Empty, Cell, Dot, Pill, Spark, Uptime, RefreshButton, Bar, usageColor, latencyColor, latencyInk, latencyText, nodeLabel, asnText, flag, ago, hhmm,
   mediaColor, mediaWord, chunk, withAlpha, OK, BAD, WARN, type Ctx,
 } from '../ui'
 
@@ -297,11 +297,12 @@ export function PickerStyle(props: { ctx: Ctx }) {
     const sub = loon.groups.find(x => x.name === name)   // 选项可能是另一个策略组, 看它正在用的节点
     const r = loon.nodes[sub?.leaf ?? name]
     const on = name === g.now
+    const going = !ctx.inApp && readPending()?.group === g.name && readPending()?.node === name
     return (
       <Tap ctx={ctx} intent={!on && !loon.stale ? SwitchIntent({ group: g.name, node: name }) : undefined}>
         <VStack alignment="leading" spacing={2} padding={{ horizontal: 10, vertical: 4 }} frame={few ? { maxWidth: 'infinity', minHeight: 50, maxHeight: 50, alignment: 'leading' } : { maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={12} style="continuous" fill={on ? th.accent : th.card} />}>
           <Text font={11} foregroundStyle={on ? '#FFFFFF' : th.t2} lineLimit={1} minScaleFactor={0.7}>{sub ? name : nodeLabel(name, r)}</Text>
-          <Text font={14} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={on ? '#FFFFFF' : r ? latencyInk(ctx, r) : th.t3} lineLimit={1} minScaleFactor={0.7}>{name === 'DIRECT' ? '直连' : latencyText(r)}</Text>
+          <Text font={14} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={on ? '#FFFFFF' : r ? latencyInk(ctx, r) : th.t3} lineLimit={1} minScaleFactor={0.7}>{going ? '切换中' : name === 'DIRECT' ? '直连' : latencyText(r)}</Text>
         </VStack>
       </Tap>
     )
@@ -335,8 +336,9 @@ export function GroupCell(props: { ctx: Ctx; g: Group }) {
   const { ctx, g } = props
   const { th } = ctx
   const loon = ctx.loon!
-  const r = loon.nodes[g.leaf]
+  const r = g.gone ? undefined : loon.nodes[g.leaf]
   const target = loon.stale ? undefined : switchTarget(loon, g)
+  const going = ctx.inApp ? null : readPending()
   return (
     <Tap ctx={ctx} intent={target ? SwitchIntent({ group: g.name, node: target }) : undefined}>
       <Cell ctx={ctx}>
@@ -345,9 +347,54 @@ export function GroupCell(props: { ctx: Ctx; g: Group }) {
           {loon.locks?.[g.name] ? <Image systemName="lock.fill" font={8} foregroundStyle={th.t3} /> : null}
         </HStack>
         <Text font={15} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={latencyInk(ctx, r)} lineLimit={1}>{latencyText(r)}</Text>
-        <Text font={10} foregroundStyle={th.t3} lineLimit={1}>{nodeLabel(g.leaf, r)}</Text>
+        <Text font={10} foregroundStyle={going?.group === g.name ? th.accent : g.gone ? WARN : th.t3} lineLimit={1}>{going?.group === g.name ? `切换到 ${going.node}` : g.gone ? '节点已失效' : nodeLabel(g.leaf, r)}</Text>
       </Cell>
     </Tap>
+  )
+}
+
+/** 总览: 左边主订阅和出口, 右边常用策略组; 右上角点一下换模式 */
+export function OverviewStyle(props: { ctx: Ctx }) {
+  const { ctx } = props
+  const { th, loon } = ctx
+  if (!loon) return <NoLoon ctx={ctx} title="总览" icon="rectangle.split.2x1.fill" />
+  const { list: groups, page, pages } = groupPage(loon, ctx.prefs, 4)
+  const s = ctx.subs[0]
+  const u = s?.usage
+  const leaf = mainGroupLeaf(ctx)
+  return (
+    <Root ctx={ctx} spacing={6}>
+      <Header
+        ctx={ctx}
+        title="总览"
+        icon="rectangle.split.2x1.fill"
+        trailing={(
+          <HStack spacing={6}>
+            <PageButton ctx={ctx} page={page} pages={pages} />
+            <Tap ctx={ctx} intent={!loon.stale && loon.mode >= 0 ? ModeIntent({ mode: (loon.mode + 1) % 3 }) : undefined}>
+              <Text font={11} fontWeight="medium" foregroundStyle={th.accent} lineLimit={1}>{modeName(loon.mode)}</Text>
+            </Tap>
+          </HStack>
+        )}
+      />
+      <HStack spacing={10} alignment="top">
+        <VStack alignment="leading" spacing={3} frame={{ width: 100, alignment: 'leading' }}>
+          <Text font={11} foregroundStyle={th.t2} lineLimit={1}>{u ? (u.total > 0 ? `${s.name} 剩余` : `${s.name} 已用`) : leaf?.group ?? '当前节点'}</Text>
+          <Num value={u ? fmtBytes(u.total > 0 ? s.remain : s.used) : latencyText(leaf?.r)} size={24} color={u ? th.t1 : latencyInk(ctx, leaf?.r)} />
+          {u && u.total > 0 ? <Bar ctx={ctx} value={s.ratio} color={usageColor(s.ratio)} height={4} /> : null}
+          {u ? <Text font={12} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={latencyInk(ctx, leaf?.r)} lineLimit={1} padding={{ top: 5 }}>{latencyText(leaf?.r)}</Text> : null}
+          <Text font={10} foregroundStyle={th.t3} lineLimit={1}>{leaf ? nodeLabel(leaf.name, leaf.r) : ''}</Text>
+        </VStack>
+        <VStack spacing={6} frame={{ maxWidth: 'infinity' }}>
+          {chunk(groups, 2).map(row => (
+            <HStack spacing={6}>
+              {row.map(g => <GroupCell ctx={ctx} g={g} />)}
+              {row.length < 2 ? <VStack frame={{ maxWidth: 'infinity' }} /> : null}
+            </HStack>
+          ))}
+        </VStack>
+      </HStack>
+    </Root>
   )
 }
 
@@ -517,7 +564,7 @@ export function ReportStyle(props: { ctx: Ctx }) {
 // ─────────────────────────────────────────────────────────────
 function LockFrame(props: { ctx: Ctx; radius: number; children?: any }) {
   if (!props.ctx.inApp) return props.children
-  return <ZStack frame={{ maxWidth: 'infinity', maxHeight: 'infinity' }} background={<RoundedRectangle cornerRadius={props.radius} fill="#23306B" />}>{props.children}</ZStack>
+  return <ZStack frame={{ maxWidth: 'infinity', maxHeight: 'infinity' }} background={<RoundedRectangle cornerRadius={props.radius} fill="#3A3A3C" />}>{props.children}</ZStack>
 }
 
 export function LockLatency(props: { ctx: Ctx }) {
@@ -528,8 +575,8 @@ export function LockLatency(props: { ctx: Ctx }) {
       <ZStack>
         <AccessoryWidgetBackground />
         <VStack spacing={0}>
-          <Text font={18} fontWeight="semibold" monospacedDigit minScaleFactor={0.6} foregroundStyle={ctx.inApp ? '#FFFFFF' : undefined}>{r?.ok ? String(r.ms) : r ? '超时' : '-'}</Text>
-          <Text font={10} foregroundStyle={ctx.inApp ? 'rgba(255,255,255,0.78)' : undefined}>ms</Text>
+          <Text font={20} fontWeight="semibold" fontDesign="rounded" monospacedDigit lineLimit={1} minScaleFactor={0.6} foregroundStyle={ctx.inApp ? '#FFFFFF' : undefined}>{r?.ok ? String(r.ms) : r ? '超时' : '-'}</Text>
+          {r?.ok ? <Text font={10} foregroundStyle={ctx.inApp ? 'rgba(255,255,255,0.78)' : undefined}>ms</Text> : null}
         </VStack>
       </ZStack>
     </LockFrame>
@@ -560,13 +607,27 @@ export function LockPing(props: { ctx: Ctx }) {
   const { ctx } = props
   const d = ctx.loon ? latestDeep(ctx.loon, ctx.prefs)?.data : undefined
   const fg = ctx.inApp ? '#FFFFFF' : undefined
-  const line = (['ct', 'cu', 'cm'] as Isp[]).map(isp => { const p = d?.ping?.find(x => x.isp === isp); return `${ISP[isp][0]} ${p?.avg !== undefined ? Math.round(p.avg) : '-'}` }).join('  ')
+  const dim = ctx.inApp ? 'rgba(255,255,255,0.78)' : undefined
   return (
     <LockFrame ctx={ctx} radius={14}>
-      <VStack alignment="leading" spacing={1} frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'leading' }} padding={ctx.inApp ? { horizontal: 10 } : 0}>
-        <Text font={14} fontWeight="bold" lineLimit={1} foregroundStyle={fg}>三网延迟</Text>
-        <Text font={13} monospacedDigit lineLimit={1} foregroundStyle={fg}>{d?.ping ? line : '还没做过深度检测'}</Text>
-      </VStack>
+      {d?.ping ? (
+        <HStack spacing={10} frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'leading' }} padding={ctx.inApp ? { horizontal: 10 } : 0}>
+          {(['ct', 'cu', 'cm'] as Isp[]).map(isp => {
+            const p = d.ping?.find(x => x.isp === isp)
+            return (
+              <VStack alignment="leading" spacing={0} frame={{ maxWidth: 'infinity', alignment: 'leading' }}>
+                <Text font={11} lineLimit={1} foregroundStyle={dim}>{ISP[isp]}</Text>
+                <Text font={20} fontWeight="semibold" fontDesign="rounded" monospacedDigit lineLimit={1} minScaleFactor={0.6} foregroundStyle={fg}>{p?.avg !== undefined ? String(Math.round(p.avg)) : '-'}</Text>
+              </VStack>
+            )
+          })}
+        </HStack>
+      ) : (
+        <VStack alignment="leading" spacing={1} frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'leading' }} padding={ctx.inApp ? { horizontal: 10 } : 0}>
+          <Text font={14} fontWeight="bold" lineLimit={1} foregroundStyle={fg}>三网延迟</Text>
+          <Text font={12} lineLimit={1} foregroundStyle={dim}>还没做过深度检测</Text>
+        </VStack>
+      )}
     </LockFrame>
   )
 }
