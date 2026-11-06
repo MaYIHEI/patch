@@ -38,7 +38,7 @@ import {
 import type { Color } from 'scripting'
 
 import {
-  loadLoon, cachedLoon, setLoon, deepCheck, sampleLoon, mainGroup, shownGroups, setOpts, healthCount, availability, loonStatus, clearLoonCache, MODES, DATA_URL,
+  loadLoon, cachedLoon, setLoon, deepCheck, leafNodes, pathTo, sampleLoon, mainGroup, shownGroups, setOpts, healthCount, availability, loonStatus, clearLoonCache, MODES, DATA_URL,
   type Deep, type LoonData, type Group, type NodeResult, type OptsPatch,
 } from './loon'
 import {
@@ -54,7 +54,7 @@ import {
 import { makeTheme, Bar, UsageRing, DailyBars, HourBars, Spark, mediaColor, mediaWord, latencyColor, latencyText, nodeLabel, fullLabel, asnText, ago, hhmm, chunk, usageColor, OK, BAD, WARN, type Ctx } from './ui'
 import { ipTags } from './styles/net'
 import { rateText } from './styles/flow'
-import { TRAFFIC_STYLES, stylesFor, styleById, paramOf, renderStyle, type StyleDef } from './styles/index'
+import { TRAFFIC_STYLES, NEEDS_SUBS, stylesFor, styleById, paramOf, renderStyle, type StyleDef } from './styles/index'
 
 declare const Safari: { openURL(url: string): Promise<boolean> }
 
@@ -73,7 +73,7 @@ async function main() {
 // 共用
 // ─────────────────────────────────────────────────────────────
 
-type Act = { mode?: number; group?: string; node?: string; lock?: number }
+type Act = { mode?: number; group?: string; node?: string; lock?: number; quiet?: number }
 type Shared = { loon: LoonData | null; loonErr: string; subs: SubView[]; reload: (force?: boolean) => Promise<void> }
 
 const BOX: Record<Family, { width: number; height: number }> = {
@@ -195,7 +195,7 @@ function WidgetTab(props: { shared: Shared; act: (q: {}, label: string) => Promi
   const look = getLook()
   const data = previewData(shared)
   const style = styleById(getDefaults()[family]) ?? stylesFor(family)[0]
-  const more = stylesFor(family).filter(x => x.id !== style.id)
+  const more = stylesFor(family).filter(x => x.id !== style.id).sort((a, b) => Number(!shared.subs.length && NEEDS_SUBS.includes(a.id)) - Number(!shared.subs.length && NEEDS_SUBS.includes(b.id)))
   return (
     <Page title="小组件" large bar={{ cancellationAction: props.close, topBarTrailing: <Button title="刷新" systemImage="arrow.clockwise" action={() => shared.reload(true)} /> }}>
       {!live || !subs.length || !loon?.check ? <Guide shared={shared} act={props.act} busy={props.busy} toSubs={props.toSubs} /> : null}
@@ -219,7 +219,7 @@ function WidgetTab(props: { shared: Shared; act: (q: {}, label: string) => Promi
                 <NavigationLink destination={<StyleDetail style={x} family={family} loon={data.loon} subs={data.subs} onChanged={props.onChanged} />} buttonStyle="plain">
                   <VStack spacing={6}>
                     <Preview style={x} family={family} loon={data.loon} subs={data.subs} scale={GALLERY[family] ?? 1} />
-                    <Text font={12} foregroundStyle="secondaryLabel" lineLimit={1}>{x.name}</Text>
+                    <Text font={12} foregroundStyle="secondaryLabel" lineLimit={1}>{`${x.name}${!shared.subs.length && NEEDS_SUBS.includes(x.id) ? ' · 需要机场' : ''}`}</Text>
                   </VStack>
                 </NavigationLink>
               ))}
@@ -429,7 +429,7 @@ function Guide(props: { shared: Shared; act: (q: {}, label: string) => Promise<v
 // ─────────────────────────────────────────────────────────────
 // 策略组: 按延迟排序, 点一下切换; 可锁定; 当前节点的解锁和深度检测
 // ─────────────────────────────────────────────────────────────
-/** via: 从上一层点进来的路径; 这里选了节点, 上面几层也跟着指过来, 选的才生效. changed: 选完告诉上一层刷新 */
+/** via: 从上一层点进来时的那一步; 这时列出下面所有节点, 选了从上层一路切过去. changed: 选完告诉上一层刷新 */
 function GroupPage(props: { group: Group; loon: LoonData; act: (q: Act, label: string) => Promise<void>; reload: (force?: boolean) => Promise<void>; via?: { group: string; node: string }[]; changed?: () => void }) {
   const [g, setG] = useState(props.group)
   const [loon, setLoonData] = useState(props.loon)
@@ -437,7 +437,7 @@ function GroupPage(props: { group: Group; loon: LoonData; act: (q: Act, label: s
   const locked = loon.locks?.[g.name]
   const resultOf = (n: string) => loon.nodes[loon.groups.find(x => x.name === n)?.leaf ?? n]   // 成员是策略组时看它正在用的节点
   const ms = (n: string) => { const r = resultOf(n); return !r ? 1e7 : r.ok ? r.ms : 1e6 }
-  const list = g.subs.slice().sort((a, b) => ms(a) - ms(b))
+  const list = (props.via ? leafNodes(loon, g.name) : g.subs.slice()).sort((a, b) => ms(a) - ms(b))
   const media = loon.media?.[g.leaf]?.list ?? []
 
   const [prefs, setPrefsState] = useState<Prefs>(getPrefs())
@@ -483,11 +483,10 @@ function GroupPage(props: { group: Group; loon: LoonData; act: (q: Act, label: s
   }
 
   async function pick(node: string) {
-    const path = (props.via ?? []).filter(v => cachedLoon()?.groups.find(x => x.name === v.group)?.now !== v.node)
-    if (busy || (node === g.now && !path.length)) return
+    const hops = props.via ? [...props.via, ...(pathTo(loon, g.name, node) ?? [])] : [{ group: g.name, node }]
+    if (busy || hops.every(h => cachedLoon()?.groups.find(x => x.name === h.group)?.now === h.node)) return
     setBusy(node)
-    if (node !== g.now) await props.act({ group: g.name, node }, `切换到 ${node}`)
-    for (const v of path) await props.act({ group: v.group, node: v.node }, `${v.group} → ${v.node}`)
+    for (const [i, h] of hops.entries()) await props.act({ ...h, quiet: i < hops.length - 1 ? 1 : undefined }, `切换到 ${h.node}`)
     sync()
     setBusy('')
   }
@@ -501,16 +500,17 @@ function GroupPage(props: { group: Group; loon: LoonData; act: (q: Act, label: s
         <NavRow icon="magnifyingglass" title="深度检测" sub={`测 ${nodeLabel(g.leaf, out)}`} destination={<DeepPage node={g.leaf} loon={loon} reload={props.reload} />} />
       </KitGroup>
 
-      <KitGroup title={loon.check ? `按延迟排序 · ${ago(loon.check.t)} 体检` : '节点'} note="点一行切换, 点右边的 › 进去选里面的节点。没测过的显示「未测」, 打开下面的「全量体检」就会测全部节点。" inset={44}>
+      <KitGroup title={loon.check ? `按延迟排序 · ${ago(loon.check.t)} 体检` : '节点'} note="点一行切换, 点右边的 › 看里面所有节点。没测过的显示「未测」, 打开下面的「全量体检」就会测全部节点。" inset={44}>
         {list.map(name => {
           const r = resultOf(name)
           const a = availability(r)
           const inner = loon.groups.find(x => x.name === name)
+          const on = props.via ? name === g.leaf : name === g.now
           return (
             <HStack spacing={0}>
               <Button action={() => { pick(name) }} buttonStyle="plain" frame={{ maxWidth: 'infinity' }}>
                 <HStack spacing={10} padding={{ leading: 14, trailing: inner ? 6 : 14, vertical: 10 }} frame={{ maxWidth: 'infinity' }}>
-                  <Image systemName={name === g.now ? 'checkmark.circle.fill' : inner ? 'folder' : 'circle'} foregroundStyle={name === g.now ? 'systemBlue' : 'tertiaryLabel'} />
+                  <Image systemName={on ? 'checkmark.circle.fill' : inner ? 'folder' : 'circle'} foregroundStyle={on ? 'systemBlue' : 'tertiaryLabel'} />
                   <VStack alignment="leading" spacing={1}>
                     <Text font={15} foregroundStyle="label" lineLimit={1}>{inner ? name : fullLabel(name, r)}</Text>
                     {inner ? <Text font={11} foregroundStyle="secondaryLabel" lineLimit={1}>{`正在用 ${nodeLabel(inner.leaf, r)}`}</Text>
@@ -522,7 +522,7 @@ function GroupPage(props: { group: Group; loon: LoonData; act: (q: Act, label: s
                 </HStack>
               </Button>
               {inner ? (
-                <NavigationLink destination={<GroupPage group={inner} loon={loon} act={props.act} reload={props.reload} via={[...(props.via ?? []), { group: g.name, node: name }]} changed={sync} />} buttonStyle="plain">
+                <NavigationLink destination={<GroupPage group={inner} loon={loon} act={props.act} reload={props.reload} via={[{ group: g.name, node: name }]} changed={sync} />} buttonStyle="plain">
                   <Image systemName="chevron.right" font={13} fontWeight="semibold" foregroundStyle="systemBlue" padding={{ horizontal: 14, vertical: 16 }} />
                 </NavigationLink>
               ) : null}
@@ -1043,7 +1043,7 @@ function StyleLibrary(props: Shared & { start: SizeTab; onChanged: () => void })
       <VStack spacing={6}>
         <Preview style={s} family={f} loon={data.loon} subs={data.subs} scale={scale} />
         <HStack spacing={4}>
-          <Text font={13} fontWeight="medium" foregroundStyle="label">{s.name}</Text>
+          <Text font={13} fontWeight="medium" foregroundStyle="label">{`${s.name}${!props.subs.length && NEEDS_SUBS.includes(s.id) ? ' · 需要机场' : ''}`}</Text>
           {defaults[f] === s.id ? <Text font={10} foregroundStyle="secondaryLabel">默认</Text> : null}
         </HStack>
       </VStack>
@@ -1052,7 +1052,8 @@ function StyleLibrary(props: Shared & { start: SizeTab; onChanged: () => void })
 
   // 小号两列原尺寸, 中号一列原尺寸, 大号一列缩小, 锁屏两列原尺寸
   const grid = (f: Family) => {
-    const list = stylesFor(f)
+    const need = (x: StyleDef) => Number(!props.subs.length && NEEDS_SUBS.includes(x.id))
+    const list = stylesFor(f).sort((a, b) => need(a) - need(b))
     const cols = f === 'systemSmall' || f === 'accessoryCircular' || f === 'accessoryRectangular' || f === 'accessoryInline' ? 2 : 1
     const scale = f === 'systemLarge' ? 0.92 : 1
     return (

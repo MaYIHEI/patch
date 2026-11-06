@@ -15,7 +15,7 @@ import type { Nat } from './net'
 // 配色
 // ─────────────────────────────────────────────────────────────
 type Pair = { light: string; dark: string }
-type Paint = Color | DynamicShapeStyle
+export type Paint = Color | DynamicShapeStyle
 
 export const OK: Color = '#30D158'
 export const BAD: Color = '#FF453A'
