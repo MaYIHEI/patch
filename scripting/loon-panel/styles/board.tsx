@@ -51,7 +51,7 @@ export function BoardStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, loon } = ctx
   const subs = ctx.subs.slice(0, 2)
-  const { list: groups, page, pages } = loon ? groupPage(loon, ctx.prefs, 4) : { list: [], page: 0, pages: 1 }
+  const { list: groups, page, pages } = loon ? groupPage(loon, ctx.prefs, subs.length ? 4 : 6) : { list: [], page: 0, pages: 1 }   // 没有机场时多放一行, 不留空
   const leaf = mainGroupLeaf(ctx)
   const health = loon ? healthCount(loon) : null
   const note = ctx.inApp ? null : readNote()
@@ -70,9 +70,9 @@ export function BoardStyle(props: { ctx: Ctx }) {
 
       <ModeBar ctx={ctx} />
 
-      <Section ctx={ctx} title="机场" right={ctx.subs.length > 2 ? `共 ${ctx.subs.length} 个` : undefined} />
       {subs.length ? (
         <VStack spacing={6}>
+          <Section ctx={ctx} title="机场" right={ctx.subs.length > 2 ? `共 ${ctx.subs.length} 个` : undefined} />
           {subs.map(s => (
             <HStack spacing={8}>
               <Text font={12} fontWeight="medium" foregroundStyle={th.t1} lineLimit={1} frame={{ width: 64, alignment: 'leading' }}>{`${staleMark(s)}${s.name}`}</Text>
@@ -90,10 +90,7 @@ export function BoardStyle(props: { ctx: Ctx }) {
             </HStack>
           ))}
         </VStack>
-      ) : (
-        <Text font={11} foregroundStyle={th.t3}>在 App 里添加机场订阅</Text>
-      )}
-
+      ) : null}
       <Section ctx={ctx} title="策略组" right={health && health.total ? `${health.ok}/${health.total} 可用` : undefined} trailing={<PageButton ctx={ctx} page={page} pages={pages} />} />
       {loon ? (
         <VStack spacing={6}>
