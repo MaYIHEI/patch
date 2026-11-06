@@ -386,6 +386,13 @@ function healthText(ctx: Ctx): string {
 /** 今天用了多少和到期 / 重置日 */
 const subLine = (s: SubView) => [`今天 ${fmtBytes(s.today)}`, s.deadline ? `${md(s.deadline)} ${s.deadlineWord}` : ''].filter(Boolean).join(' · ')
 
+/** 出口国家: Loon 查不到 IP 归属时看节点名里的国旗 */
+function exitTag(name: string, cc?: string): string {
+  if (cc) return `${flag(cc)} ${cc}`
+  const f = name.match(/[\u{1F1E6}-\u{1F1FF}]{2}/u)?.[0]
+  return f ? `${f} ${Array.from(f, c => String.fromCharCode(c.codePointAt(0)! - 0x1F1E6 + 65)).join('')}` : '-'
+}
+
 /** 总览的小卡片: 标题和一个数字 */
 function Tile(props: { ctx: Ctx; label: string; value: string; color?: Paint }) {
   const { ctx } = props
@@ -419,7 +426,7 @@ export function OverviewSmall(props: { ctx: Ctx }) {
     { label: '延迟', value: ms, color: latencyInk(ctx, r) },
     { label: '可用', value: a === null ? '-' : `${Math.round(a * 100)}%` },
     { label: '节点', value: `${c.ok}/${c.total}` },
-    { label: '出口', value: r?.cc ? `${flag(r.cc)} ${r.cc}` : '-' },
+    { label: '出口', value: leaf ? exitTag(leaf.name, r?.cc) : '-' },
   ]
   return (
     <Root ctx={ctx} spacing={6}>
@@ -451,6 +458,7 @@ export function OverviewStyle(props: { ctx: Ctx }) {
           <Text font={10} foregroundStyle={th.t2} lineLimit={1}>{u ? (u.total > 0 ? `${s.name} 剩余` : `${s.name} 已用`) : leaf?.group ?? '当前节点'}</Text>
           <Num value={u ? fmtBytes(u.total > 0 ? s.remain : s.used) : latencyText(leaf?.r)} size={22} color={u ? th.t1 : latencyInk(ctx, leaf?.r)} />
           {u ? null : <Text font={10} foregroundStyle={th.t2} lineLimit={1} minScaleFactor={0.75}>{leaf ? nodeLabel(leaf.name, leaf.r) : ''}</Text>}
+          {u ? null : <Text font={10} monospacedDigit foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.75}>{leaf?.r?.ip ?? ''}</Text>}
           {u && u.total > 0 ? <Bar ctx={ctx} value={s.ratio} color={usageColor(s.ratio)} height={4} /> : null}
           <Spacer minLength={2} />
           {u ? null : <Uptime h={leaf?.r?.h} height={4} />}
