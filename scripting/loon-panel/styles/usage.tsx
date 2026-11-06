@@ -112,7 +112,7 @@ const lockFg = (ctx: Ctx) => (ctx.inApp ? '#FFFFFF' : undefined)
 function LockPreview(props: { ctx: Ctx; radius: number; children?: any }) {
   if (!props.ctx.inApp) return props.children
   return (
-    <ZStack frame={{ maxWidth: 'infinity', maxHeight: 'infinity' }} background={<RoundedRectangle cornerRadius={props.radius} fill="#23306B" />} clipShape={{ type: 'rect', cornerRadius: props.radius }}>
+    <ZStack frame={{ maxWidth: 'infinity', maxHeight: 'infinity' }} background={<RoundedRectangle cornerRadius={props.radius} fill="#3A3A3C" />} clipShape={{ type: 'rect', cornerRadius: props.radius }}>
       {props.children}
     </ZStack>
   )
@@ -131,7 +131,7 @@ export function LockCircular(props: { ctx: Ctx }) {
           min={0}
           max={1}
           label={<Text>流量</Text>}
-          currentValueLabel={<Text monospacedDigit>{s?.usage ? (s.usage.total > 0 ? String(Math.round(ratio * 100)) : '∞') : '-'}</Text>}
+          currentValueLabel={<Text fontDesign="rounded" monospacedDigit>{s?.usage ? (s.usage.total > 0 ? String(Math.round(ratio * 100)) : '∞') : '-'}</Text>}
           gaugeStyle="accessoryCircularCapacity"
         />
       </ZStack>
@@ -142,18 +142,20 @@ export function LockCircular(props: { ctx: Ctx }) {
 export function LockRect(props: { ctx: Ctx }) {
   const { ctx } = props
   const s = mainSub(ctx)
+  const u = s?.usage
   const leaf = mainGroupLeaf(ctx)
-  const first = s?.usage
-    ? s.usage.total > 0 ? `${s.name} 剩 ${fmtBytes(Math.max(0, s.usage.total - s.used))}` : `${s.name} 已用 ${fmtBytes(s.used)}`
-    : s ? `${s.name} 读取失败` : NO_SUB
+  const fg = lockFg(ctx)
+  const dim = ctx.inApp ? 'rgba(255,255,255,0.78)' : undefined
   return (
     <LockPreview ctx={ctx} radius={14}>
       <VStack alignment="leading" spacing={1} frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'leading' }} padding={ctx.inApp ? { horizontal: 10 } : 0}>
-        <Text font={14} fontWeight="bold" monospacedDigit lineLimit={1} foregroundStyle={lockFg(ctx)}>{first}</Text>
-        {s?.usage && s.usage.total > 0 ? <Text font={12} lineLimit={1} foregroundStyle={ctx.inApp ? 'rgba(255,255,255,0.78)' : undefined}>{s.fc.text}</Text> : null}
-        <Text font={12} lineLimit={1} foregroundStyle={ctx.inApp ? 'rgba(255,255,255,0.78)' : undefined}>
-          {leaf ? `${leaf.name} · ${latencyText(leaf.r)}` : syncText(ctx)}
-        </Text>
+        <HStack spacing={4}>
+          <Text font={11} lineLimit={1} foregroundStyle={dim}>{s ? `${s.name} ${u && u.total > 0 ? '剩余' : '已用'}` : NO_SUB}</Text>
+          <Spacer minLength={2} />
+          <Text font={11} monospacedDigit lineLimit={1} foregroundStyle={dim}>{leaf ? latencyText(leaf.r) : syncText(ctx)}</Text>
+        </HStack>
+        <Text font={20} fontWeight="semibold" fontDesign="rounded" monospacedDigit lineLimit={1} minScaleFactor={0.6} foregroundStyle={fg}>{u ? fmtBytes(u.total > 0 ? Math.max(0, u.total - s!.used) : s!.used) : '-'}</Text>
+        {u && u.total > 0 ? <Gauge value={s!.ratio} min={0} max={1} label={<Text>已用</Text>} gaugeStyle="accessoryLinearCapacity" /> : null}
       </VStack>
     </LockPreview>
   )
@@ -165,5 +167,5 @@ export function LockInline(props: { ctx: Ctx }) {
   const s = mainSub(ctx)
   const leaf = mainGroupLeaf(ctx)
   const text = [s?.usage ? (s.usage.total > 0 ? `剩 ${fmtBytes(s.remain)}` : `已用 ${fmtBytes(s.used)}`) : '', leaf ? latencyText(leaf.r) : ''].filter(Boolean).join(' · ') || 'Loon 面板'
-  return <Text lineLimit={1} foregroundStyle={ctx.inApp ? '#FFFFFF' : undefined} padding={ctx.inApp ? 8 : 0} background={ctx.inApp ? <RoundedRectangle cornerRadius={8} fill="#23306B" /> : undefined}>{text}</Text>
+  return <Text lineLimit={1} foregroundStyle={ctx.inApp ? '#FFFFFF' : undefined} padding={ctx.inApp ? 8 : 0} background={ctx.inApp ? <RoundedRectangle cornerRadius={8} fill="#3A3A3C" /> : undefined}>{text}</Text>
 }

@@ -117,7 +117,7 @@ function isNewer(remote: string, local: string): boolean {
 
 /** 首屏和样式库用: 有真实数据用真实的, 没有用示例 */
 /** 用到机场用量的样式 */
-const TRAFFIC_STYLES = ['A', 'G', 'H', 'I', 'J', 'O', 'C', 'Q', 'X', 'E', 'Y', 'F', 'AC']
+const TRAFFIC_STYLES = ['A', 'G', 'H', 'I', 'J', 'O', 'C', 'Q', 'X', 'E', 'Y', 'F', 'AC', 'AF']
 const sampleNote = (id: string, loon: LoonData | null, subs: SubView[]) => (!loon ? ' · 示例数据' : !subs.length && TRAFFIC_STYLES.includes(id) ? ' · 流量是示例' : '')
 
 const previewData = (p: Shared) => ({ loon: p.loon ?? sampleLoon(), subs: p.subs.length ? p.subs : sampleSubs() })
