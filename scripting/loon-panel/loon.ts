@@ -252,7 +252,7 @@ export function sampleLoon(): LoonData {
   return {
     v: 1, version: '0.2.0', t: Date.now(), mode: 1, final: '兜底', global: '节点选择', mock: true,
     groups: [
-      { name: '节点选择', now: '香港', leaf: hk, subs: ['香港', '日本', '美国', 'DIRECT'] },
+      { name: '节点选择', now: '香港', leaf: hk, subs: ['香港', '🇯🇵 日本 东京', '🇺🇸 美国 洛杉矶', 'DIRECT'] },
       { name: '香港', now: hk, leaf: hk, subs: [hk, '🇭🇰 香港 IEPL 02', '🇭🇰 香港 HKT'] },
       { name: '流媒体', now: '🇸🇬 新加坡 01', leaf: '🇸🇬 新加坡 01', subs: ['🇸🇬 新加坡 01', '🇺🇸 美国 洛杉矶', '🇯🇵 日本 东京'] },
       { name: 'AI', now: '🇺🇸 美国 洛杉矶', leaf: '🇺🇸 美国 洛杉矶', subs: ['🇺🇸 美国 洛杉矶', '🇯🇵 日本 东京'] },

@@ -279,9 +279,10 @@ export function PickerStyle(props: { ctx: Ctx }) {
     const on = name === g.now
     return (
       <Tap ctx={ctx} intent={!on && !loon.stale ? SwitchIntent({ group: g.name, node: name }) : undefined}>
-        <VStack alignment="leading" spacing={2} padding={{ horizontal: 10, vertical: 6 }} frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={12} style="continuous" fill={on ? th.accent : th.card} />}>
+        <VStack alignment="leading" spacing={2} padding={big ? 14 : { horizontal: 10, vertical: 6 }} frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={big ? 16 : 12} style="continuous" fill={on ? th.accent : th.card} />}>
           <Text font={big ? 13 : 11} foregroundStyle={on ? '#FFFFFF' : th.t2} lineLimit={1} minScaleFactor={0.7}>{sub ? name : nodeLabel(name, r)}</Text>
-          <Text font={big ? 24 : 14} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={on ? '#FFFFFF' : r ? latencyInk(ctx, r) : th.t3} lineLimit={1} minScaleFactor={0.7}>{latencyText(r)}</Text>
+          {big ? <Spacer /> : null}
+          <Text font={big ? 30 : 14} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={on ? '#FFFFFF' : r ? latencyInk(ctx, r) : th.t3} lineLimit={1} minScaleFactor={0.7}>{name === 'DIRECT' ? '直连' : latencyText(r)}</Text>
         </VStack>
       </Tap>
     )
@@ -302,7 +303,6 @@ export function PickerStyle(props: { ctx: Ctx }) {
       {rows.map(row => (
         <HStack spacing={5} frame={{ maxHeight: 'infinity' }}>
           {row.map(cell)}
-          {Array.from({ length: cols - row.length }, () => <VStack frame={{ maxWidth: 'infinity' }} />)}
         </HStack>
       ))}
       {Array.from({ length: Math.max(0, blank) }, () => <VStack frame={{ maxHeight: 'infinity' }} />)}
