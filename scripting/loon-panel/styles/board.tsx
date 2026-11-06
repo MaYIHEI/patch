@@ -3,20 +3,22 @@
 
 import { VStack, HStack, Text, Spacer, Image, Button, Capsule, Rectangle } from 'scripting'
 
-import { MODES, shownGroups, switchTarget, healthCount, unlockNode, loonStatus, type Group } from '../loon'
+import { MODES, groupPage, switchTarget, healthCount, unlockNode, loonStatus, type Group } from '../loon'
 import { fmtBytes } from '../subs'
 import { ModeIntent, SwitchIntent, CheckIntent, readNote } from '../app_intents'
 import { mainGroupLeaf, checkText } from './node'
+import { PageButton } from './net'
 import { pct, fcColor, staleMark } from './usage'
 import { Root, Bar, Dot, RefreshButton, usageColor, mediaColor, latencyColor, latencyText, nodeLabel, asnText, flag, syncText, withAlpha, OK, BAD, WARN, type Ctx } from '../ui'
 
-function Section(props: { ctx: Ctx; title: string; right?: string }) {
+function Section(props: { ctx: Ctx; title: string; right?: string; trailing?: any }) {
   const { th } = props.ctx
   return (
     <HStack spacing={6}>
       <Text font={10} fontWeight="semibold" foregroundStyle={th.t3}>{props.title}</Text>
       <Rectangle fill={th.border} frame={{ maxWidth: 'infinity', height: 0.5 }} />
       {props.right ? <Text font={10} foregroundStyle={th.t3} lineLimit={1}>{props.right}</Text> : null}
+      {props.trailing}
     </HStack>
   )
 }
@@ -74,7 +76,7 @@ export function BoardStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, loon } = ctx
   const subs = ctx.subs.slice(0, 3)
-  const groups = loon ? shownGroups(loon, ctx.prefs).slice(0, 4) : []
+  const { list: groups, page, pages } = loon ? groupPage(loon, ctx.prefs, 4) : { list: [], page: 0, pages: 1 }
   const leaf = mainGroupLeaf(ctx)
   const health = loon ? healthCount(loon) : null
   const note = ctx.inApp ? null : readNote()
@@ -116,7 +118,7 @@ export function BoardStyle(props: { ctx: Ctx }) {
         <Text font={11} foregroundStyle={th.t3}>在 App 里添加机场订阅</Text>
       )}
 
-      <Section ctx={ctx} title="策略组" right={health && health.total ? `${health.ok}/${health.total} 可用 · ${checkText(ctx)}` : undefined} />
+      <Section ctx={ctx} title="策略组" right={health && health.total ? `${health.ok}/${health.total} 可用 · ${checkText(ctx)}` : undefined} trailing={<PageButton ctx={ctx} page={page} pages={pages} />} />
       {loon ? (
         <VStack spacing={6}>
           {groups.map(g => <GroupRow ctx={ctx} g={g} />)}

@@ -3,7 +3,7 @@
 
 import { AppIntentManager, AppIntentProtocol, Widget, ControlWidget } from 'scripting'
 
-import { setLoon, loadLoon, mainGroup, ownerGroup, switchTarget } from './loon'
+import { setLoon, loadLoon, mainGroup, ownerGroup, switchTarget, nextGroupPage } from './loon'
 import { loadSubs } from './subs'
 import { getPrefs } from './settings'
 
@@ -64,6 +64,16 @@ export const RefreshIntent = AppIntentManager.register({
   protocol: AppIntentProtocol.AppIntent,
   perform: async (_: undefined) => {
     await loadSubs(true)
+    Widget.reloadAll()
+  },
+})
+
+/** 策略组卡片和看板翻到下一页 */
+export const NextGroupsIntent = AppIntentManager.register({
+  name: 'LoonPanelNextGroupsIntent',
+  protocol: AppIntentProtocol.AppIntent,
+  perform: async (_: undefined) => {
+    nextGroupPage()
     Widget.reloadAll()
   },
 })

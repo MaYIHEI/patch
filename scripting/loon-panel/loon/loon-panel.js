@@ -1,28 +1,40 @@
 // Loon 面板 · 给 Scripting 小组件提供数据
-// 定时任务 / 网络切换: 节点体检 (各策略组当前节点 + 插件参数里指定策略组的全部节点)、直连出口、解锁检测、
+// 定时任务 / 网络切换: 节点体检 (各策略组当前节点 + App 里指定策略组的全部节点)、直连出口、解锁检测、
 //   锁定的策略组被还原就改回来、当前节点挂了发通知或自动切换, 结果写进 $persistentStore, 跑完可推送刷新小组件
 // 请求 http://1.1.1.1/loon-panel/data: 返回模式、策略组、体检结果、解锁、事件记录等
 // 请求 http://1.1.1.1/loon-panel/set: ?mode=0|1|2 切模式; ?group=…&node=… 切节点; ?group=…&node=…&lock=1 锁定, ?group=…&lock=0 解锁; 不带参数只复测
 // 请求 http://1.1.1.1/loon-panel/deep?node=…: 对节点跑一次深度检测 (加 &speed=1 同时测速)
+// POST http://1.1.1.1/loon-panel/opts: 保存 App 里的设置, 正文是要改的项 (JSON); 空字符串 = 恢复默认
 
-const VERSION = '0.2.3'
+const VERSION = '0.3.0'
 const STORE_KEY = 'loon_panel'
 const CORE_KEY = 'loon_panel_core'
 // 检测核心库 (paperclip ipquality-web-test), 解锁和深度检测都用它, 这里不另写一份
 const CORE_URL = 'https://raw.githubusercontent.com/MaYIHEI/paperclip/refs/heads/testing/loon/ipquality-web-test/ipquality-core.js'
 const CORE_TTL = 86400000
 
-const ARG = typeof $argument === 'object' && $argument ? $argument : {}
-const flagOf = (v, fallback) => (v === undefined || v === null || v === '' ? fallback : v === true || v === 'true')
-const TEST_URL = ARG.test_url || 'http://www.gstatic.com/generate_204'
-const IP_URL = ARG.ip_url || 'https://api.ipify.org'
-const TIMEOUT = Number(ARG.timeout) > 0 ? Number(ARG.timeout) : 3000
-const FULL_GROUPS = String(ARG.groups || '').split(/[,，]/).map(s => s.trim()).filter(Boolean)
-const NOTIFY = flagOf(ARG.notify, true)
-const AUTO_SWITCH = flagOf(ARG.auto_switch, false)
-const NET_RETEST = flagOf(ARG.net_retest, true)
-const PUSH_KEY = String(ARG.push_key || '').trim()
-const PUSH_TARGETS = String(ARG.widget_targets || '').split(/[,，\s]+/).filter(Boolean)
+// 设置都在 Scripting 的 App 里改, 存在 store.opts; 插件参数只留体检频率 (cron 只能写在规则里)
+const DEFAULT_OPTS = {
+  groups: [],       // 每次体检都测全部节点的策略组
+  net: true,        // 网络切换后复测
+  notify: true,     // 节点异常发通知
+  auto: false,      // 挂了自动切到最快
+  timeout: 5000,    // 单次超时 (毫秒)
+  test_url: 'http://www.gstatic.com/generate_204',
+  ip_url: 'https://api.ipify.org',
+  push_key: '',     // 体检完推送刷新小组件; 只存在这里, 不返回给数据地址
+  targets: [],
+}
+
+function readOpts() {
+  try {
+    return Object.assign({}, DEFAULT_OPTS, (JSON.parse($persistentStore.read(STORE_KEY) || '{}') || {}).opts)
+  } catch (e) {
+    return Object.assign({}, DEFAULT_OPTS)
+  }
+}
+
+const OPT = readOpts()
 
 const CRON_BUDGET = 100000   // 插件里定时任务 timeout=120 秒, 留余量
 const REQ_BUDGET = 20000     // 操作地址 timeout=30 秒, 小组件按钮也等不了太久
@@ -126,6 +138,8 @@ function uniq(list) {
 
 /** 各策略组当前选中的节点; 一路下来还停在策略组上的 (没有选中项) 不测 */
 const leaves = state => uniq(state.groups.map(g => g.leaf).filter(n => !state.set.has(n)))
+/** 一路下来还是策略组 (比如链式策略): $httpClient 的 node 可以填策略组, 直接测它, 但不算「在用的节点」 */
+const stuck = state => uniq(state.groups.map(g => g.leaf).filter(n => state.set.has(n)))
 
 // ─────────────────────────────────────────────────────────────
 // 存储、事件、通知
@@ -155,7 +169,7 @@ function addEvent(store, k, msg) {
 }
 
 function notify(title, content) {
-  if (NOTIFY) $notification.post('Loon 面板', title, content)
+  if (OPT.notify) $notification.post('Loon 面板', title, content)
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -164,7 +178,7 @@ function notify(title, content) {
 function get(url, node) {
   return new Promise(resolve => {
     const t0 = Date.now()
-    $httpClient.get({ url, node, timeout: TIMEOUT }, (error, response, data) => resolve({ error, response, data, ms: Date.now() - t0 }))
+    $httpClient.get({ url, node, timeout: OPT.timeout }, (error, response, data) => resolve({ error, response, data, ms: Date.now() - t0 }))
   })
 }
 
@@ -189,14 +203,14 @@ function exitInfo(r, ip) {
 
 async function probe(node) {
   const r = { t: Date.now(), ok: false, ms: 0 }
-  const a = await get(TEST_URL, node)
+  const a = await get(OPT.test_url, node)
   if (a.error || !a.response) {
     r.err = clean(a.error).slice(0, 60) || '超时'
     return r
   }
   r.ok = true
   r.ms = a.ms
-  const b = await get(IP_URL, node)
+  const b = await get(OPT.ip_url, node)
   const ip = b.error ? '' : pickIP(b.data)
   if (ip) exitInfo(r, ip)
   return r
@@ -207,11 +221,11 @@ async function runChecks(store, targets, current, budget) {
   const start = Date.now()
   let tested = 0
   for (const name of targets) {
-    if (Date.now() - start + 2 * TIMEOUT > budget) break
+    if (Date.now() - start + 2 * OPT.timeout > budget) break
     const prev = store.nodes[name] || {}
     let r = await probe(name)
     let fails = r.ok ? 0 : 1
-    for (let i = 1; !r.ok && current.has(name) && i < FAIL_LIMIT && Date.now() - start + 2 * TIMEOUT <= budget; i++) {
+    for (let i = 1; !r.ok && current.has(name) && i < FAIL_LIMIT && Date.now() - start + 2 * OPT.timeout <= budget; i++) {
       r = await probe(name)
       fails = r.ok ? 0 : fails + 1
     }
@@ -226,7 +240,7 @@ async function runChecks(store, targets, current, budget) {
 }
 
 async function checkDirect(store) {
-  const a = await get(IP_URL, 'DIRECT')
+  const a = await get(OPT.ip_url, 'DIRECT')
   const ip = a.error ? '' : pickIP(a.data)
   if (!ip) return
   const d = { t: Date.now(), ms: a.ms }
@@ -257,7 +271,7 @@ function handleDown(state, store) {
     if (!r || r.ok || r.fail < FAIL_LIMIT || r.alerted) continue
     r.alerted = true
     const owner = state.groups.find(g => g.now === name && !store.locks[g.name])
-    const alive = owner && AUTO_SWITCH
+    const alive = owner && OPT.auto
       ? owner.subs.filter(n => n !== name && store.nodes[n] && store.nodes[n].ok).sort((a, b) => store.nodes[a].ms - store.nodes[b].ms)
       : []
     if (alive.length && $config.setSelectPolicy(owner.name, alive[0])) {
@@ -275,12 +289,12 @@ function handleDown(state, store) {
 }
 
 function pushReload() {
-  if (!PUSH_KEY || !PUSH_TARGETS.length) return Promise.resolve()
+  if (!OPT.push_key || !OPT.targets.length) return Promise.resolve()
   const t = Date.now()
-  return Promise.all(PUSH_TARGETS.map(id => new Promise(resolve => {
+  return Promise.all(OPT.targets.map(id => new Promise(resolve => {
     $httpClient.post({
       url: `https://push.scripting.fun/v1/remote-updates/widget-targets/${encodeURIComponent(id)}/reload`,
-      headers: { Authorization: `Bearer ${PUSH_KEY}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${OPT.push_key}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ idempotency_key: `loonpanel:${t}:${id}` }),
     }, error => {
       if (error) console.log(`推送刷新失败: ${clean(error).slice(0, 80)}`)
@@ -368,6 +382,12 @@ function parseQuery(url) {
   return out
 }
 
+/** 只列字段名, 不含内容: 用来确认这台设备的 Loon 到底提供了什么 */
+function configShape(conf) {
+  const first = Array.isArray(conf.all_policy_groups) ? conf.all_policy_groups[0] : null
+  return { keys: Object.keys(conf), group: first && typeof first === 'object' ? Object.keys(first) : [] }
+}
+
 function snapshot(state, store, result) {
   const mode = Number(state.conf.running_model)
   const body = {
@@ -385,7 +405,8 @@ function snapshot(state, store, result) {
     deep: store.deep,
     locks: store.locks,
     events: store.events.slice().reverse(),
-    opts: { notify: NOTIFY, auto: AUTO_SWITCH, net: NET_RETEST, push: !!(PUSH_KEY && PUSH_TARGETS.length), full: FULL_GROUPS },
+    opts: { notify: OPT.notify, auto: OPT.auto, net: OPT.net, timeout: OPT.timeout, test_url: OPT.test_url, ip_url: OPT.ip_url, push: !!(OPT.push_key && OPT.targets.length), full: OPT.groups },
+    cfg: configShape(state.conf),
   }
   if (result) body.result = result
   return body
@@ -421,11 +442,31 @@ async function handleSet(q) {
     } else result = { ok: false, error: `${q.group} 切换失败` }
   }
   const state = await readState()
+  const picked = result.ok && q.group && q.node ? state.groups.find(g => g.name === q.group) : null
+  if (picked && picked.now !== q.node) {   // 接口接受了但没生效, 常见于 Loon 自动选节点的策略组
+    result = { ok: false, error: `Loon 仍在用 ${picked.now}，这个策略组可能是自动选择的` }
+    delete store.locks[q.group]
+  }
   const skip = !result.ok || q.lock === '0'
-  const targets = skip ? [] : via ? uniq([state.leafOf(via)].filter(n => !state.set.has(n))) : leaves(state)
+  const targets = skip ? [] : via ? uniq([state.leafOf(via)]) : [...leaves(state), ...stuck(state)]
   await runChecks(store, targets, new Set(leaves(state)), REQ_BUDGET)
   writeStore(store)
   return snapshot(state, store, result)
+}
+
+async function handleOpts() {
+  const store = readStore()
+  const patch = JSON.parse($request.body || '{}')
+  const opts = Object.assign({}, store.opts)
+  for (const k of Object.keys(DEFAULT_OPTS)) {
+    if (!(k in patch)) continue
+    if (patch[k] === '') delete opts[k]
+    else opts[k] = patch[k]
+  }
+  store.opts = opts
+  Object.assign(OPT, DEFAULT_OPTS, opts)
+  writeStore(store)
+  return snapshot(await readState(), store, { ok: true })
 }
 
 async function handleDeep(q) {
@@ -451,12 +492,14 @@ async function handleRequest() {
   const path = url.replace(/^https?:\/\/[^/]+/i, '').split(/[?#]/)[0].replace(/\/+$/, '')
   if (path === '/loon-panel/set') return respond(200, await handleSet(parseQuery(url)))
   if (path === '/loon-panel/deep') return respond(200, await handleDeep(parseQuery(url)))
+  if (path === '/loon-panel/opts') return respond(200, await handleOpts())
   if (path === '/loon-panel/data') return respond(200, snapshot(await readState(), readStore()))
   respond(404, { v: 1, error: 'not found' })
 }
 
 async function handleCheck() {
   const net = /网络/.test(typeof $script === 'object' && $script ? clean($script.name) : '')
+  if (net && !OPT.net) return $done()
   if (net) await sleep(3000)   // 刚切网络时连接还没恢复
   const start = Date.now()
   const store = readStore()
@@ -464,13 +507,13 @@ async function handleCheck() {
   if (applyLocks(state, store)) state = await readState()
   const full = []
   if (!net) {
-    for (const name of FULL_GROUPS) {
+    for (const name of OPT.groups) {
       const g = state.groups.find(x => x.name === name)
       if (g) full.push(...g.subs)
     }
   }
   const current = leaves(state)
-  await runChecks(store, uniq([...current, ...full.filter(n => !state.set.has(n))]), new Set(current), CRON_BUDGET)
+  await runChecks(store, uniq([...current, ...stuck(state), ...full.filter(n => !state.set.has(n))]), new Set(current), CRON_BUDGET)
   await checkDirect(store)
   if (handleDown(state, store)) state = await readState()
   const c = store.check

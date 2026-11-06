@@ -6,11 +6,11 @@ import { VStack, HStack, ZStack, Text, Spacer, Image, Button, Link, Capsule, Rec
 import type { Color } from 'scripting'
 
 import {
-  MODES, shownGroups, switchTarget, rankedNodes, healthCount, availability, unlockNode, latestDeep, loonStatus, modeName,
+  MODES, groupPage, switchTarget, rankedNodes, healthCount, availability, unlockNode, latestDeep, loonStatus, modeName,
   type Deep, type Group, type Isp,
 } from '../loon'
 import { fmtBytes } from '../subs'
-import { ModeIntent, SwitchIntent, CheckIntent, FastestIntent, readNote } from '../app_intents'
+import { ModeIntent, SwitchIntent, CheckIntent, FastestIntent, NextGroupsIntent, readNote } from '../app_intents'
 import { mainGroupLeaf, checkText } from './node'
 import {
   Root, Header, Empty, Dot, Pill, Uptime, RefreshButton, latencyColor, latencyText, nodeLabel, asnText, flag, ago, hhmm,
@@ -26,9 +26,23 @@ function NoLoon(props: { ctx: Ctx; title: string; icon: string }) {
 }
 
 /** 小组件里是按钮, App 预览里只是样子 */
-function Tap(props: { ctx: Ctx; intent: any; children?: any }) {
+export function Tap(props: { ctx: Ctx; intent: any; children?: any }) {
   if (props.ctx.inApp || !props.intent) return props.children
   return <Button intent={props.intent} buttonStyle="plain">{props.children}</Button>
+}
+
+/** 翻页: 1/3 ›, 只有一页时不显示 */
+export function PageButton(props: { ctx: Ctx; page: number; pages: number }) {
+  const { th } = props.ctx
+  if (props.pages < 2) return null
+  return (
+    <Tap ctx={props.ctx} intent={NextGroupsIntent(undefined)}>
+      <HStack spacing={2}>
+        <Text font={11} monospacedDigit foregroundStyle={th.accent}>{`${props.page + 1}/${props.pages}`}</Text>
+        <Image systemName="chevron.right" font={10} fontWeight="semibold" foregroundStyle={th.accent} />
+      </HStack>
+    </Tap>
+  )
 }
 
 /** 宽度等分的块状按钮 */
@@ -251,7 +265,7 @@ export function GroupsStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, loon } = ctx
   if (!loon) return <NoLoon ctx={ctx} title="策略组" icon="square.grid.2x2.fill" />
-  const groups = shownGroups(loon, ctx.prefs).slice(0, 4)
+  const { list: groups, page, pages } = groupPage(loon, ctx.prefs, 4)
   const card = (g: Group) => {
     const r = loon.nodes[g.leaf]
     const target = loon.stale ? undefined : switchTarget(loon, g)
@@ -273,7 +287,7 @@ export function GroupsStyle(props: { ctx: Ctx }) {
   }
   return (
     <Root ctx={ctx} spacing={6}>
-      <Header ctx={ctx} title="策略组" icon="square.grid.2x2.fill" right={`${modeName(loon.mode)} · 点卡片切到最快`} />
+      <Header ctx={ctx} title="策略组" icon="square.grid.2x2.fill" right={`${modeName(loon.mode)} · 点卡片切到最快`} trailing={<PageButton ctx={ctx} page={page} pages={pages} />} />
       {chunk(groups, 2).map(row => (
         <HStack spacing={6}>
           {row.map(card)}

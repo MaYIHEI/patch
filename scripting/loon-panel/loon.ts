@@ -14,6 +14,8 @@ const AppStorage = Storage as unknown as {
 export const DATA_URL = 'http://1.1.1.1/loon-panel/data'
 export const SET_URL = 'http://1.1.1.1/loon-panel/set'
 export const DEEP_URL = 'http://1.1.1.1/loon-panel/deep'
+const OPTS_URL = 'http://1.1.1.1/loon-panel/opts'
+const PAGE_KEY = 'loonpanel.page'
 const CACHE_KEY = 'loonpanel.loon'
 
 /** h: 最近 24 次延迟 (ms), 超时记 -1; fail: 连续超时次数 */
@@ -42,6 +44,10 @@ export type Deep = {
   errors?: Record<string, string>
 }
 export type LoonEvent = { t: number; k: string; msg: string }
+/** 插件设置: 存在插件里, 在 App 里改. push 只表示配好了没有, 密钥不返回 */
+export type Opts = { notify: boolean; auto: boolean; net: boolean; timeout: number; test_url: string; ip_url: string; push: boolean; full: string[] }
+export type OptsPatch = Partial<Omit<Opts, 'push' | 'full' | 'test_url' | 'ip_url'>> & { test_url?: string; ip_url?: string; groups?: string[]; push_key?: string; targets?: string[] }
+
 export type LoonData = {
   v: number
   version?: string
@@ -57,7 +63,8 @@ export type LoonData = {
   deep?: Record<string, Deep>
   locks?: Record<string, string>
   events?: LoonEvent[]         // 新的在前
-  opts?: { notify: boolean; auto: boolean; net: boolean; push: boolean; full: string[] }
+  opts?: Opts
+  cfg?: { keys: string[]; group: string[] }
   result?: { ok: boolean; error?: string }
   stale?: boolean              // 连不上 Loon, 显示的是上次的数据
   mock?: boolean
@@ -114,6 +121,17 @@ export async function deepCheck(node: string, speed: boolean): Promise<LoonData>
   return data
 }
 
+/** 保存插件设置 (POST 正文, 密钥不进 URL); 只传要改的项, 空字符串 = 恢复默认 */
+export async function setOpts(patch: OptsPatch): Promise<LoonData> {
+  const res = await fetch(OPTS_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch), allowInsecureRequest: true, timeout: 10 })
+  if (!res.ok) throw new Error(`Loon 返回 ${res.status}`)
+  const data = await res.json() as LoonData
+  if (!data || !Array.isArray(data.groups)) throw new Error('插件版本太旧, 先更新 Loon 面板插件')
+  data.nodes = data.nodes ?? {}
+  AppStorage.set(CACHE_KEY, JSON.stringify(data))
+  return data
+}
+
 export const clearLoonCache = () => AppStorage.remove(CACHE_KEY)
 
 // ────────────────────────────────────────────────────────────
@@ -129,6 +147,17 @@ export function shownGroups(d: LoonData, prefs: Prefs): Group[] {
   const picked = prefs.groups.map(n => d.groups.find(g => g.name === n)).filter((g): g is Group => !!g)
   return picked.length ? picked : d.groups.slice(0, 4)
 }
+
+/** 小组件翻页: 常用的排前面, 其余跟在后面; 页码存 Storage, 翻到头回第一页 */
+export function groupPage(d: LoonData, prefs: Prefs, size: number): { list: Group[]; page: number; pages: number } {
+  const first = shownGroups(d, prefs)
+  const all = [...first, ...d.groups.filter(g => !first.includes(g))]
+  const pages = Math.max(1, Math.ceil(all.length / size))
+  const page = (AppStorage.get<number>(PAGE_KEY) ?? 0) % pages
+  return { list: all.slice(page * size, (page + 1) * size), page, pages }
+}
+
+export const nextGroupPage = () => AppStorage.set(PAGE_KEY, (AppStorage.get<number>(PAGE_KEY) ?? 0) + 1)
 
 /** 点策略组那一行切到哪: 体检过且能用的里最快的 (不含当前), 都没测过就切到下一个; 不切到 DIRECT / REJECT */
 export function switchTarget(d: LoonData, g: Group): string | undefined {
@@ -247,6 +276,6 @@ export function sampleLoon(): LoonData {
         bgp: { prefix: '103.151.172.0/24', rpki: 'valid', holder: 'HKT' },
       },
     },
-    opts: { notify: true, auto: false, net: true, push: false, full: [] },
+    opts: { notify: true, auto: false, net: true, timeout: 5000, test_url: 'http://www.gstatic.com/generate_204', ip_url: 'https://api.ipify.org', push: false, full: [] },
   }
 }
