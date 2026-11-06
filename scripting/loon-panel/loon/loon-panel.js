@@ -17,7 +17,7 @@ const CORE_TTL = 86400000
 const DEFAULT_OPTS = {
   groups: [],       // 每次体检都测全部节点的策略组
   net: true,        // 网络切换后复测
-  notify: true,     // 节点异常发通知
+  notify: false,    // 节点异常发通知; Loon 自己也会提示节点问题, 默认关
   auto: false,      // 挂了自动切到最快
   timeout: 5000,    // 单次超时 (毫秒)
   test_url: 'http://www.gstatic.com/generate_204',
@@ -129,7 +129,8 @@ async function readState() {
   return { conf, set, groups, leafOf }
 }
 
-const testable = name => !!name && !/^REJECT/i.test(name)
+// DIRECT 不算节点: 测试地址在国内直连本来就可能不通, 直连出口由 checkDirect 单独记录
+const testable = name => !!name && !isBuiltin(name)
 
 function uniq(list) {
   const seen = new Set()
@@ -169,7 +170,7 @@ function addEvent(store, k, msg) {
 }
 
 function notify(title, content) {
-  if (OPT.notify) $notification.post('Loon 面板', title, content)
+  $notification.post('Loon 面板', title, content)
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -282,7 +283,7 @@ function handleDown(state, store) {
     } else {
       const msg = `${name} 连续 ${r.fail} 次超时`
       addEvent(store, 'fail', msg)
-      notify('当前节点不可用', msg)
+      if (OPT.notify) notify('当前节点不可用', msg)
     }
   }
   return changed
