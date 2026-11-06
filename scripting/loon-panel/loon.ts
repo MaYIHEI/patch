@@ -193,28 +193,34 @@ export function pathTo(d: LoonData, root: string, node: string, seen = new Set<s
   return null
 }
 
-export function pickerView(d: LoonData, prefs: Prefs, size: number, open = ''): { group?: Group; via: Hop[]; nodes: string[]; page: number; pages: number; groups: number } {
+/** 一个策略组下面所有真实节点, 不管套了几层 */
+export function leafNodes(d: LoonData, name: string, seen = new Set<string>()): string[] {
+  const g = d.groups.find(x => x.name === name)
+  if (!g || seen.has(name)) return []
+  seen.add(name)
+  const out = g.subs.flatMap(n => (d.groups.some(x => x.name === n) ? leafNodes(d, n, seen) : /^(DIRECT|REJECT)/i.test(n) ? [] : [n]))
+  return [...new Set(out)]
+}
+
+export function pickerView(d: LoonData, prefs: Prefs, size: number, open = ''): { group?: Group; via: Hop[]; nodes: string[]; total: number; page: number; pages: number; groups: number } {
   const groups = shownGroups(d, prefs).filter(g => g.subs.length)
   const opened = d.groups.find(g => g.name === open)
-  if (!groups.length && !opened) return { via: [], nodes: [], page: 0, pages: 1, groups: 0 }
+  if (!groups.length && !opened) return { via: [], nodes: [], total: 0, page: 0, pages: 1, groups: 0 }
   const pick = readPick()
-  let group = opened ?? groups[pick.g % groups.length]
-  const via: Hop[] = []
-  for (const name of pick.path ?? []) {   // 配置变了路径走不通就停在能到的这一层
-    const next = d.groups.find(x => x.name === name)
-    if (!next || !group.subs.includes(name)) break
-    via.push({ group: group.name, node: name })
-    group = next
-  }
-  const all = group.subs.filter(n => !/^REJECT/i.test(n))
+  const top = opened ?? groups[pick.g % groups.length]
+  // 只进一层: 点进下层策略组后直接列出它下面所有节点, 不再一层层点
+  const inner = d.groups.find(x => x.name === pick.path?.[0] && top.subs.includes(x.name))
+  const group = inner ?? top
+  const via: Hop[] = inner ? [{ group: top.name, node: inner.name }] : []
+  const all = inner ? leafNodes(d, inner.name) : top.subs.filter(n => !/^REJECT/i.test(n))
   const pages = Math.max(1, Math.ceil(all.length / size))
   const page = wrap(pick.p, pages)
-  return { group, via, nodes: all.slice(page * size, (page + 1) * size), page, pages, groups: groups.length }
+  return { group, via, nodes: all.slice(page * size, (page + 1) * size), total: all.length, page, pages, groups: groups.length }
 }
 
 export const nextPickGroup = () => { const x = readPick(); AppStorage.set(PICK_KEY, { g: x.g + 1, p: 0 }) }
-export const enterPick = (name: string) => { const x = readPick(); AppStorage.set(PICK_KEY, { ...x, p: 0, path: [...(x.path ?? []), name] }) }
-export const leavePick = () => { const x = readPick(); AppStorage.set(PICK_KEY, { ...x, p: 0, path: (x.path ?? []).slice(0, -1) }) }
+export const enterPick = (name: string) => { const x = readPick(); AppStorage.set(PICK_KEY, { ...x, p: 0, path: [name] }) }
+export const leavePick = () => { const x = readPick(); AppStorage.set(PICK_KEY, { ...x, p: 0, path: [] }) }
 export const turnPickPage = (step: number) => { const x = readPick(); AppStorage.set(PICK_KEY, { ...x, p: x.p + step }) }
 
 /** 点策略组那一行切到哪: 体检过且能用的里最快的 (不含当前), 都没测过就切到下一个; 不切到 DIRECT / REJECT

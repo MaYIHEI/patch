@@ -14,7 +14,7 @@ import { ModeIntent, SwitchIntent, CheckIntent, FastestIntent, TurnGroupsIntent,
 import { mainGroupLeaf, checkText } from './node'
 import {
   Root, Header, Num, Empty, Cell, Dot, Pill, Spark, Uptime, RefreshButton, Bar, usageColor, latencyColor, latencyInk, latencyText, nodeLabel, asnText, flag, ago, hhmm,
-  mediaColor, mediaWord, chunk, withAlpha, OK, BAD, WARN, type Ctx,
+  mediaColor, mediaWord, chunk, withAlpha, OK, BAD, WARN, type Ctx, type Paint,
 } from '../ui'
 
 const NO_LOON = '读不到 Loon 数据\n打开 App 看排查步骤'
@@ -301,23 +301,24 @@ export function PickerStyle(props: { ctx: Ctx }) {
   const { th, loon } = ctx
   if (!loon) return <NoLoon ctx={ctx} title="切换器" />
   const open = ctx.inApp ? '' : focusOf(ctx.size)
-  const { group: g, via, nodes, page, pages, groups } = pickerView(loon, ctx.prefs, ctx.size === 'l' ? 15 : 6, open)
+  const { group: g, via, nodes, total, page, pages, groups } = pickerView(loon, ctx.prefs, ctx.size === 'l' ? 15 : 6, open)
   if (!g) return <NoLoon ctx={ctx} title="切换器" />
   // 上面是当前节点, 下面是选项; 选项少时卡片定高, 多时撑满, 翻页时卡片大小不变
-  const few = g.subs.length <= (ctx.size === 'l' ? 6 : 3)
-  const cols = g.subs.length === 4 ? 2 : 3
+  const few = total <= (ctx.size === 'l' ? 6 : 3)
+  const cols = total === 4 ? 2 : 3
   const rows = chunk(nodes, cols)
   const blank = pages > 1 ? (ctx.size === 'l' ? 5 : 2) - rows.length : 0
-  const linked = via.every(v => loon.groups.find(x => x.name === v.group)?.now === v.node)   // 上面几层是不是指着这一层
-  const hops = via.length ? JSON.stringify(via) : undefined
-  const last = via[via.length - 1]
+  const last = via[0]   // 点进了下层策略组: 列的是它下面的节点, 选了要从上层一路切过去
+  const linked = !last || loon.groups.find(x => x.name === last.group)?.now === last.node
   const cell = (name: string) => {
-    const sub = loon.groups.find(x => x.name === name)   // 选项可能是另一个策略组, 看它正在用的节点
+    const sub = last ? undefined : loon.groups.find(x => x.name === name)   // 选项可能是另一个策略组, 看它正在用的节点
     const r = loon.nodes[sub?.leaf ?? name]
-    const on = name === g.now
-    const going = !ctx.inApp && readPending()?.group === g.name && readPending()?.node === name
+    const on = last ? linked && g.leaf === name : name === g.now
+    const route = last ? [...via, ...(pathTo(loon, g.name, name) ?? [])] : [{ group: g.name, node: name }]
+    const end = route[route.length - 1]
+    const going = !ctx.inApp && readPending()?.group === end.group && readPending()?.node === name
     return (
-      <Tap ctx={ctx} intent={sub ? EnterPickIntent({ name }) : (!on || !linked) && !loon.stale ? SwitchIntent({ group: g.name, node: name, via: hops }) : undefined}>
+      <Tap ctx={ctx} intent={sub ? EnterPickIntent({ name }) : !on && !loon.stale ? SwitchIntent({ group: end.group, node: end.node, via: JSON.stringify(route.slice(0, -1)) }) : undefined}>
         <VStack alignment="leading" spacing={2} padding={{ horizontal: 10, vertical: 4 }} frame={few ? { maxWidth: 'infinity', minHeight: 50, maxHeight: 50, alignment: 'leading' } : { maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={12} style="continuous" fill={on ? th.accent : th.card} />}>
           <Text font={11} foregroundStyle={on ? '#FFFFFF' : th.t2} lineLimit={1} minScaleFactor={0.7}>{sub ? `${name} ›` : nodeLabel(name, r)}</Text>
           <Text font={14} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={on ? '#FFFFFF' : r ? latencyInk(ctx, r) : th.t3} lineLimit={1} minScaleFactor={0.7}>{going ? '切换中' : name === 'DIRECT' ? '直连' : latencyText(r)}</Text>
@@ -332,8 +333,8 @@ export function PickerStyle(props: { ctx: Ctx }) {
         title={g.name}
         trailing={(
           <HStack spacing={8}>
-            {last ? <Tap ctx={ctx} intent={LeavePickIntent(undefined)}><Text font={11} foregroundStyle={th.accent} lineLimit={1}>上一层</Text></Tap> : null}
-            {last && !linked && !loon.stale ? <Tap ctx={ctx} intent={SwitchIntent({ group: last.group, node: last.node, via: JSON.stringify(via.slice(0, -1)) })}><Text font={11} fontWeight="semibold" foregroundStyle={th.accent} lineLimit={1}>用这组</Text></Tap> : null}
+            {last ? <Tap ctx={ctx} intent={LeavePickIntent(undefined)}><Text font={11} foregroundStyle={th.accent} lineLimit={1}>返回</Text></Tap> : null}
+            {last && !linked && !loon.stale ? <Tap ctx={ctx} intent={SwitchIntent({ group: last.group, node: last.node })}><Text font={11} fontWeight="semibold" foregroundStyle={th.accent} lineLimit={1}>用这组</Text></Tap> : null}
             {!last && open ? <Tap ctx={ctx} intent={ClosePickIntent(undefined)}><Text font={11} foregroundStyle={th.accent} lineLimit={1}>返回</Text></Tap> : null}
             {!last && !open && groups > 1 ? <Tap ctx={ctx} intent={NextPickGroupIntent(undefined)}><Text font={11} foregroundStyle={th.accent} lineLimit={1}>换组</Text></Tap> : null}
             <Pager ctx={ctx} page={page} pages={pages} turn={step => TurnPickPageIntent({ step })} />
@@ -397,7 +398,17 @@ function ModeTap(props: { ctx: Ctx }) {
   )
 }
 
-/** 小号总览: 剩余、用量、今天、到期、当前节点和延迟 */
+function Metric(props: { ctx: Ctx; value: string; label: string; color?: Paint }) {
+  const { th } = props.ctx
+  return (
+    <VStack alignment="leading" spacing={0} frame={{ maxWidth: 'infinity', alignment: 'leading' }}>
+      <Num value={props.value} size={15} color={props.color ?? th.t1} />
+      <Text font={10} foregroundStyle={th.t3} lineLimit={1}>{props.label}</Text>
+    </VStack>
+  )
+}
+
+/** 小号总览: 有机场时剩余流量是主角, 没有时当前节点是主角 */
 export function OverviewSmall(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, loon } = ctx
@@ -405,38 +416,63 @@ export function OverviewSmall(props: { ctx: Ctx }) {
   const s = ctx.subs[0]
   const u = s?.usage
   const leaf = mainGroupLeaf(ctx)
+  const a = availability(leaf?.r)
+  const c = healthCount(loon)
   return (
     <Root ctx={ctx} spacing={4}>
-      <Header ctx={ctx} title={s?.name ?? 'Loon'} font={12} trailing={<ModeTap ctx={ctx} />} />
-      <Spacer minLength={0} />
+      <Header ctx={ctx} title={s?.name ?? leaf?.group ?? 'Loon'} font={12} trailing={<ModeTap ctx={ctx} />} />
       {u ? (
-        <VStack alignment="leading" spacing={3}>
+        <VStack alignment="leading" spacing={3} padding={{ top: 4 }}>
           <HStack alignment="lastTextBaseline" spacing={4}>
             <Num value={fmtBytes(u.total > 0 ? s.remain : s.used)} size={26} />
-            <Text font={11} foregroundStyle={th.t2} lineLimit={1}>{u.total > 0 ? `剩余 / ${fmtBytes(u.total)}` : '已用'}</Text>
+            <Text font={11} foregroundStyle={th.t2} lineLimit={1}>{u.total > 0 ? `/ ${fmtBytes(u.total)}` : '已用'}</Text>
           </HStack>
           {u.total > 0 ? <Bar ctx={ctx} value={s.ratio} color={usageColor(s.ratio)} height={4} /> : null}
           <Text font={11} foregroundStyle={th.t2} lineLimit={1} minScaleFactor={0.8}>{subLine(s)}</Text>
         </VStack>
       ) : (
-        <VStack alignment="leading" spacing={1}>
-          <Text font={11} foregroundStyle={th.t2} lineLimit={1}>{leaf?.group ?? '当前节点'}</Text>
-          <Num value={latencyText(leaf?.r)} size={26} color={latencyInk(ctx, leaf?.r)} />
-          <Spark ctx={ctx} h={leaf?.r?.h} height={22} count={12} tone={th.accent} />
-          <Text font={10} foregroundStyle={th.t3} lineLimit={1} padding={{ top: 2 }}>{healthText(ctx)}</Text>
+        <VStack alignment="leading" spacing={1} padding={{ top: 6 }}>
+          <Text font={18} fontWeight="semibold" foregroundStyle={th.t1} lineLimit={2} minScaleFactor={0.8}>{leaf ? nodeLabel(leaf.name, leaf.r) : '-'}</Text>
+          <Text font={10} foregroundStyle={th.t3} lineLimit={1}>{asnText(leaf?.r)}</Text>
         </VStack>
       )}
       <Spacer minLength={0} />
-      <HStack spacing={4}>
-        <Text font={11} foregroundStyle={th.t1} lineLimit={1} minScaleFactor={0.8}>{leaf ? nodeLabel(leaf.name, leaf.r) : '-'}</Text>
-        <Spacer minLength={2} />
-        {u ? <Text font={11} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={latencyInk(ctx, leaf?.r)} lineLimit={1}>{latencyText(leaf?.r)}</Text> : null}
-      </HStack>
+      {u ? (
+        <HStack spacing={4}>
+          <Text font={11} foregroundStyle={th.t1} lineLimit={1} minScaleFactor={0.8}>{leaf ? nodeLabel(leaf.name, leaf.r) : '-'}</Text>
+          <Spacer minLength={2} />
+          <Text font={11} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={latencyInk(ctx, leaf?.r)} lineLimit={1}>{latencyText(leaf?.r)}</Text>
+        </HStack>
+      ) : (
+        <HStack spacing={4}>
+          <Metric ctx={ctx} value={leaf?.r?.ok ? String(leaf.r.ms) : latencyText(leaf?.r)} label="延迟" color={latencyInk(ctx, leaf?.r)} />
+          <Metric ctx={ctx} value={a === null ? '-' : `${Math.round(a * 100)}%`} label="可用" />
+          <Metric ctx={ctx} value={`${c.ok}`} label="节点" />
+        </HStack>
+      )}
     </Root>
   )
 }
 
-/** 总览: 左边主订阅和出口, 右边常用策略组; 右上角点一下换模式 */
+/** 列表一行: 策略组、节点、延迟; 点一下进切换器 */
+function GroupLine(props: { ctx: Ctx; g: Group }) {
+  const { ctx, g } = props
+  const { th } = ctx
+  const loon = ctx.loon!
+  const r = g.gone ? undefined : loon.nodes[g.leaf]
+  return (
+    <Tap ctx={ctx} intent={g.subs.length && !loon.stale ? OpenPickIntent({ group: g.name, owner: ctx.size }) : undefined}>
+      <HStack spacing={6} frame={{ maxWidth: 'infinity', maxHeight: 'infinity' }}>
+        <Text font={11} foregroundStyle={th.t2} lineLimit={1} minScaleFactor={0.8} frame={{ width: 56, alignment: 'leading' }}>{g.name}</Text>
+        <Text font={11} foregroundStyle={g.gone ? WARN : th.t1} lineLimit={1} minScaleFactor={0.75}>{g.gone ? '已失效' : nodeLabel(g.leaf, r)}</Text>
+        <Spacer minLength={2} />
+        <Text font={11} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={latencyInk(ctx, r)} lineLimit={1}>{r?.ok ? String(r.ms) : latencyText(r)}</Text>
+      </HStack>
+    </Tap>
+  )
+}
+
+/** 总览: 左边一个主角, 右边策略组列表; 和当前节点相同的组不重复列; 右上角点一下换模式 */
 export function OverviewStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, loon } = ctx
@@ -446,39 +482,44 @@ export function OverviewStyle(props: { ctx: Ctx }) {
   const s = ctx.subs[0]
   const u = s?.usage
   const leaf = mainGroupLeaf(ctx)
+  const others = groups.filter(g => g.leaf !== leaf?.name)
+  const rows = others.length ? others : groups
   return (
     <Root ctx={ctx} spacing={6}>
-      <Header
-        ctx={ctx}
-        title="总览"
-        trailing={(
-          <HStack spacing={6}>
-            <PageButton ctx={ctx} page={page} pages={pages} />
-            <ModeTap ctx={ctx} />
-          </HStack>
-        )}
-      />
-      <HStack spacing={10} alignment="top">
-        <VStack alignment="leading" spacing={3} frame={{ minWidth: 100, maxWidth: 100, maxHeight: 'infinity', alignment: 'topLeading' }}>
+      <Header ctx={ctx} title="总览" trailing={<HStack spacing={6}><PageButton ctx={ctx} page={page} pages={pages} /><ModeTap ctx={ctx} /></HStack>} />
+      <HStack spacing={12} alignment="top" frame={{ maxHeight: 'infinity' }}>
+        <VStack alignment="leading" spacing={2} frame={{ minWidth: 112, maxWidth: 112, maxHeight: 'infinity', alignment: 'topLeading' }}>
           <Text font={11} foregroundStyle={th.t2} lineLimit={1}>{u ? (u.total > 0 ? `${s.name} 剩余` : `${s.name} 已用`) : leaf?.group ?? '当前节点'}</Text>
-          <Num value={u ? fmtBytes(u.total > 0 ? s.remain : s.used) : latencyText(leaf?.r)} size={24} color={u ? th.t1 : latencyInk(ctx, leaf?.r)} />
+          {u ? <Num value={fmtBytes(u.total > 0 ? s.remain : s.used)} size={26} /> : <Text font={16} fontWeight="semibold" foregroundStyle={th.t1} lineLimit={2} minScaleFactor={0.8}>{leaf ? nodeLabel(leaf.name, leaf.r) : '-'}</Text>}
           {u && u.total > 0 ? <Bar ctx={ctx} value={s.ratio} color={usageColor(s.ratio)} height={4} /> : null}
+          {u ? null : <Num value={latencyText(leaf?.r)} size={22} color={latencyInk(ctx, leaf?.r)} />}
+          <Spacer minLength={0} />
           {u ? <Text font={10} foregroundStyle={th.t2} lineLimit={1} minScaleFactor={0.8}>{subLine(s)}</Text> : null}
-          {u ? <Text font={12} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={latencyInk(ctx, leaf?.r)} lineLimit={1} padding={{ top: 3 }}>{latencyText(leaf?.r)}</Text> : null}
-          <Text font={10} foregroundStyle={th.t3} lineLimit={1}>{leaf ? nodeLabel(leaf.name, leaf.r) : ''}</Text>
-          {u ? null : <Spacer minLength={0} />}
-          {u ? null : <Spark ctx={ctx} h={leaf?.r?.h} height={24} count={12} tone={th.accent} />}
-          {u ? null : <Text font={10} foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.8}>{healthText(ctx)}</Text>}
+          {u ? <Text font={10} foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.8}>{leaf ? `${nodeLabel(leaf.name, leaf.r)} ${latencyText(leaf.r)}` : ''}</Text> : <Text font={10} foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.8}>{healthText(ctx)}</Text>}
         </VStack>
-        <VStack spacing={6} frame={{ maxWidth: 'infinity' }}>
-          {chunk(groups, 2).map(row => (
-            <HStack spacing={6}>
-              {row.map(g => <GroupCell ctx={ctx} g={g} />)}
-              {row.length < 2 ? <VStack frame={{ maxWidth: 'infinity' }} /> : null}
-            </HStack>
-          ))}
+        <VStack spacing={0} frame={{ maxWidth: 'infinity', maxHeight: 'infinity' }}>
+          {rows.flatMap((g, i) => (i ? [<Rectangle fill={th.card} frame={{ height: 0.5 }} />, <GroupLine ctx={ctx} g={g} />] : [<GroupLine ctx={ctx} g={g} />]))}
         </VStack>
       </HStack>
+    </Root>
+  )
+}
+
+/** 没有机场时的趋势样式: 当前节点的延迟趋势 */
+export function LatencyTrend(props: { ctx: Ctx }) {
+  const { ctx } = props
+  const { th } = ctx
+  const leaf = mainGroupLeaf(ctx)
+  return (
+    <Root ctx={ctx} spacing={4}>
+      <Header ctx={ctx} title={leaf?.group ?? '延迟趋势'} font={12} />
+      <HStack alignment="lastTextBaseline" spacing={6}>
+        <Num value={latencyText(leaf?.r)} size={24} color={latencyInk(ctx, leaf?.r)} />
+        <Text font={11} foregroundStyle={th.t2} lineLimit={1} minScaleFactor={0.8}>{leaf ? nodeLabel(leaf.name, leaf.r) : ''}</Text>
+      </HStack>
+      <Spacer minLength={0} />
+      <Spark ctx={ctx} h={leaf?.r?.h} height={ctx.size === 's' ? 40 : 44} count={24} tone={th.accent} />
+      <Text font={10} foregroundStyle={th.t3} lineLimit={1}>{healthText(ctx)}</Text>
     </Root>
   )
 }

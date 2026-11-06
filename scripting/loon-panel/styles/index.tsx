@@ -10,7 +10,7 @@ import { RingStyle, TrendStyle, LockCircular, LockRect, LockInline } from './usa
 import { NodeStyle, HealthStyle } from './node'
 import { BoardStyle } from './board'
 import { TodayStyle, BudgetStyle, MultiSmall, MultiMedium, CountdownStyle, CompareStyle, HoursStyle, ValueStyle, MonthStyle } from './flow'
-import { UnlockSmall, UnlockMedium, PickerStyle, ModeStyle, IpStyle, SafetyStyle, RankStyle, ConsoleStyle, GroupsStyle, EventsStyle, OverviewStyle, OverviewSmall, PingStyle, NodesStyle, ReportStyle, LockLatency, LockToday, LockPing } from './net'
+import { UnlockSmall, UnlockMedium, PickerStyle, ModeStyle, IpStyle, SafetyStyle, RankStyle, ConsoleStyle, GroupsStyle, EventsStyle, OverviewStyle, OverviewSmall, LatencyTrend, PingStyle, NodesStyle, ReportStyle, LockLatency, LockToday, LockPing } from './net'
 
 type View = (props: { ctx: Ctx }) => any
 
@@ -78,10 +78,15 @@ export function resolveStyle(param: string | undefined, family: Family): StyleDe
 
 /** 用到机场用量的样式 */
 export const TRAFFIC_STYLES = ['A', 'G', 'H', 'I', 'J', 'O', 'C', 'Q', 'X', 'E', 'Y', 'F', 'AC', 'AF']
-/** 这些样式没有机场就没内容, 小组件上换成同尺寸能显示节点的样式 */
-const fallbackOf = (style: StyleDef, family: Family) => {
-  const empty = family === 'accessoryCircular' ? ['F', 'AC'] : ['A', 'G', 'H', 'I', 'J', 'O', 'C', 'Q', 'X', 'Y']
-  return empty.includes(style.id) ? styleById(family === 'accessoryCircular' ? 'AB' : BUILTIN_DEFAULTS[family]) : undefined
+/** 没有机场就没有主要内容的样式, 样式库里排到后面并标注 */
+export const NEEDS_SUBS = TRAFFIC_STYLES.filter(id => !['E', 'F', 'AF'].includes(id))
+/** 没有机场时换内容: 趋势类看延迟, 多机场看策略组; 额度、倒计时这些没有对应的节点含义, 保留提示 */
+function fallbackView(id: string, family: Family): View | undefined {
+  if (family === 'accessoryCircular') return ['F', 'AC'].includes(id) ? styleById('AB')!.views[family] : undefined
+  if (['G', 'C', 'Q'].includes(id)) return LatencyTrend
+  if (id === 'I') return family === 'systemMedium' ? GroupsStyle : OverviewSmall
+  if (id === 'Y') return BoardStyle
+  return undefined
 }
 
 export function renderStyle(
@@ -100,7 +105,6 @@ export function renderStyle(
     nat: opts.nat,
     events: [...(opts.loon?.events ?? []), ...opts.local].sort((a, b) => b.t - a.t),
   }
-  const shown = (opts.loon && !opts.subs.length ? fallbackOf(style, family) : undefined) ?? style
-  const View = shown.views[family] ?? styleById(BUILTIN_DEFAULTS[family])!.views[family]!
+  const View = (opts.loon && !opts.subs.length ? fallbackView(style.id, family) : undefined) ?? style.views[family] ?? styleById(BUILTIN_DEFAULTS[family])!.views[family]!
   return <View ctx={ctx} />
 }
