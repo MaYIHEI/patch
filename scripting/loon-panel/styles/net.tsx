@@ -366,7 +366,7 @@ export function GroupCell(props: { ctx: Ctx; g: Group }) {
           {loon.locks?.[g.name] ? <Image systemName="lock.fill" font={8} foregroundStyle={th.t3} /> : null}
         </HStack>
         <Text font={15} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={latencyInk(ctx, r)} lineLimit={1}>{latencyText(r)}</Text>
-        <Text font={10} foregroundStyle={going?.group === g.name ? th.accent : g.gone ? WARN : th.t3} lineLimit={1} minScaleFactor={0.7}>{going?.group === g.name ? `切换到 ${going.node}` : g.gone ? '节点已失效' : nodeLabel(g.leaf, r)}</Text>
+        <Text font={10} foregroundStyle={going?.group === g.name ? th.accent : g.gone ? WARN : th.t3} lineLimit={1} minScaleFactor={0.85}>{going?.group === g.name ? `切换到 ${going.node}` : g.gone ? '节点已失效' : nodeLabel(g.leaf, r)}</Text>
       </Cell>
     </Tap>
   )
@@ -389,7 +389,7 @@ function ModeTap(props: { ctx: Ctx }) {
   const mode = MODES.find(m => m.id === loon.mode)
   return (
     <Tap ctx={ctx} intent={!loon.stale && loon.mode >= 0 ? ModeIntent({ mode: (loon.mode + 1) % 3 }) : undefined}>
-      <HStack spacing={3} padding={{ horizontal: 7, vertical: 2 }} background={<Capsule fill={withAlpha(ctx.th.accent, 0.16)} />}>
+      <HStack spacing={3} padding={{ horizontal: 7, vertical: 3 }} background={<Capsule fill={withAlpha(ctx.th.accent, 0.16)} />}>
         {mode ? <Image systemName={mode.icon} font={9} fontWeight="semibold" foregroundStyle={ctx.th.accent} /> : null}
         <Text font={10} fontWeight="semibold" foregroundStyle={ctx.th.accent} lineLimit={1}>{mode?.short ?? modeName(loon.mode)}</Text>
       </HStack>
@@ -447,7 +447,7 @@ export function OverviewStyle(props: { ctx: Ctx }) {
   const u = s?.usage
   const leaf = mainGroupLeaf(ctx)
   return (
-    <Root ctx={ctx} spacing={5} padding={12}>
+    <Root ctx={ctx} spacing={6}>
       <Header
         ctx={ctx}
         title="总览"
@@ -458,8 +458,8 @@ export function OverviewStyle(props: { ctx: Ctx }) {
           </HStack>
         )}
       />
-      <HStack spacing={8} alignment="top">
-        <VStack alignment="leading" spacing={2} frame={{ minWidth: 100, maxWidth: 100, maxHeight: 'infinity', alignment: 'topLeading' }}>
+      <HStack spacing={10} alignment="top">
+        <VStack alignment="leading" spacing={3} frame={{ minWidth: 100, maxWidth: 100, maxHeight: 'infinity', alignment: 'topLeading' }}>
           <Text font={11} foregroundStyle={th.t2} lineLimit={1}>{u ? (u.total > 0 ? `${s.name} 剩余` : `${s.name} 已用`) : leaf?.group ?? '当前节点'}</Text>
           <Num value={u ? fmtBytes(u.total > 0 ? s.remain : s.used) : latencyText(leaf?.r)} size={24} color={u ? th.t1 : latencyInk(ctx, leaf?.r)} />
           {u && u.total > 0 ? <Bar ctx={ctx} value={s.ratio} color={usageColor(s.ratio)} height={4} /> : null}

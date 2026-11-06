@@ -168,7 +168,7 @@ export const asnText = (r?: NodeResult) => [r?.asn ? `AS${r.asn}` : '', r?.org ?
 const PAD: Record<Size, number> = { s: 14, m: 14, l: 16 }
 
 /** 小组件根视图; 背景图和暗化放在 background 里, 不会把内容挤出去 */
-export function Root(props: { ctx: Ctx; spacing?: number; padding?: number; children?: any }) {
+export function Root(props: { ctx: Ctx; spacing?: number; children?: any }) {
   const { ctx } = props
   const { th } = ctx
   const img = th.image
@@ -182,7 +182,7 @@ export function Root(props: { ctx: Ctx; spacing?: number; padding?: number; chil
     <VStack
       alignment="leading"
       spacing={props.spacing ?? 8}
-      padding={props.padding ?? PAD[ctx.size]}
+      padding={PAD[ctx.size]}
       frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'topLeading' }}
       background={backdrop}
       clipped
