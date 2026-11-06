@@ -137,8 +137,9 @@ export function syncText(ctx: Ctx): string {
 
 /** 用量颜色: < 50% 绿, 50-80% 橙, ≥ 80% 红 */
 export const usageColor = (ratio: number) => (ratio >= 0.8 ? BAD : ratio >= 0.5 ? WARN : OK)
-/** 延迟颜色: < 200 绿, < 500 橙, 其余 / 不可用红 */
-export const latencyColor = (r?: NodeResult) => (!r ? '#8E8E93' : !r.ok ? BAD : r.ms < 200 ? OK : r.ms < 500 ? WARN : BAD)
+/** 体检测的是经节点完整请求一次的耗时, 比 ping 高得多: < 800 绿, < 1500 橙, 其余 / 不可用红 */
+const msColor = (ms: number) => (ms < 800 ? OK : ms < 1500 ? WARN : BAD)
+export const latencyColor = (r?: NodeResult) => (!r ? '#8E8E93' : !r.ok ? BAD : msColor(r.ms))
 export const latencyText = (r?: NodeResult) => (!r ? '未测' : !r.ok ? '超时' : `${r.ms}ms`)
 
 /** "HK" → 🇭🇰 */
@@ -152,6 +153,9 @@ export function nodeLabel(name: string, r?: NodeResult): string {
   const f = flag(r?.cc)
   return f && !name.includes(f) ? `${f} ${name}` : name
 }
+
+/** 列表里看的短名: 去掉开头的 [标签] 和 | 后面的倍率 */
+export const shortNode = (name: string) => name.replace(/^\[[^\]]*\]\s*/, '').replace(/\s*\|.*$/, '') || name
 
 export const asnText = (r?: NodeResult) => [r?.asn ? `AS${r.asn}` : '', r?.org ?? ''].filter(Boolean).join(' ')
 
@@ -320,7 +324,7 @@ export function Spark(props: { ctx: Ctx; h?: number[]; width: number; height: nu
   const max = Math.max(1, ...list)
   return (
     <HStack alignment="bottom" spacing={1} frame={{ width: props.width, height: props.height, alignment: 'bottomTrailing' }}>
-      {list.map(v => <Rectangle fill={v < 0 ? BAD : v < 200 ? OK : v < 500 ? WARN : BAD} frame={{ maxWidth: 'infinity', height: v < 0 ? props.height : Math.max(1, (v / max) * props.height) }} />)}
+      {list.map(v => <Rectangle fill={v < 0 ? BAD : msColor(v)} frame={{ maxWidth: 'infinity', height: v < 0 ? props.height : Math.max(1, (v / max) * props.height) }} />)}
     </HStack>
   )
 }
@@ -329,7 +333,7 @@ export function Spark(props: { ctx: Ctx; h?: number[]; width: number; height: nu
 export function Uptime(props: { h?: number[]; height?: number }) {
   return (
     <HStack spacing={1} frame={{ maxWidth: 'infinity', height: props.height ?? 9 }}>
-      {(props.h ?? []).slice(-16).map(v => <Rectangle fill={v < 0 ? BAD : v < 300 ? OK : WARN} frame={{ maxWidth: 'infinity' }} />)}
+      {(props.h ?? []).slice(-16).map(v => <Rectangle fill={v < 0 ? BAD : msColor(v)} frame={{ maxWidth: 'infinity' }} />)}
     </HStack>
   )
 }
