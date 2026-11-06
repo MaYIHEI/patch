@@ -107,7 +107,7 @@ export const cachedLoon = (): LoonData | null => {
 }
 
 /** 操作地址: 切模式 / 切节点 / 不带参数 = 复测当前节点; 返回最新状态 */
-export async function setLoon(q: { mode?: number; group?: string; node?: string; lock?: number }, timeout = 25): Promise<LoonData> {
+export async function setLoon(q: { mode?: number; group?: string; node?: string; lock?: number; quiet?: number }, timeout = 25): Promise<LoonData> {
   const qs = Object.entries(q).filter(([, v]) => v !== undefined).map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join('&')
   const data = await get(qs ? `${SET_URL}?${qs}` : SET_URL, timeout)
   AppStorage.set(CACHE_KEY, JSON.stringify(data))
@@ -164,23 +164,33 @@ export function groupPage(d: LoonData, prefs: Prefs, size: number): { list: Grou
 
 export const turnGroupPage = (step: number) => AppStorage.set(PAGE_KEY, (AppStorage.get<number>(PAGE_KEY) ?? 0) + step)
 
-/** 切换器: 在常用策略组里选一个组 (g), 显示它的节点 (p 是节点页码) */
-type Pick = { g: number; p: number }
+/** 切换器: 在常用策略组里选一个组 (g), 显示它的节点 (p 是节点页码); path 是点进去的下层策略组 */
+type Pick = { g: number; p: number; path?: string[] }
 const readPick = (): Pick => AppStorage.get<Pick>(PICK_KEY) ?? { g: 0, p: 0 }
+export type Hop = { group: string; node: string }
 
-export function pickerView(d: LoonData, prefs: Prefs, size: number): { group?: Group; nodes: string[]; page: number; pages: number; groups: number } {
+export function pickerView(d: LoonData, prefs: Prefs, size: number): { group?: Group; via: Hop[]; nodes: string[]; page: number; pages: number; groups: number } {
   const groups = shownGroups(d, prefs).filter(g => g.subs.length)
-  if (!groups.length) return { nodes: [], page: 0, pages: 1, groups: 0 }
+  if (!groups.length) return { via: [], nodes: [], page: 0, pages: 1, groups: 0 }
   const pick = readPick()
-  const group = groups[pick.g % groups.length]
+  let group = groups[pick.g % groups.length]
+  const via: Hop[] = []
+  for (const name of pick.path ?? []) {   // 配置变了路径走不通就停在能到的这一层
+    const next = d.groups.find(x => x.name === name)
+    if (!next || !group.subs.includes(name)) break
+    via.push({ group: group.name, node: name })
+    group = next
+  }
   const all = group.subs.filter(n => !/^REJECT/i.test(n))
   const pages = Math.max(1, Math.ceil(all.length / size))
   const page = wrap(pick.p, pages)
-  return { group, nodes: all.slice(page * size, (page + 1) * size), page, pages, groups: groups.length }
+  return { group, via, nodes: all.slice(page * size, (page + 1) * size), page, pages, groups: groups.length }
 }
 
 export const nextPickGroup = () => { const x = readPick(); AppStorage.set(PICK_KEY, { g: x.g + 1, p: 0 }) }
-export const turnPickPage = (step: number) => { const x = readPick(); AppStorage.set(PICK_KEY, { g: x.g, p: x.p + step }) }
+export const enterPick = (name: string) => { const x = readPick(); AppStorage.set(PICK_KEY, { g: x.g, p: 0, path: [...(x.path ?? []), name] }) }
+export const leavePick = () => { const x = readPick(); AppStorage.set(PICK_KEY, { g: x.g, p: 0, path: (x.path ?? []).slice(0, -1) }) }
+export const turnPickPage = (step: number) => { const x = readPick(); AppStorage.set(PICK_KEY, { ...x, p: x.p + step }) }
 
 /** 点策略组那一行切到哪: 体检过且能用的里最快的 (不含当前), 都没测过就切到下一个; 不切到 DIRECT / REJECT
  *  选项可能是另一个策略组, 看它正在用的节点; 和当前同一个节点的不算, 切过去没有变化 */
