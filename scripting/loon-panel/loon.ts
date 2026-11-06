@@ -164,16 +164,41 @@ export function groupPage(d: LoonData, prefs: Prefs, size: number): { list: Grou
 
 export const turnGroupPage = (step: number) => AppStorage.set(PAGE_KEY, (AppStorage.get<number>(PAGE_KEY) ?? 0) + step)
 
-/** 切换器: 在常用策略组里选一个组 (g), 显示它的节点 (p 是节点页码); path 是点进去的下层策略组 */
-type Pick = { g: number; p: number; path?: string[] }
+/** 切换器: 在常用策略组里选一个组 (g), 显示它的节点 (p 是节点页码); path 是点进去的下层策略组
+ *  open: 在策略组卡片、看板、总览上点了哪个组, 这个尺寸的小组件临时变成切换器, 5 分钟后失效 */
+type Pick = { g: number; p: number; path?: string[]; open?: string; owner?: string; t?: number }
 const readPick = (): Pick => AppStorage.get<Pick>(PICK_KEY) ?? { g: 0, p: 0 }
 export type Hop = { group: string; node: string }
 
-export function pickerView(d: LoonData, prefs: Prefs, size: number): { group?: Group; via: Hop[]; nodes: string[]; page: number; pages: number; groups: number } {
+export const focusOf = (owner: string) => {
+  const x = readPick()
+  return x.open && x.owner === owner && Date.now() - (x.t ?? 0) < 300_000 ? x.open : ''
+}
+export const openPick = (open: string, owner: string) => AppStorage.set(PICK_KEY, { ...readPick(), p: 0, path: [], open, owner, t: Date.now() })
+export const closePick = () => {
+  const x = readPick()
+  if (x.open) AppStorage.set(PICK_KEY, { g: x.g, p: 0 })
+}
+
+/** 从 root 一层层走到 node 要切的每一步; 走不到返回 null */
+export function pathTo(d: LoonData, root: string, node: string, seen = new Set<string>()): Hop[] | null {
+  const g = d.groups.find(x => x.name === root)
+  if (!g || seen.has(root)) return null
+  seen.add(root)
+  if (g.subs.includes(node)) return [{ group: root, node }]
+  for (const n of g.subs) {
+    const rest = pathTo(d, n, node, seen)
+    if (rest) return [{ group: root, node: n }, ...rest]
+  }
+  return null
+}
+
+export function pickerView(d: LoonData, prefs: Prefs, size: number, open = ''): { group?: Group; via: Hop[]; nodes: string[]; page: number; pages: number; groups: number } {
   const groups = shownGroups(d, prefs).filter(g => g.subs.length)
-  if (!groups.length) return { via: [], nodes: [], page: 0, pages: 1, groups: 0 }
+  const opened = d.groups.find(g => g.name === open)
+  if (!groups.length && !opened) return { via: [], nodes: [], page: 0, pages: 1, groups: 0 }
   const pick = readPick()
-  let group = groups[pick.g % groups.length]
+  let group = opened ?? groups[pick.g % groups.length]
   const via: Hop[] = []
   for (const name of pick.path ?? []) {   // 配置变了路径走不通就停在能到的这一层
     const next = d.groups.find(x => x.name === name)
@@ -188,8 +213,8 @@ export function pickerView(d: LoonData, prefs: Prefs, size: number): { group?: G
 }
 
 export const nextPickGroup = () => { const x = readPick(); AppStorage.set(PICK_KEY, { g: x.g + 1, p: 0 }) }
-export const enterPick = (name: string) => { const x = readPick(); AppStorage.set(PICK_KEY, { g: x.g, p: 0, path: [...(x.path ?? []), name] }) }
-export const leavePick = () => { const x = readPick(); AppStorage.set(PICK_KEY, { g: x.g, p: 0, path: (x.path ?? []).slice(0, -1) }) }
+export const enterPick = (name: string) => { const x = readPick(); AppStorage.set(PICK_KEY, { ...x, p: 0, path: [...(x.path ?? []), name] }) }
+export const leavePick = () => { const x = readPick(); AppStorage.set(PICK_KEY, { ...x, p: 0, path: (x.path ?? []).slice(0, -1) }) }
 export const turnPickPage = (step: number) => { const x = readPick(); AppStorage.set(PICK_KEY, { ...x, p: x.p + step }) }
 
 /** 点策略组那一行切到哪: 体检过且能用的里最快的 (不含当前), 都没测过就切到下一个; 不切到 DIRECT / REJECT
