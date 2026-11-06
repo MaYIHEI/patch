@@ -13,7 +13,7 @@ import { fmtBytes } from '../subs'
 import { ModeIntent, SwitchIntent, CheckIntent, FastestIntent, NextGroupsIntent, NextPickGroupIntent, NextPickPageIntent, readNote } from '../app_intents'
 import { mainGroupLeaf, checkText } from './node'
 import {
-  Root, Header, Num, Empty, Cell, Dot, Pill, Uptime, RefreshButton, latencyColor, latencyInk, latencyText, nodeLabel, asnText, flag, ago, hhmm,
+  Root, Header, Num, Empty, Cell, Dot, Pill, Spark, Uptime, RefreshButton, latencyColor, latencyInk, latencyText, nodeLabel, asnText, flag, ago, hhmm,
   mediaColor, mediaWord, chunk, withAlpha, OK, BAD, WARN, type Ctx,
 } from '../ui'
 
@@ -261,6 +261,28 @@ export function ConsoleStyle(props: { ctx: Ctx }) {
 // ─────────────────────────────────────────────────────────────
 // 策略组卡片 (中)
 // ─────────────────────────────────────────────────────────────
+/** 切换器的选项少时, 上面显示这个组正在用的节点 */
+function PickerNow(props: { ctx: Ctx; group: Group }) {
+  const { ctx, group: g } = props
+  const { th } = ctx
+  const r = ctx.loon!.nodes[g.leaf]
+  const large = ctx.size === 'l'
+  return (
+    <VStack alignment="leading" spacing={4} padding={{ horizontal: 12, vertical: 8 }} frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={12} style="continuous" fill={th.card} />}>
+      <HStack spacing={6}>
+        <Text font={11} foregroundStyle={th.t3}>正在用</Text>
+        <Text font={12} foregroundStyle={th.t1} lineLimit={1}>{nodeLabel(g.leaf, r)}</Text>
+        <Spacer minLength={2} />
+        {large ? null : <Num value={latencyText(r)} size={16} color={latencyInk(ctx, r)} />}
+      </HStack>
+      {large ? <Spacer minLength={0} /> : null}
+      {large ? <Num value={latencyText(r)} size={38} color={latencyInk(ctx, r)} /> : null}
+      {large && r?.h?.length ? <Spark ctx={ctx} h={r.h} height={36} count={24} tone={th.accent} /> : null}
+      {large && r?.ip ? <Text font={10} foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.7}>{`${flag(r.cc)} ${asnText(r) || r.ip}`}</Text> : null}
+    </VStack>
+  )
+}
+
 /** 切换器: 常用策略组里的一个组, 点节点直接切; 右上角换组、翻页 */
 export function PickerStyle(props: { ctx: Ctx }) {
   const { ctx } = props
@@ -268,9 +290,9 @@ export function PickerStyle(props: { ctx: Ctx }) {
   if (!loon) return <NoLoon ctx={ctx} title="切换器" icon="arrow.triangle.swap" />
   const { group: g, nodes, page, pages, groups } = pickerView(loon, ctx.prefs, ctx.size === 'l' ? 15 : 6)
   if (!g) return <NoLoon ctx={ctx} title="切换器" icon="arrow.triangle.swap" />
-  // 节点少时两列大卡片; 多时三列, 翻页时卡片大小不变
-  const cols = g.subs.length <= 4 ? 2 : 3
-  const big = ctx.size === 'l' && g.subs.length <= 4
+  // 选项少时上面放当前节点, 选项卡片保持小尺寸; 多时三列撑满, 翻页时卡片大小不变
+  const few = g.subs.length <= (ctx.size === 'l' ? 6 : 3)
+  const cols = g.subs.length === 4 ? 2 : 3
   const rows = chunk(nodes, cols)
   const blank = pages > 1 ? (ctx.size === 'l' ? 5 : 2) - rows.length : 0
   const cell = (name: string) => {
@@ -279,10 +301,9 @@ export function PickerStyle(props: { ctx: Ctx }) {
     const on = name === g.now
     return (
       <Tap ctx={ctx} intent={!on && !loon.stale ? SwitchIntent({ group: g.name, node: name }) : undefined}>
-        <VStack alignment="leading" spacing={2} padding={big ? 14 : { horizontal: 10, vertical: 6 }} frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={big ? 16 : 12} style="continuous" fill={on ? th.accent : th.card} />}>
-          <Text font={big ? 13 : 11} foregroundStyle={on ? '#FFFFFF' : th.t2} lineLimit={1} minScaleFactor={0.7}>{sub ? name : nodeLabel(name, r)}</Text>
-          {big ? <Spacer /> : null}
-          <Text font={big ? 30 : 14} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={on ? '#FFFFFF' : r ? latencyInk(ctx, r) : th.t3} lineLimit={1} minScaleFactor={0.7}>{name === 'DIRECT' ? '直连' : latencyText(r)}</Text>
+        <VStack alignment="leading" spacing={2} padding={{ horizontal: 10, vertical: 6 }} frame={{ maxWidth: 'infinity', height: few ? 50 : undefined, maxHeight: few ? undefined : 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={12} style="continuous" fill={on ? th.accent : th.card} />}>
+          <Text font={11} foregroundStyle={on ? '#FFFFFF' : th.t2} lineLimit={1} minScaleFactor={0.7}>{sub ? name : nodeLabel(name, r)}</Text>
+          <Text font={14} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={on ? '#FFFFFF' : r ? latencyInk(ctx, r) : th.t3} lineLimit={1} minScaleFactor={0.7}>{name === 'DIRECT' ? '直连' : latencyText(r)}</Text>
         </VStack>
       </Tap>
     )
@@ -300,8 +321,9 @@ export function PickerStyle(props: { ctx: Ctx }) {
           </HStack>
         )}
       />
+      {few ? <PickerNow ctx={ctx} group={g} /> : null}
       {rows.map(row => (
-        <HStack spacing={5} frame={{ maxHeight: 'infinity' }}>
+        <HStack spacing={5} frame={{ maxHeight: few ? undefined : 'infinity' }}>
           {row.map(cell)}
         </HStack>
       ))}
