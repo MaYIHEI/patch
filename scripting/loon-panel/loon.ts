@@ -21,7 +21,8 @@ const CACHE_KEY = 'loonpanel.loon'
 
 /** h: 最近 24 次延迟 (ms), 超时记 -1; fail: 连续超时次数 */
 export type NodeResult = { ok: boolean; ms: number; t: number; ip?: string; cc?: string; asn?: string; org?: string; err?: string; h?: number[]; fail?: number }
-export type Group = { name: string; now: string; leaf: string; subs: string[] }
+/** gone: 当前节点已经不在订阅里 */
+export type Group = { name: string; now: string; leaf: string; subs: string[]; gone?: boolean }
 export type Media = { name: string; status: 'yes' | 'partial' | 'no' | 'unknown'; region?: string; note?: string }
 export type Isp = 'ct' | 'cu' | 'cm'
 /** 深度检测结果 (ipquality-web-test 核心库的 data), 拿不到的字段没有 */
@@ -178,10 +179,13 @@ export function pickerView(d: LoonData, prefs: Prefs, size: number): { group?: G
 export const nextPickGroup = () => { const x = readPick(); AppStorage.set(PICK_KEY, { g: x.g + 1, p: 0 }) }
 export const nextPickPage = () => { const x = readPick(); AppStorage.set(PICK_KEY, { g: x.g, p: x.p + 1 }) }
 
-/** 点策略组那一行切到哪: 体检过且能用的里最快的 (不含当前), 都没测过就切到下一个; 不切到 DIRECT / REJECT */
+/** 点策略组那一行切到哪: 体检过且能用的里最快的 (不含当前), 都没测过就切到下一个; 不切到 DIRECT / REJECT
+ *  选项可能是另一个策略组, 看它正在用的节点; 和当前同一个节点的不算, 切过去没有变化 */
 export function switchTarget(d: LoonData, g: Group): string | undefined {
   const list = g.subs.filter(n => !/^(DIRECT|REJECT)/i.test(n))
-  const alive = list.filter(n => n !== g.now && d.nodes[n]?.ok).sort((a, b) => d.nodes[a].ms - d.nodes[b].ms)
+  const leaf = (n: string) => d.groups.find(x => x.name === n)?.leaf ?? n
+  const ms = (n: string) => d.nodes[leaf(n)].ms
+  const alive = list.filter(n => n !== g.now && leaf(n) !== g.leaf && d.nodes[leaf(n)]?.ok).sort((a, b) => ms(a) - ms(b))
   if (alive.length) return alive[0]
   const others = list.filter(n => n !== g.now)
   return others.length ? list[(list.indexOf(g.now) + 1) % list.length] : undefined

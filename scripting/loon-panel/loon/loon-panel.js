@@ -6,7 +6,7 @@
 // 请求 http://1.1.1.1/loon-panel/deep?node=…: 对节点跑一次深度检测 (加 &speed=1 同时测速)
 // POST http://1.1.1.1/loon-panel/opts: 保存 App 里的设置, 正文是要改的项 (JSON); 空字符串 = 恢复默认
 
-const VERSION = '0.3.0'
+const VERSION = '0.3.7'
 const STORE_KEY = 'loon_panel'
 const CORE_KEY = 'loon_panel_core'
 // 检测核心库 (paperclip ipquality-web-test), 解锁和深度检测都用它, 这里不另写一份
@@ -126,7 +126,11 @@ async function readState() {
     return cur
   }
   const groups = names.map((name, i) => ({ name, now: now[name], leaf: leafOf(name), subs: subs[i] }))
-  return { conf, set, groups, leafOf }
+  // 订阅更新后策略组可能还记着已经没有的节点; 这种名字 Loon 找不到, 会换成第一个节点, 测出来的不是它
+  const known = new Set([...names, ...subs.flat()])
+  const gone = new Set(subs.some(l => l.length) ? groups.map(g => g.leaf).filter(n => n && !known.has(n) && !isBuiltin(n)) : [])
+  for (const g of groups) if (gone.has(g.leaf)) g.gone = true
+  return { conf, set, groups, leafOf, gone }
 }
 
 // DIRECT 不算节点: 测试地址在国内直连本来就可能不通, 直连出口由 checkDirect 单独记录
@@ -138,7 +142,7 @@ function uniq(list) {
 }
 
 /** 各策略组当前选中的节点; 一路下来还停在策略组上的 (没有选中项) 不测 */
-const leaves = state => uniq(state.groups.map(g => g.leaf).filter(n => !state.set.has(n)))
+const leaves = state => uniq(state.groups.map(g => g.leaf).filter(n => !state.set.has(n) && !state.gone.has(n)))
 /** 一路下来还是策略组 (比如链式策略): $httpClient 的 node 可以填策略组, 直接测它, 但不算「在用的节点」 */
 const stuck = state => uniq(state.groups.map(g => g.leaf).filter(n => state.set.has(n)))
 
@@ -449,7 +453,7 @@ async function handleSet(q) {
     delete store.locks[q.group]
   }
   const skip = !result.ok || q.lock === '0'
-  const targets = skip ? [] : via ? uniq([state.leafOf(via)]) : [...leaves(state), ...stuck(state)]
+  const targets = skip ? [] : via ? uniq([state.leafOf(via)]).filter(n => !state.gone.has(n)) : [...leaves(state), ...stuck(state)]
   await runChecks(store, targets, new Set(leaves(state)), REQ_BUDGET)
   writeStore(store)
   return snapshot(state, store, result)
