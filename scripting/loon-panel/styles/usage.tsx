@@ -30,11 +30,11 @@ export function RingStyle(props: { ctx: Ctx }) {
   if (!s.usage) return <Root ctx={ctx}><Header ctx={ctx} title={s.name} font={12} /><Empty ctx={ctx} icon="exclamationmark.triangle" text={s.err ?? '读取中'} /></Root>
   const unlimited = s.usage.total <= 0
   return (
-    <Root ctx={ctx} spacing={4}>
+    <Root ctx={ctx} spacing={6}>
       <Header ctx={ctx} title={`${staleMark(s)}${s.name}`} font={12} />
       <HStack frame={{ maxWidth: 'infinity' }}>
         <Spacer minLength={0} />
-        <UsageRing ctx={ctx} ratio={unlimited ? 0 : s.ratio} size={66} line={8}>
+        <UsageRing ctx={ctx} ratio={unlimited ? 0 : s.ratio} size={72} line={9}>
           <VStack spacing={0}>
             <Num value={unlimited ? fmtBytes(s.used) : pct(s.ratio)} size={unlimited ? 16 : 21} color={th.t1} weight="bold" />
             <Text font={10} foregroundStyle={th.t3}>已用</Text>

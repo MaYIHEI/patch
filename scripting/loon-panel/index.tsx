@@ -96,9 +96,11 @@ function Preview(props: { style: StyleDef; family: Family; loon: LoonData | null
   const view = renderStyle(props.style, props.family, {
     inApp: true, loon: props.loon, loonErr: '', subs: props.subs, look: props.look ?? getLook(), prefs: getPrefs(), nat: lastNat(), local: localEvents(),
   })
+  // 预览框比部分机型的桌面组件矮, 留点余量, 免得内容被裁掉
+  const room = props.family.startsWith('system') ? 12 : 0
   return (
-    <ZStack frame={{ width: box.width * k, height: box.height * k }} clipped>
-      <VStack frame={box} scaleEffect={k}>{view}</VStack>
+    <ZStack frame={{ width: box.width * k, height: (box.height + room) * k }}>
+      <VStack frame={{ width: box.width, height: box.height + room }} scaleEffect={k}>{view}</VStack>
     </ZStack>
   )
 }
