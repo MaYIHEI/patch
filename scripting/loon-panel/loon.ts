@@ -16,6 +16,7 @@ export const SET_URL = 'http://1.1.1.1/loon-panel/set'
 export const DEEP_URL = 'http://1.1.1.1/loon-panel/deep'
 const OPTS_URL = 'http://1.1.1.1/loon-panel/opts'
 const PAGE_KEY = 'loonpanel.page'
+const PICK_KEY = 'loonpanel.pick'
 const CACHE_KEY = 'loonpanel.loon'
 
 /** h: 最近 24 次延迟 (ms), 超时记 -1; fail: 连续超时次数 */
@@ -148,16 +149,34 @@ export function shownGroups(d: LoonData, prefs: Prefs): Group[] {
   return picked.length ? picked : d.groups.slice(0, 4)
 }
 
-/** 小组件翻页: 常用的排前面, 其余跟在后面; 页码存 Storage, 翻到头回第一页 */
+/** 小组件翻页: 设了常用就只翻常用的, 没设就翻全部; 页码存 Storage, 翻到头回第一页 */
 export function groupPage(d: LoonData, prefs: Prefs, size: number): { list: Group[]; page: number; pages: number } {
   const first = shownGroups(d, prefs)
-  const all = [...first, ...d.groups.filter(g => !first.includes(g))]
+  const all = prefs.groups.length ? first : d.groups
   const pages = Math.max(1, Math.ceil(all.length / size))
   const page = (AppStorage.get<number>(PAGE_KEY) ?? 0) % pages
   return { list: all.slice(page * size, (page + 1) * size), page, pages }
 }
 
 export const nextGroupPage = () => AppStorage.set(PAGE_KEY, (AppStorage.get<number>(PAGE_KEY) ?? 0) + 1)
+
+/** 切换器: 在常用策略组里选一个组 (g), 显示它的节点 (p 是节点页码) */
+type Pick = { g: number; p: number }
+const readPick = (): Pick => AppStorage.get<Pick>(PICK_KEY) ?? { g: 0, p: 0 }
+
+export function pickerView(d: LoonData, prefs: Prefs, size: number): { group?: Group; nodes: string[]; page: number; pages: number; groups: number } {
+  const groups = shownGroups(d, prefs).filter(g => g.subs.length)
+  if (!groups.length) return { nodes: [], page: 0, pages: 1, groups: 0 }
+  const pick = readPick()
+  const group = groups[pick.g % groups.length]
+  const all = group.subs.filter(n => !/^REJECT/i.test(n))
+  const pages = Math.max(1, Math.ceil(all.length / size))
+  const page = pick.p % pages
+  return { group, nodes: all.slice(page * size, (page + 1) * size), page, pages, groups: groups.length }
+}
+
+export const nextPickGroup = () => { const x = readPick(); AppStorage.set(PICK_KEY, { g: x.g + 1, p: 0 }) }
+export const nextPickPage = () => { const x = readPick(); AppStorage.set(PICK_KEY, { g: x.g, p: x.p + 1 }) }
 
 /** 点策略组那一行切到哪: 体检过且能用的里最快的 (不含当前), 都没测过就切到下一个; 不切到 DIRECT / REJECT */
 export function switchTarget(d: LoonData, g: Group): string | undefined {

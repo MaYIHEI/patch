@@ -3,7 +3,7 @@
 
 import { AppIntentManager, AppIntentProtocol, Widget, ControlWidget } from 'scripting'
 
-import { setLoon, loadLoon, mainGroup, ownerGroup, switchTarget, nextGroupPage } from './loon'
+import { setLoon, loadLoon, mainGroup, ownerGroup, switchTarget, nextGroupPage, nextPickGroup, nextPickPage } from './loon'
 import { loadSubs } from './subs'
 import { getPrefs } from './settings'
 
@@ -74,6 +74,25 @@ export const NextGroupsIntent = AppIntentManager.register({
   protocol: AppIntentProtocol.AppIntent,
   perform: async (_: undefined) => {
     nextGroupPage()
+    Widget.reloadAll()
+  },
+})
+
+/** 切换器: 换策略组 / 翻节点 */
+export const NextPickGroupIntent = AppIntentManager.register({
+  name: 'LoonPanelNextPickGroupIntent',
+  protocol: AppIntentProtocol.AppIntent,
+  perform: async (_: undefined) => {
+    nextPickGroup()
+    Widget.reloadAll()
+  },
+})
+
+export const NextPickPageIntent = AppIntentManager.register({
+  name: 'LoonPanelNextPickPageIntent',
+  protocol: AppIntentProtocol.AppIntent,
+  perform: async (_: undefined) => {
+    nextPickPage()
     Widget.reloadAll()
   },
 })

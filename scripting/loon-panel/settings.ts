@@ -21,7 +21,7 @@ const write = (key: string, v: unknown) => AppStorage.set(key, JSON.stringify(v)
 // ────────────────────────────────────────────────────────────
 /**
  * main: 小号「当前节点」和看板出口信息用哪个策略组, 空 = Loon 的兜底策略 (final)
- * groups: 大号看板列哪些策略组, 空 = 前 4 个
+ * groups: 常用策略组, 节点页和小组件切换用, 空 = 前 4 个
  * unlock: 解锁样式看哪个策略组的节点, 空 = 主策略组
  * alerts: 用量提醒开关
  */

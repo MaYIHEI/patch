@@ -219,7 +219,7 @@ function NodesTab(props: { shared: Shared; act: (q: Act, label: string) => Promi
   const live = !!loon && !loon.stale
   const st = loonStatus(loon)
   const events = [...(loon?.events ?? []), ...localEvents()].sort((a, b) => b.t - a.t)
-  const common = loon ? shownGroups(loon, getPrefs()).slice(0, 4) : []
+  const common = loon ? shownGroups(loon, getPrefs()) : []
   const bar = { cancellationAction: props.close, topBarTrailing: <Button title="刷新" systemImage="arrow.clockwise" action={() => reload(true)} /> }
   if (!loon) return <Page title="节点" large bar={bar}><Text foregroundStyle="secondaryLabel">{`${st.text}。保持 Loon 开启并启用「Loon 面板」插件。`}</Text></Page>
   return (
@@ -295,7 +295,7 @@ function AllGroupsPage(props: { loon: LoonData; act: (q: Act, label: string) => 
 
   return (
     <List navigationTitle="全部策略组" navigationBarTitleDisplayMode="inline" toolbar={{ topBarTrailing: <EditButton /> }}>
-      <Section header={<Text>常用</Text>} footer={<Text>首页和大号看板显示这些。点右上角「编辑」拖动排序; 进策略组里可以加入或移出常用。</Text>}>
+      <Section header={<Text>常用</Text>} footer={<Text>节点页、切换器、策略组卡片和全景看板都围绕这些。点右上角「编辑」拖动排序; 进策略组里可以加入或移出常用。</Text>}>
         <ForEach count={common.length} itemBuilder={(i: number) => row(common[i])} onMove={onMove} />
       </Section>
       {rest.length ? <Section header={<Text>其他</Text>}>{rest.map(row)}</Section> : null}
@@ -363,8 +363,6 @@ function GroupPage(props: { group: Group; loon: LoonData; act: (q: Act, label: s
   }
 
   function toggleCommon(on: boolean) {
-    if (on && common.length >= 4) return setNote('常用最多 4 个, 先移出一个')
-    setNote('')
     update({ groups: on ? [...common, g.name] : common.filter(n => n !== g.name) })
   }
 
@@ -396,7 +394,7 @@ function GroupPage(props: { group: Group; loon: LoonData; act: (q: Act, label: s
   return (
     <List navigationTitle={g.name} navigationBarTitleDisplayMode="inline">
       <Section footer={<Text>{note || (locked ? `Loon 把选择还原时, 插件会改回 ${locked} 并发通知。` : '「全量体检」每次体检都测这个组的全部节点, 节点多时耗时更长。')}</Text>}>
-        <Toggle title="常用 (首页和大号看板)" value={common.includes(g.name)} onChanged={toggleCommon} />
+        <Toggle title="常用 (小组件上切换)" value={common.includes(g.name)} onChanged={toggleCommon} />
         <Toggle title="主策略组 (小号和锁屏)" value={isMain} onChanged={(v: boolean) => update({ main: v ? g.name : '' })} />
         <Toggle title="解锁样式看这个组" value={isUnlock} onChanged={(v: boolean) => update({ unlock: v ? g.name : '' })} />
         <Toggle title="全量体检" value={full.includes(g.name)} onChanged={(v: boolean) => { toggleFull(v) }} />

@@ -6,11 +6,11 @@ import { VStack, HStack, ZStack, Text, Spacer, Image, Button, Link, Capsule, Rec
 import type { Color } from 'scripting'
 
 import {
-  MODES, groupPage, switchTarget, rankedNodes, healthCount, availability, unlockNode, latestDeep, loonStatus, modeName,
+  MODES, groupPage, pickerView, switchTarget, rankedNodes, healthCount, availability, unlockNode, latestDeep, loonStatus, modeName,
   type Deep, type Group, type Isp,
 } from '../loon'
 import { fmtBytes } from '../subs'
-import { ModeIntent, SwitchIntent, CheckIntent, FastestIntent, NextGroupsIntent, readNote } from '../app_intents'
+import { ModeIntent, SwitchIntent, CheckIntent, FastestIntent, NextGroupsIntent, NextPickGroupIntent, NextPickPageIntent, readNote } from '../app_intents'
 import { mainGroupLeaf, checkText } from './node'
 import {
   Root, Header, Empty, Dot, Pill, Uptime, RefreshButton, latencyColor, latencyText, nodeLabel, asnText, flag, ago, hhmm,
@@ -261,6 +261,50 @@ export function ConsoleStyle(props: { ctx: Ctx }) {
 // ─────────────────────────────────────────────────────────────
 // 策略组卡片 (中)
 // ─────────────────────────────────────────────────────────────
+/** 切换器: 常用策略组里的一个组, 点节点直接切; 右上角换组、翻页 */
+export function PickerStyle(props: { ctx: Ctx }) {
+  const { ctx } = props
+  const { th, loon } = ctx
+  if (!loon) return <NoLoon ctx={ctx} title="切换器" icon="arrow.triangle.swap" />
+  const { group: g, nodes, page, pages, groups } = pickerView(loon, ctx.prefs, ctx.size === 'l' ? 16 : 6)
+  if (!g) return <NoLoon ctx={ctx} title="切换器" icon="arrow.triangle.swap" />
+  const cell = (name: string) => {
+    const r = loon.nodes[name]
+    const on = name === g.now
+    return (
+      <Tap ctx={ctx} intent={!on && !loon.stale ? SwitchIntent({ group: g.name, node: name }) : undefined}>
+        <HStack spacing={3} padding={{ horizontal: 8, vertical: 6 }} frame={{ maxWidth: 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={9} fill={on ? th.accent : th.card} />}>
+          <Text font={11} fontWeight="medium" foregroundStyle={on ? '#FFFFFF' : th.t1} lineLimit={1} minScaleFactor={0.7}>{nodeLabel(name, r)}</Text>
+          <Spacer minLength={2} />
+          {r ? <Text font={10} monospacedDigit foregroundStyle={on ? '#FFFFFF' : latencyColor(r)} lineLimit={1}>{r.ok ? String(r.ms) : '超时'}</Text> : null}
+        </HStack>
+      </Tap>
+    )
+  }
+  return (
+    <Root ctx={ctx} spacing={5}>
+      <Header
+        ctx={ctx}
+        title={g.name}
+        icon="arrow.triangle.swap"
+        trailing={(
+          <HStack spacing={8}>
+            {groups > 1 ? <Tap ctx={ctx} intent={NextPickGroupIntent(undefined)}><Text font={11} foregroundStyle={th.accent} lineLimit={1}>换组</Text></Tap> : null}
+            {pages > 1 ? <Tap ctx={ctx} intent={NextPickPageIntent(undefined)}><Text font={11} monospacedDigit foregroundStyle={th.accent}>{`${page + 1}/${pages} ›`}</Text></Tap> : null}
+          </HStack>
+        )}
+      />
+      {chunk(nodes, 2).map(row => (
+        <HStack spacing={5}>
+          {row.map(cell)}
+          {row.length < 2 ? <VStack frame={{ maxWidth: 'infinity' }} /> : null}
+        </HStack>
+      ))}
+      <Spacer minLength={0} />
+    </Root>
+  )
+}
+
 export function GroupsStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, loon } = ctx

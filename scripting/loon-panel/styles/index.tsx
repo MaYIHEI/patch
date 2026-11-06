@@ -10,7 +10,7 @@ import { RingStyle, TrendStyle, LockCircular, LockRect, LockInline } from './usa
 import { NodeStyle, HealthStyle } from './node'
 import { BoardStyle } from './board'
 import { TodayStyle, BudgetStyle, MultiSmall, MultiMedium, CountdownStyle, CompareStyle, HoursStyle, ValueStyle, MonthStyle } from './flow'
-import { UnlockSmall, UnlockMedium, ModeStyle, IpStyle, SafetyStyle, RankStyle, ConsoleStyle, GroupsStyle, EventsStyle, PingStyle, NodesStyle, ReportStyle, LockLatency, LockToday, LockPing } from './net'
+import { UnlockSmall, UnlockMedium, PickerStyle, ModeStyle, IpStyle, SafetyStyle, RankStyle, ConsoleStyle, GroupsStyle, EventsStyle, PingStyle, NodesStyle, ReportStyle, LockLatency, LockToday, LockPing } from './net'
 
 type View = (props: { ctx: Ctx }) => any
 
@@ -39,7 +39,8 @@ export const STYLES: StyleDef[] = [
   { id: 'Q', name: '今日时段', icon: 'clock.fill', desc: '今天每小时用了多少, 高峰在几点', views: { systemMedium: HoursStyle } },
   { id: 'S', name: '延迟排行', icon: 'trophy.fill', desc: '最快的 5 个节点, 点一行切过去', views: { systemMedium: RankStyle } },
   { id: 'T', name: '控制台', icon: 'slider.horizontal.below.rectangle', desc: '切模式、切最快、体检、更新订阅', views: { systemMedium: ConsoleStyle } },
-  { id: 'U', name: '策略组卡片', icon: 'square.grid.2x2.fill', desc: '4 个策略组的当前节点, 点卡片切到最快', views: { systemMedium: GroupsStyle } },
+  { id: 'U', name: '策略组卡片', icon: 'square.grid.2x2.fill', desc: '常用策略组的当前节点, 点卡片切到最快, 可以翻页', views: { systemMedium: GroupsStyle } },
+  { id: 'AE', name: '切换器', icon: 'arrow.triangle.swap', desc: '常用策略组的全部节点, 点哪个切哪个, 可以换组和翻页', views: { systemMedium: PickerStyle, systemLarge: PickerStyle } },
   { id: 'V', name: '事件时间线', icon: 'list.bullet.rectangle.fill', desc: '切网络、节点挂了、自动切换、用量提醒', views: { systemMedium: EventsStyle } },
   { id: 'W', name: '三网延迟', icon: 'point.3.connected.trianglepath.dotted', desc: '电信、联通、移动到出口的延迟、丢包和入站路径', views: { systemMedium: PingStyle } },
   { id: 'X', name: '性价比', icon: 'yensign.circle.fill', desc: '每 G 多少钱、剩余流量还值多少', views: { systemMedium: ValueStyle } },
