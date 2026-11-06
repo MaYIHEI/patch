@@ -3,7 +3,7 @@
 
 import { AppIntentManager, AppIntentProtocol, Widget, ControlWidget } from 'scripting'
 
-import { setLoon, loadLoon, mainGroup, ownerGroup, switchTarget, turnGroupPage, nextPickGroup, turnPickPage, enterPick, leavePick, type Hop } from './loon'
+import { setLoon, loadLoon, mainGroup, ownerGroup, switchTarget, turnGroupPage, nextPickGroup, turnPickPage, enterPick, leavePick, openPick, closePick, type Hop } from './loon'
 import { loadSubs } from './subs'
 import { getPrefs } from './settings'
 
@@ -40,6 +40,7 @@ async function run(q: { mode?: number; group?: string; node?: string }, okText: 
   try {
     for (const v of via) await setLoon({ ...v, quiet: 1 }, TIMEOUT_S)
     await setLoon(q, TIMEOUT_S)
+    if (q.node) closePick()
     AppStorage.set(NOTE_KEY, { t: Date.now(), ok: true, text: okText })
   } catch (e) {
     AppStorage.set(NOTE_KEY, { t: Date.now(), ok: false, text: (e as Error).message.slice(0, 40) })
@@ -109,6 +110,25 @@ export const EnterPickIntent = AppIntentManager.register({
   protocol: AppIntentProtocol.AppIntent,
   perform: async ({ name }: { name: string }) => {
     enterPick(name)
+    Widget.reloadAll()
+  },
+})
+
+/** 策略组卡片、看板、总览: 点一个组, 这个尺寸的小组件变成切换器 */
+export const OpenPickIntent = AppIntentManager.register({
+  name: 'LoonPanelOpenPickIntent',
+  protocol: AppIntentProtocol.AppIntent,
+  perform: async ({ group, owner }: { group: string; owner: string }) => {
+    openPick(group, owner)
+    Widget.reloadAll()
+  },
+})
+
+export const ClosePickIntent = AppIntentManager.register({
+  name: 'LoonPanelClosePickIntent',
+  protocol: AppIntentProtocol.AppIntent,
+  perform: async (_: undefined) => {
+    closePick()
     Widget.reloadAll()
   },
 })

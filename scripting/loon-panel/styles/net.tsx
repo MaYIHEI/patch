@@ -6,11 +6,11 @@ import { VStack, HStack, ZStack, Text, Spacer, Image, Button, Link, Capsule, Rec
 import type { Color } from 'scripting'
 
 import {
-  MODES, groupPage, pickerView, switchTarget, rankedNodes, healthCount, availability, unlockNode, latestDeep, loonStatus, modeName,
+  MODES, groupPage, pickerView, focusOf, pathTo, mainGroup, rankedNodes, healthCount, availability, unlockNode, latestDeep, loonStatus, modeName,
   type Deep, type Group, type Isp,
 } from '../loon'
 import { fmtBytes, md, type SubView } from '../subs'
-import { ModeIntent, SwitchIntent, CheckIntent, FastestIntent, TurnGroupsIntent, NextPickGroupIntent, TurnPickPageIntent, EnterPickIntent, LeavePickIntent, readNote, readPending } from '../app_intents'
+import { ModeIntent, SwitchIntent, CheckIntent, FastestIntent, TurnGroupsIntent, NextPickGroupIntent, TurnPickPageIntent, EnterPickIntent, LeavePickIntent, OpenPickIntent, ClosePickIntent, readNote, readPending } from '../app_intents'
 import { mainGroupLeaf, checkText } from './node'
 import {
   Root, Header, Num, Empty, Cell, Dot, Pill, Spark, Uptime, RefreshButton, Bar, usageColor, latencyColor, latencyInk, latencyText, nodeLabel, asnText, flag, ago, hhmm,
@@ -210,13 +210,18 @@ export function RankStyle(props: { ctx: Ctx }) {
   const list = rankedNodes(loon).filter(x => x.r.ok).sort((a, b) => a.r.ms - b.r.ms).slice(0, 5)
   if (!list.length) return <Root ctx={ctx}><Header ctx={ctx} title="最快节点" /><Empty ctx={ctx} icon="stethoscope" text="还没有体检结果" /></Root>
   const max = Math.max(...list.map(x => x.r.ms))
+  const main = mainGroup(loon, ctx.prefs)
   return (
     <Root ctx={ctx} spacing={5}>
       <Header ctx={ctx} title="最快节点" right={`${checkText(ctx)}`} />
       {list.map((x, i) => {
-        const g = loon.groups.find(y => y.subs.includes(x.name) && y.now !== x.name)
+        // 从主策略组一层层走到这个节点; 走不到就切第一个含它的组
+        const owner = loon.groups.find(y => y.subs.includes(x.name) && y.now !== x.name)
+        const hops = pathTo(loon, main?.name ?? '', x.name) ?? (owner ? [{ group: owner.name, node: x.name }] : [])
+        const end = hops[hops.length - 1]
+        const moved = hops.some(h => loon.groups.find(y => y.name === h.group)?.now !== h.node)
         return (
-          <Tap ctx={ctx} intent={g && !loon.stale ? SwitchIntent({ group: g.name, node: x.name }) : undefined}>
+          <Tap ctx={ctx} intent={end && moved && !loon.stale ? SwitchIntent({ group: end.group, node: end.node, via: JSON.stringify(hops.slice(0, -1)) }) : undefined}>
             <HStack spacing={6}>
               <Text font={10} monospacedDigit foregroundStyle={th.t3} frame={{ width: 10 }}>{String(i + 1)}</Text>
               <Text font={12} fontWeight={x.current ? 'semibold' : 'regular'} foregroundStyle={th.t1} lineLimit={1}>{nodeLabel(x.name, x.r)}</Text>
@@ -295,7 +300,8 @@ export function PickerStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, loon } = ctx
   if (!loon) return <NoLoon ctx={ctx} title="切换器" />
-  const { group: g, via, nodes, page, pages, groups } = pickerView(loon, ctx.prefs, ctx.size === 'l' ? 15 : 6)
+  const open = ctx.inApp ? '' : focusOf(ctx.size)
+  const { group: g, via, nodes, page, pages, groups } = pickerView(loon, ctx.prefs, ctx.size === 'l' ? 15 : 6, open)
   if (!g) return <NoLoon ctx={ctx} title="切换器" />
   // 上面是当前节点, 下面是选项; 选项少时卡片定高, 多时撑满, 翻页时卡片大小不变
   const few = g.subs.length <= (ctx.size === 'l' ? 6 : 3)
@@ -328,7 +334,8 @@ export function PickerStyle(props: { ctx: Ctx }) {
           <HStack spacing={8}>
             {last ? <Tap ctx={ctx} intent={LeavePickIntent(undefined)}><Text font={11} foregroundStyle={th.accent} lineLimit={1}>上一层</Text></Tap> : null}
             {last && !linked && !loon.stale ? <Tap ctx={ctx} intent={SwitchIntent({ group: last.group, node: last.node, via: JSON.stringify(via.slice(0, -1)) })}><Text font={11} fontWeight="semibold" foregroundStyle={th.accent} lineLimit={1}>用这组</Text></Tap> : null}
-            {!last && groups > 1 ? <Tap ctx={ctx} intent={NextPickGroupIntent(undefined)}><Text font={11} foregroundStyle={th.accent} lineLimit={1}>换组</Text></Tap> : null}
+            {!last && open ? <Tap ctx={ctx} intent={ClosePickIntent(undefined)}><Text font={11} foregroundStyle={th.accent} lineLimit={1}>返回</Text></Tap> : null}
+            {!last && !open && groups > 1 ? <Tap ctx={ctx} intent={NextPickGroupIntent(undefined)}><Text font={11} foregroundStyle={th.accent} lineLimit={1}>换组</Text></Tap> : null}
             <Pager ctx={ctx} page={page} pages={pages} turn={step => TurnPickPageIntent({ step })} />
           </HStack>
         )}
@@ -344,16 +351,15 @@ export function PickerStyle(props: { ctx: Ctx }) {
   )
 }
 
-/** 一个策略组: 组名、延迟、当前节点; 点一下切到最快 */
+/** 一个策略组: 组名、延迟、当前节点; 点一下进切换器选节点 */
 export function GroupCell(props: { ctx: Ctx; g: Group }) {
   const { ctx, g } = props
   const { th } = ctx
   const loon = ctx.loon!
   const r = g.gone ? undefined : loon.nodes[g.leaf]
-  const target = loon.stale ? undefined : switchTarget(loon, g)
   const going = ctx.inApp ? null : readPending()
   return (
-    <Tap ctx={ctx} intent={target ? SwitchIntent({ group: g.name, node: target }) : undefined}>
+    <Tap ctx={ctx} intent={g.subs.length && !loon.stale ? OpenPickIntent({ group: g.name, owner: ctx.size }) : undefined}>
       <Cell ctx={ctx}>
         <HStack spacing={3}>
           <Text font={10} foregroundStyle={th.t2} lineLimit={1}>{g.name}</Text>
@@ -364,6 +370,13 @@ export function GroupCell(props: { ctx: Ctx; g: Group }) {
       </Cell>
     </Tap>
   )
+}
+
+/** 当前节点的可用率和全部节点里能用的个数 */
+function healthText(ctx: Ctx): string {
+  const a = availability(mainGroupLeaf(ctx)?.r)
+  const c = ctx.loon ? healthCount(ctx.loon) : null
+  return [a === null ? '' : `可用 ${Math.round(a * 100)}%`, c?.total ? `${c.ok}/${c.total} 节点` : ''].filter(Boolean).join(' · ')
 }
 
 /** 今天用了多少和到期 / 重置日 */
@@ -409,6 +422,8 @@ export function OverviewSmall(props: { ctx: Ctx }) {
         <VStack alignment="leading" spacing={1}>
           <Text font={11} foregroundStyle={th.t2} lineLimit={1}>{leaf?.group ?? '当前节点'}</Text>
           <Num value={latencyText(leaf?.r)} size={26} color={latencyInk(ctx, leaf?.r)} />
+          <Spark ctx={ctx} h={leaf?.r?.h} height={22} count={12} tone={th.accent} />
+          <Text font={10} foregroundStyle={th.t3} lineLimit={1} padding={{ top: 2 }}>{healthText(ctx)}</Text>
         </VStack>
       )}
       <Spacer minLength={0} />
@@ -426,6 +441,7 @@ export function OverviewStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, loon } = ctx
   if (!loon) return <NoLoon ctx={ctx} title="总览" />
+  if (!ctx.inApp && focusOf(ctx.size)) return <PickerStyle ctx={ctx} />
   const { list: groups, page, pages } = groupPage(loon, ctx.prefs, 4)
   const s = ctx.subs[0]
   const u = s?.usage
@@ -443,13 +459,16 @@ export function OverviewStyle(props: { ctx: Ctx }) {
         )}
       />
       <HStack spacing={10} alignment="top">
-        <VStack alignment="leading" spacing={3} frame={{ width: 108, alignment: 'leading' }}>
+        <VStack alignment="leading" spacing={3} frame={{ minWidth: 108, maxWidth: 108, maxHeight: 'infinity', alignment: 'topLeading' }}>
           <Text font={11} foregroundStyle={th.t2} lineLimit={1}>{u ? (u.total > 0 ? `${s.name} 剩余` : `${s.name} 已用`) : leaf?.group ?? '当前节点'}</Text>
           <Num value={u ? fmtBytes(u.total > 0 ? s.remain : s.used) : latencyText(leaf?.r)} size={24} color={u ? th.t1 : latencyInk(ctx, leaf?.r)} />
           {u && u.total > 0 ? <Bar ctx={ctx} value={s.ratio} color={usageColor(s.ratio)} height={4} /> : null}
           {u ? <Text font={10} foregroundStyle={th.t2} lineLimit={1} minScaleFactor={0.8}>{subLine(s)}</Text> : null}
           {u ? <Text font={12} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={latencyInk(ctx, leaf?.r)} lineLimit={1} padding={{ top: 3 }}>{latencyText(leaf?.r)}</Text> : null}
           <Text font={10} foregroundStyle={th.t3} lineLimit={1}>{leaf ? nodeLabel(leaf.name, leaf.r) : ''}</Text>
+          {u ? null : <Spacer minLength={0} />}
+          {u ? null : <Spark ctx={ctx} h={leaf?.r?.h} height={24} count={12} tone={th.accent} />}
+          {u ? null : <Text font={10} foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.8}>{healthText(ctx)}</Text>}
         </VStack>
         <VStack spacing={6} frame={{ maxWidth: 'infinity' }}>
           {chunk(groups, 2).map(row => (
@@ -468,6 +487,7 @@ export function GroupsStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { loon } = ctx
   if (!loon) return <NoLoon ctx={ctx} title="策略组" />
+  if (!ctx.inApp && focusOf(ctx.size)) return <PickerStyle ctx={ctx} />
   const { list: groups, page, pages } = groupPage(loon, ctx.prefs, 4)
   return (
     <Root ctx={ctx} spacing={6}>

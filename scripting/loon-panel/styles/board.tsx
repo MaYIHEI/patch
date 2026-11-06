@@ -1,15 +1,15 @@
 // loon-panel / styles/board.tsx
-// E 全景看板 (大): 模式切换 · 多机场对比 · 策略组当前节点和延迟 (点行切到最快) · 出口信息
+// E 全景看板 (大): 模式切换 · 多机场对比 · 策略组当前节点和延迟 (点卡片选节点) · 出口信息
 
 import { VStack, HStack, Text, Spacer, Image, Capsule, Rectangle, RoundedRectangle } from 'scripting'
 
-import { MODES, groupPage, healthCount, unlockNode, loonStatus } from '../loon'
+import { MODES, groupPage, healthCount, unlockNode, loonStatus, focusOf } from '../loon'
 import { fmtBytes } from '../subs'
 import { ModeIntent, CheckIntent, readNote } from '../app_intents'
 import { mainGroupLeaf } from './node'
-import { PageButton, GroupCell, Tap } from './net'
+import { PageButton, GroupCell, PickerStyle, Tap } from './net'
 import { pct, fcColor, staleMark } from './usage'
-import { Root, Logo, Bar, RefreshButton, chunk, usageColor, mediaColor, flag, syncText, OK, BAD, WARN, type Ctx } from '../ui'
+import { Root, Logo, Num, Spark, latencyText, latencyInk, nodeLabel, Bar, RefreshButton, chunk, usageColor, mediaColor, flag, syncText, OK, BAD, WARN, type Ctx } from '../ui'
 
 function Section(props: { ctx: Ctx; title: string; right?: string; trailing?: any }) {
   const { th } = props.ctx
@@ -50,6 +50,7 @@ function ModeBar(props: { ctx: Ctx }) {
 export function BoardStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, loon } = ctx
+  if (loon && !ctx.inApp && focusOf(ctx.size)) return <PickerStyle ctx={ctx} />
   const subs = ctx.subs.slice(0, 2)
   const { list: groups, page, pages } = loon ? groupPage(loon, ctx.prefs, subs.length ? 4 : 6) : { list: [], page: 0, pages: 1 }   // 没有机场时多放一行, 不留空
   const leaf = mainGroupLeaf(ctx)
@@ -108,6 +109,14 @@ export function BoardStyle(props: { ctx: Ctx }) {
       <Spacer minLength={0} />
       {leaf ? (
         <VStack spacing={3} padding={{ horizontal: 10, vertical: 6 }} background={<RoundedRectangle cornerRadius={12} style="continuous" fill={th.card} />}>
+          {subs.length ? null : (
+            <HStack spacing={8}>
+              <Num value={latencyText(leaf.r)} size={20} color={latencyInk(ctx, leaf.r)} />
+              <Text font={10} foregroundStyle={th.t3} lineLimit={1}>{nodeLabel(leaf.name, leaf.r)}</Text>
+              <Spacer minLength={4} />
+              <Spark ctx={ctx} h={leaf.r?.h} width={96} height={20} tone={th.accent} />
+            </HStack>
+          )}
           <HStack spacing={6}>
             <Text font={10} foregroundStyle={th.t2} lineLimit={1}>{`出口 · ${leaf.group}`}</Text>
             <Spacer minLength={4} />
