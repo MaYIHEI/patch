@@ -21,8 +21,8 @@ const NO_LOON = '读不到 Loon 数据\n打开 App 看排查步骤'
 const NO_DEEP = '还没做过深度检测\n在 App 的策略组页里点「深度检测」'
 const ISP: Record<Isp, string> = { ct: '电信', cu: '联通', cm: '移动' }
 
-function NoLoon(props: { ctx: Ctx; title: string; icon: string }) {
-  return <Root ctx={props.ctx}><Header ctx={props.ctx} title={props.title} icon={props.icon} font={12} /><Empty ctx={props.ctx} icon="bolt.horizontal.circle" text={NO_LOON} /></Root>
+function NoLoon(props: { ctx: Ctx; title: string }) {
+  return <Root ctx={props.ctx}><Header ctx={props.ctx} title={props.title} font={12} /><Empty ctx={props.ctx} icon="bolt.horizontal.circle" text={NO_LOON} /></Root>
 }
 
 /** 小组件里是按钮, App 预览里只是样子 */
@@ -73,12 +73,12 @@ function Status(props: { ctx: Ctx }) {
 function MediaGrid(props: { ctx: Ctx; cols: number; title: string }) {
   const { ctx, cols } = props
   const { th } = ctx
-  if (!ctx.loon) return <NoLoon ctx={ctx} title={props.title} icon="lock.open.fill" />
+  if (!ctx.loon) return <NoLoon ctx={ctx} title={props.title} />
   const u = unlockNode(ctx.loon, ctx.prefs)
   const list = (u?.list ?? []).slice(0, 6)
   return (
     <Root ctx={ctx} spacing={6}>
-      <Header ctx={ctx} title={props.title} icon="lock.open.fill" font={12} right={cols === 3 && u ? `${nodeLabel(u.node, ctx.loon.nodes[u.node])}` : u?.group} />
+      <Header ctx={ctx} title={props.title} font={12} right={cols === 3 && u ? `${nodeLabel(u.node, ctx.loon.nodes[u.node])}` : u?.group} />
       {list.length ? (
         <VStack spacing={4} frame={{ maxHeight: 'infinity', alignment: 'top' }}>
           {chunk(list, cols).map(row => (
@@ -110,7 +110,7 @@ export function ModeStyle(props: { ctx: Ctx }) {
   const cur = ctx.loon?.mode ?? -1
   return (
     <Root ctx={ctx} spacing={5}>
-      <Header ctx={ctx} title="Loon" icon="slider.horizontal.3" font={12} />
+      <Header ctx={ctx} title="Loon" font={12} />
       {MODES.map(m => (
         <Tap ctx={ctx} intent={ctx.loon && !ctx.loon.stale && m.id !== cur ? ModeIntent({ mode: m.id }) : undefined}>
           <Block ctx={ctx} on={m.id === cur} icon={m.icon} text={m.id === cur && leaf?.r?.ok ? `${m.short} · ${leaf.r.ms}ms` : m.name} />
@@ -140,13 +140,13 @@ export function ipTags(d: Deep): { text: string; color: Color }[] {
 export function IpStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th } = ctx
-  if (!ctx.loon) return <NoLoon ctx={ctx} title="出口 IP" icon="checkmark.shield.fill" />
+  if (!ctx.loon) return <NoLoon ctx={ctx} title="出口 IP" />
   const hit = latestDeep(ctx.loon, ctx.prefs)
   const leaf = mainGroupLeaf(ctx)
   const ip = hit?.data.basic?.ip ?? leaf?.r?.ip
   return (
     <Root ctx={ctx} spacing={4}>
-      <Header ctx={ctx} title="出口 IP" icon="checkmark.shield.fill" font={12} right={flag(hit?.data.basic?.cc ?? leaf?.r?.cc)} />
+      <Header ctx={ctx} title="出口 IP" font={12} right={flag(hit?.data.basic?.cc ?? leaf?.r?.cc)} />
       <Text font={13} fontWeight="semibold" monospacedDigit foregroundStyle={th.t1} lineLimit={1} minScaleFactor={0.6}>{ip ?? '未知'}</Text>
       <Text font={10} foregroundStyle={th.t2} lineLimit={1}>{asnText(leaf?.r) || hit?.data.basic?.org || ''}</Text>
       {hit ? (
@@ -176,7 +176,7 @@ export function SafetyStyle(props: { ctx: Ctx }) {
   ]
   return (
     <Root ctx={ctx} spacing={7}>
-      <Header ctx={ctx} title="网络安全" icon="lock.shield.fill" font={12} />
+      <Header ctx={ctx} title="网络安全" font={12} />
       {rows.map(r => (
         <HStack spacing={6}>
           <Dot color={r.color} size={8} />
@@ -197,13 +197,13 @@ export function SafetyStyle(props: { ctx: Ctx }) {
 export function RankStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, loon } = ctx
-  if (!loon) return <NoLoon ctx={ctx} title="最快节点" icon="trophy.fill" />
+  if (!loon) return <NoLoon ctx={ctx} title="最快节点" />
   const list = rankedNodes(loon).filter(x => x.r.ok).sort((a, b) => a.r.ms - b.r.ms).slice(0, 5)
-  if (!list.length) return <Root ctx={ctx}><Header ctx={ctx} title="最快节点" icon="trophy.fill" /><Empty ctx={ctx} icon="stethoscope" text="还没有体检结果" /></Root>
+  if (!list.length) return <Root ctx={ctx}><Header ctx={ctx} title="最快节点" /><Empty ctx={ctx} icon="stethoscope" text="还没有体检结果" /></Root>
   const max = Math.max(...list.map(x => x.r.ms))
   return (
     <Root ctx={ctx} spacing={5}>
-      <Header ctx={ctx} title="最快节点" icon="trophy.fill" right={`${checkText(ctx)}`} />
+      <Header ctx={ctx} title="最快节点" right={`${checkText(ctx)}`} />
       {list.map((x, i) => {
         const g = loon.groups.find(y => y.subs.includes(x.name) && y.now !== x.name)
         return (
@@ -285,9 +285,9 @@ function PickerNow(props: { ctx: Ctx; group: Group; full: boolean }) {
 export function PickerStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, loon } = ctx
-  if (!loon) return <NoLoon ctx={ctx} title="切换器" icon="arrow.triangle.swap" />
+  if (!loon) return <NoLoon ctx={ctx} title="切换器" />
   const { group: g, nodes, page, pages, groups } = pickerView(loon, ctx.prefs, ctx.size === 'l' ? 15 : 6)
-  if (!g) return <NoLoon ctx={ctx} title="切换器" icon="arrow.triangle.swap" />
+  if (!g) return <NoLoon ctx={ctx} title="切换器" />
   // 上面是当前节点, 下面是选项; 选项少时卡片定高, 多时撑满, 翻页时卡片大小不变
   const few = g.subs.length <= (ctx.size === 'l' ? 6 : 3)
   const cols = g.subs.length === 4 ? 2 : 3
@@ -312,7 +312,6 @@ export function PickerStyle(props: { ctx: Ctx }) {
       <Header
         ctx={ctx}
         title={g.name}
-        icon="arrow.triangle.swap"
         trailing={(
           <HStack spacing={8}>
             {groups > 1 ? <Tap ctx={ctx} intent={NextPickGroupIntent(undefined)}><Text font={11} foregroundStyle={th.accent} lineLimit={1}>换组</Text></Tap> : null}
@@ -357,7 +356,7 @@ export function GroupCell(props: { ctx: Ctx; g: Group }) {
 export function OverviewStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, loon } = ctx
-  if (!loon) return <NoLoon ctx={ctx} title="总览" icon="rectangle.split.2x1.fill" />
+  if (!loon) return <NoLoon ctx={ctx} title="总览" />
   const { list: groups, page, pages } = groupPage(loon, ctx.prefs, 4)
   const s = ctx.subs[0]
   const u = s?.usage
@@ -367,7 +366,6 @@ export function OverviewStyle(props: { ctx: Ctx }) {
       <Header
         ctx={ctx}
         title="总览"
-        icon="rectangle.split.2x1.fill"
         trailing={(
           <HStack spacing={6}>
             <PageButton ctx={ctx} page={page} pages={pages} />
@@ -401,11 +399,11 @@ export function OverviewStyle(props: { ctx: Ctx }) {
 export function GroupsStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { loon } = ctx
-  if (!loon) return <NoLoon ctx={ctx} title="策略组" icon="square.grid.2x2.fill" />
+  if (!loon) return <NoLoon ctx={ctx} title="策略组" />
   const { list: groups, page, pages } = groupPage(loon, ctx.prefs, 4)
   return (
     <Root ctx={ctx} spacing={6}>
-      <Header ctx={ctx} title="策略组" icon="square.grid.2x2.fill" right={modeName(loon.mode)} trailing={<PageButton ctx={ctx} page={page} pages={pages} />} />
+      <Header ctx={ctx} title="策略组" right={modeName(loon.mode)} trailing={<PageButton ctx={ctx} page={page} pages={pages} />} />
       {chunk(groups, 2).map(row => (
         <HStack spacing={6}>
           {row.map(g => <GroupCell ctx={ctx} g={g} />)}
@@ -427,7 +425,7 @@ export function EventsStyle(props: { ctx: Ctx }) {
   const list = ctx.events.slice(0, 5)
   return (
     <Root ctx={ctx} spacing={5}>
-      <Header ctx={ctx} title="发生了什么" icon="list.bullet.rectangle.fill" right={ctx.events.length ? `${ctx.events.length} 件` : undefined} />
+      <Header ctx={ctx} title="发生了什么" right={ctx.events.length ? `${ctx.events.length} 件` : undefined} />
       {list.length ? list.map(e => (
         <HStack spacing={6}>
           <Text font={10} monospacedDigit foregroundStyle={th.t3} frame={{ width: 34, alignment: 'leading' }}>{hhmm(e.t)}</Text>
@@ -468,12 +466,12 @@ function PingCards(props: { ctx: Ctx; d: Deep }) {
 export function PingStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th } = ctx
-  if (!ctx.loon) return <NoLoon ctx={ctx} title="三网延迟" icon="point.3.connected.trianglepath.dotted" />
+  if (!ctx.loon) return <NoLoon ctx={ctx} title="三网延迟" />
   const hit = latestDeep(ctx.loon, ctx.prefs)
-  if (!hit?.data.ping) return <Root ctx={ctx}><Header ctx={ctx} title="三网延迟" icon="point.3.connected.trianglepath.dotted" /><Empty ctx={ctx} icon="point.3.connected.trianglepath.dotted" text={NO_DEEP} /></Root>
+  if (!hit?.data.ping) return <Root ctx={ctx}><Header ctx={ctx} title="三网延迟" /><Empty ctx={ctx} icon="point.3.connected.trianglepath.dotted" text={NO_DEEP} /></Root>
   return (
     <Root ctx={ctx} spacing={7}>
-      <Header ctx={ctx} title="三网延迟" icon="point.3.connected.trianglepath.dotted" right={`${ago(hit.data.t)} 检测`} />
+      <Header ctx={ctx} title="三网延迟" right={`${ago(hit.data.t)} 检测`} />
       <PingCards ctx={ctx} d={hit.data} />
       <Spacer minLength={0} />
       <Text font={10} foregroundStyle={th.t3} lineLimit={1}>{`外部探针到 ${nodeLabel(hit.node, ctx.loon.nodes[hit.node])} 出口`}</Text>
@@ -484,7 +482,7 @@ export function PingStyle(props: { ctx: Ctx }) {
 export function NodesStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, loon } = ctx
-  if (!loon) return <NoLoon ctx={ctx} title="节点全景" icon="stethoscope" />
+  if (!loon) return <NoLoon ctx={ctx} title="节点全景" />
   const c = healthCount(loon)
   const list = rankedNodes(loon).slice(0, 8)
   const u = unlockNode(loon, ctx.prefs)
@@ -492,7 +490,7 @@ export function NodesStyle(props: { ctx: Ctx }) {
   const deep = latestDeep(loon, ctx.prefs)
   return (
     <Root ctx={ctx} spacing={6}>
-      <Header ctx={ctx} title="节点全景" icon="stethoscope" font={14} right={`${c.ok}/${c.total} 可用 · ${checkText(ctx)}`} />
+      <Header ctx={ctx} title="节点全景" font={14} right={`${c.ok}/${c.total} 可用 · ${checkText(ctx)}`} />
       {list.length ? list.map(x => {
         const a = availability(x.r)
         return (
@@ -531,16 +529,16 @@ function Line(props: { ctx: Ctx; label: string; text: string; color?: any }) {
 export function ReportStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, loon } = ctx
-  if (!loon) return <NoLoon ctx={ctx} title="线路体检报告" icon="doc.text.magnifyingglass" />
+  if (!loon) return <NoLoon ctx={ctx} title="线路体检报告" />
   const hit = latestDeep(loon, ctx.prefs)
-  if (!hit) return <Root ctx={ctx}><Header ctx={ctx} title="线路体检报告" icon="doc.text.magnifyingglass" font={14} /><Empty ctx={ctx} icon="doc.text.magnifyingglass" text={NO_DEEP} /></Root>
+  if (!hit) return <Root ctx={ctx}><Header ctx={ctx} title="线路体检报告" font={14} /><Empty ctx={ctx} icon="doc.text.magnifyingglass" text={NO_DEEP} /></Root>
   const d = hit.data
   const way = (d.backhaul ?? []).map(b => `${ISP[b.isp]} ${b.summary ?? ''}`.trim()).join(' · ')
   const media = (d.media ?? []).filter(m => m.status === 'yes').map(m => m.name)
   const stab = d.stability?.length ? d.stability.reduce((a, s) => ({ ok: a.ok + s.ok, total: a.total + s.total }), { ok: 0, total: 0 }) : null
   return (
     <Root ctx={ctx} spacing={6}>
-      <Header ctx={ctx} title="线路体检报告" icon="doc.text.magnifyingglass" font={14} right={`${ago(d.t)} 检测`} />
+      <Header ctx={ctx} title="线路体检报告" font={14} right={`${ago(d.t)} 检测`} />
       <Text font={13} fontWeight="semibold" foregroundStyle={th.t1} lineLimit={1}>{nodeLabel(hit.node, loon.nodes[hit.node])}</Text>
       <Text font={10} foregroundStyle={th.t2} lineLimit={1}>{[d.basic?.ip, d.basic?.asn ? `AS${d.basic.asn}` : '', d.basic?.org].filter(Boolean).join(' · ')}</Text>
       <HStack spacing={4}>{ipTags(d).slice(0, 3).map(t => <Pill text={t.text} fg={t.color} bg={withAlpha(t.color, 0.16)} font={10} />)}</HStack>

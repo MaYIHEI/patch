@@ -25,11 +25,11 @@ export function NodeStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th } = ctx
   const leaf = mainGroupLeaf(ctx)
-  if (!ctx.loon || !leaf) return <Root ctx={ctx}><Header ctx={ctx} title="当前节点" icon="antenna.radiowaves.left.and.right" font={12} /><Empty ctx={ctx} icon="bolt.horizontal.circle" text={NO_LOON} /></Root>
+  if (!ctx.loon || !leaf) return <Root ctx={ctx}><Header ctx={ctx} title="当前节点" font={12} /><Empty ctx={ctx} icon="bolt.horizontal.circle" text={NO_LOON} /></Root>
   const r = leaf.r
   return (
     <Root ctx={ctx} spacing={4}>
-      <Header ctx={ctx} title={leaf.group} icon="antenna.radiowaves.left.and.right" font={12} right={modeName(ctx.loon.mode)} rightColor={th.accent} />
+      <Header ctx={ctx} title={leaf.group} font={12} right={modeName(ctx.loon.mode)} rightColor={th.accent} />
       <Spacer minLength={0} />
       <Text font={15} fontWeight="semibold" foregroundStyle={th.t1} lineLimit={2} minScaleFactor={0.7}>{nodeLabel(leaf.name, r)}</Text>
       <HStack alignment="lastTextBaseline" spacing={3}>
@@ -51,10 +51,10 @@ export function NodeStyle(props: { ctx: Ctx }) {
 export function HealthStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th } = ctx
-  if (!ctx.loon) return <Root ctx={ctx}><Header ctx={ctx} title="节点体检" icon="stethoscope" /><Empty ctx={ctx} icon="bolt.horizontal.circle" text={NO_LOON} /></Root>
+  if (!ctx.loon) return <Root ctx={ctx}><Header ctx={ctx} title="节点体检" /><Empty ctx={ctx} icon="bolt.horizontal.circle" text={NO_LOON} /></Root>
   const list = rankedNodes(ctx.loon)
   const c = healthCount(ctx.loon)
-  if (!list.length) return <Root ctx={ctx}><Header ctx={ctx} title="节点体检" icon="stethoscope" right={syncText(ctx)} /><Empty ctx={ctx} icon="stethoscope" text={'还没有体检结果\n在 App 里点「立即体检」'} /></Root>
+  if (!list.length) return <Root ctx={ctx}><Header ctx={ctx} title="节点体检" right={syncText(ctx)} /><Empty ctx={ctx} icon="stethoscope" text={'还没有体检结果\n在 App 里点「立即体检」'} /></Root>
   const rows = list.slice(0, 4)
   return (
     <Root ctx={ctx} spacing={6}>

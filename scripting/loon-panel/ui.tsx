@@ -214,11 +214,17 @@ export function Dot(props: { color: Paint; size?: number }) {
 }
 
 /** 标题行: 左标题, 右灰字 */
-export function Header(props: { ctx: Ctx; title: string; icon?: string; right?: string; rightColor?: Paint; font?: number; trailing?: any }) {
+const LOGO_URL = 'https://raw.githubusercontent.com/Loon0x00/Loon0x00.github.io/main/static/img/loon.png'
+
+export function Logo(props: { size: number }) {
+  return <Image imageUrl={LOGO_URL} resizable frame={{ width: props.size, height: props.size }} clipShape={{ type: 'rect', cornerRadius: props.size * 0.24 }} />
+}
+
+export function Header(props: { ctx: Ctx; title: string; right?: string; rightColor?: Paint; font?: number; trailing?: any }) {
   const { th } = props.ctx
   return (
     <HStack spacing={5}>
-      {props.icon ? <Image systemName={props.icon} font={(props.font ?? 13) - 1} fontWeight="semibold" foregroundStyle={th.accent} /> : null}
+      <Logo size={(props.font ?? 13) + 3} />
       <Text font={props.font ?? 13} fontWeight="semibold" foregroundStyle={th.t1} lineLimit={1}>{props.title}</Text>
       <Spacer minLength={4} />
       {props.right ? <Text font={11} foregroundStyle={props.rightColor ?? th.t3} lineLimit={1}>{props.right}</Text> : null}

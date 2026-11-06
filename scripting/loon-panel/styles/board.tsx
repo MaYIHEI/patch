@@ -9,7 +9,7 @@ import { ModeIntent, CheckIntent, readNote } from '../app_intents'
 import { mainGroupLeaf } from './node'
 import { PageButton, GroupCell, Tap } from './net'
 import { pct, fcColor, staleMark } from './usage'
-import { Root, Bar, RefreshButton, chunk, usageColor, mediaColor, asnText, flag, syncText, OK, BAD, WARN, type Ctx } from '../ui'
+import { Root, Logo, Bar, RefreshButton, chunk, usageColor, mediaColor, asnText, flag, syncText, OK, BAD, WARN, type Ctx } from '../ui'
 
 function Section(props: { ctx: Ctx; title: string; right?: string; trailing?: any }) {
   const { th } = props.ctx
@@ -60,7 +60,7 @@ export function BoardStyle(props: { ctx: Ctx }) {
   return (
     <Root ctx={ctx} spacing={8}>
       <HStack spacing={6}>
-        <Image systemName="gauge.with.dots.needle.67percent" font={14} fontWeight="semibold" foregroundStyle={th.accent} />
+        <Logo size={18} />
         <Text font={15} fontWeight="bold" foregroundStyle={th.t1}>Loon 面板</Text>
         <Spacer minLength={4} />
         <Text font={11} foregroundStyle={note ? (note.ok ? OK : BAD) : status.level === 'ok' ? th.t3 : status.level === 'warn' ? WARN : BAD} lineLimit={1}>{note ? note.text : status.level === 'ok' ? syncText(ctx) : status.text}</Text>
