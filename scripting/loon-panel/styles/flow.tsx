@@ -10,8 +10,8 @@ import { Root, Header, Num, Empty, Cell, Bar, HourBars, usageColor, withAlpha, c
 const NO_SUB = '在 App 里添加机场订阅'
 const G = 1024 ** 3
 
-function NoSub(props: { ctx: Ctx; title: string; icon: string }) {
-  return <Root ctx={props.ctx}><Header ctx={props.ctx} title={props.title} icon={props.icon} font={12} /><Empty ctx={props.ctx} icon="plus.circle" text={NO_SUB} /></Root>
+function NoSub(props: { ctx: Ctx; title: string }) {
+  return <Root ctx={props.ctx}><Header ctx={props.ctx} title={props.title} font={12} /><Empty ctx={props.ctx} icon="plus.circle" text={NO_SUB} /></Root>
 }
 
 /** 近 1 小时: 「近 1 小时 1.2G · ≈2.7Mbps」 */
@@ -23,10 +23,10 @@ export const rateText = (r: { bytes: number; mbps: number } | null) => (r ? `近
 export function TodayStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, all } = ctx
-  if (!ctx.subs.length) return <NoSub ctx={ctx} title="今天" icon="arrow.up.arrow.down" />
+  if (!ctx.subs.length) return <NoSub ctx={ctx} title="今天" />
   return (
     <Root ctx={ctx} spacing={4}>
-      <Header ctx={ctx} title="今天" icon="arrow.up.arrow.down" font={12} right={`${ctx.subs.length} 个机场`} />
+      <Header ctx={ctx} title="今天" font={12} right={`${ctx.subs.length} 个机场`} />
       <Num value={fmtBytes(all.today)} size={28} color={th.t1} weight="bold" />
       <Text font={10} foregroundStyle={th.t2} lineLimit={1} minScaleFactor={0.7}>{rateText(all.recent)}</Text>
       <Spacer minLength={0} />
@@ -42,12 +42,12 @@ export function BudgetStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th } = ctx
   const s = mainSub(ctx)
-  if (!s) return <NoSub ctx={ctx} title="今日额度" icon="gauge.with.needle" />
+  if (!s) return <NoSub ctx={ctx} title="今日额度" />
   const b = s.budget
   if (!b) {
     return (
       <Root ctx={ctx}>
-        <Header ctx={ctx} title="今日额度" icon="gauge.with.needle" font={12} right={s.name} />
+        <Header ctx={ctx} title="今日额度" font={12} right={s.name} />
         <Empty ctx={ctx} icon="calendar.badge.plus" text={s.usage?.total ? '没有到期日, 在 App 里填每月重置日' : s.usage ? '不限流量' : s.err ?? '读取中'} />
       </Root>
     )
@@ -56,7 +56,7 @@ export function BudgetStyle(props: { ctx: Ctx }) {
   const color = ratio >= 1 ? BAD : ratio >= 0.7 ? WARN : OK
   return (
     <Root ctx={ctx} spacing={4}>
-      <Header ctx={ctx} title="今日额度" icon="gauge.with.needle" font={12} right={s.name} />
+      <Header ctx={ctx} title="今日额度" font={12} right={s.name} />
       <HStack alignment="lastTextBaseline" spacing={3}>
         <Num value={fmtBytes(s.today)} size={24} color={color} weight="bold" />
         <Text font={12} foregroundStyle={th.t2}>{`/ ${fmtBytes(b.today)}`}</Text>
@@ -77,11 +77,11 @@ const remainText = (s: SubView) => (s.usage ? (s.usage.total > 0 ? fmtBytes(s.re
 export function MultiSmall(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th } = ctx
-  if (!ctx.subs.length) return <NoSub ctx={ctx} title="机场" icon="square.stack.3d.up.fill" />
+  if (!ctx.subs.length) return <NoSub ctx={ctx} title="机场" />
   const first = ctx.subs.filter(s => s.fc.kind === 'runout').sort((a, b) => (a.fc.date ?? 0) - (b.fc.date ?? 0))[0]
   return (
     <Root ctx={ctx} spacing={5}>
-      <Header ctx={ctx} title="机场" icon="square.stack.3d.up.fill" font={12} right="剩余" />
+      <Header ctx={ctx} title="机场" font={12} right="剩余" />
       {ctx.subs.slice(0, 3).map(s => (
         <VStack alignment="leading" spacing={2}>
           <HStack spacing={4}>
@@ -101,10 +101,10 @@ export function MultiSmall(props: { ctx: Ctx }) {
 export function MultiMedium(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, all } = ctx
-  if (!ctx.subs.length) return <NoSub ctx={ctx} title="机场对比" icon="square.stack.3d.up.fill" />
+  if (!ctx.subs.length) return <NoSub ctx={ctx} title="机场对比" />
   return (
     <Root ctx={ctx} spacing={7}>
-      <Header ctx={ctx} title="机场对比" icon="square.stack.3d.up.fill" right="剩余" />
+      <Header ctx={ctx} title="机场对比" right="剩余" />
       <HStack spacing={6}>
         {ctx.subs.slice(0, 3).map(s => (
           <Cell ctx={ctx} gap={3}>
@@ -128,16 +128,16 @@ export function CountdownStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th } = ctx
   const s = mainSub(ctx)
-  if (!s) return <NoSub ctx={ctx} title="倒计时" icon="calendar" />
+  if (!s) return <NoSub ctx={ctx} title="倒计时" />
   if (!s.deadline) {
-    return <Root ctx={ctx}><Header ctx={ctx} title={s.name} icon="calendar" font={12} /><Empty ctx={ctx} icon="infinity" text={s.usage ? '没有到期日, 可在 App 里填每月重置日' : s.err ?? '读取中'} /></Root>
+    return <Root ctx={ctx}><Header ctx={ctx} title={s.name} font={12} /><Empty ctx={ctx} icon="infinity" text={s.usage ? '没有到期日, 可在 App 里填每月重置日' : s.err ?? '读取中'} /></Root>
   }
   const days = Math.max(0, Math.ceil((s.deadline - Date.now()) / 86_400_000))
   const last = s.fc.date ? Math.floor((s.fc.date - Date.now()) / 86_400_000) : 0
   const short = s.fc.kind === 'runout'
   return (
     <Root ctx={ctx} spacing={3}>
-      <Header ctx={ctx} title={s.name} icon="calendar" font={12} />
+      <Header ctx={ctx} title={s.name} font={12} />
       <HStack alignment="lastTextBaseline" spacing={3}>
         <Num value={days} size={38} color={th.t1} weight="bold" />
         <Text font={13} foregroundStyle={th.t2}>天</Text>
@@ -157,13 +157,13 @@ export function CountdownStyle(props: { ctx: Ctx }) {
 export function CompareStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, all } = ctx
-  if (!ctx.subs.length) return <NoSub ctx={ctx} title="环比" icon="arrow.left.arrow.right" />
+  if (!ctx.subs.length) return <NoSub ctx={ctx} title="环比" />
   const y = all.yesterday
   const up = y !== null && all.today > y
   const change = y ? (all.today - y) / y : null
   return (
     <Root ctx={ctx} spacing={4}>
-      <Header ctx={ctx} title="今天比昨天" icon="arrow.left.arrow.right" font={12} />
+      <Header ctx={ctx} title="今天比昨天" font={12} />
       <Num value={change === null ? '记录中' : `${change >= 0 ? '+' : ''}${Math.round(change * 100)}%`} size={change === null ? 20 : 30} color={change === null ? th.t2 : up ? WARN : OK} weight="bold" />
       <Spacer minLength={0} />
       <Bar ctx={ctx} value={y ? Math.min(1, all.today / Math.max(all.today, y)) : 0} color={th.accent} height={5} />
@@ -180,11 +180,11 @@ export function CompareStyle(props: { ctx: Ctx }) {
 export function HoursStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, all } = ctx
-  if (!ctx.subs.length) return <NoSub ctx={ctx} title="今天每小时" icon="clock.fill" />
+  if (!ctx.subs.length) return <NoSub ctx={ctx} title="今天每小时" />
   const slow = Math.max(0, ...ctx.subs.map(s => s.interval))
   return (
     <Root ctx={ctx} spacing={5}>
-      <Header ctx={ctx} title="今天每小时" icon="clock.fill" right={`合计 ${fmtBytes(all.today)}${all.peakHour >= 0 ? ` · 高峰 ${all.peakHour} 点` : ''}`} />
+      <Header ctx={ctx} title="今天每小时" right={`合计 ${fmtBytes(all.today)}${all.peakHour >= 0 ? ` · 高峰 ${all.peakHour} 点` : ''}`} />
       <HourBars ctx={ctx} values={all.hourly} height={78} />
       <HStack>
         {['0', '6', '12', '18'].map(x => <Text font={9} foregroundStyle={th.t3} frame={{ maxWidth: 'infinity', alignment: 'leading' }}>{x}</Text>)}
@@ -200,14 +200,14 @@ export function HoursStyle(props: { ctx: Ctx }) {
 export function ValueStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th } = ctx
-  if (!ctx.subs.length) return <NoSub ctx={ctx} title="性价比" icon="yensign.circle.fill" />
+  if (!ctx.subs.length) return <NoSub ctx={ctx} title="性价比" />
   const priced = ctx.subs.filter(s => s.price > 0 && s.usage && s.usage.total > 0)
-  if (!priced.length) return <Root ctx={ctx}><Header ctx={ctx} title="性价比" icon="yensign.circle.fill" /><Empty ctx={ctx} icon="yensign.circle" text="在 App 的机场详情里填每期价格" /></Root>
+  if (!priced.length) return <Root ctx={ctx}><Header ctx={ctx} title="性价比" /><Empty ctx={ctx} icon="yensign.circle" text="在 App 的机场详情里填每期价格" /></Root>
   const perG = (s: SubView) => s.price / (s.usage!.total / G)
   const sorted = priced.slice().sort((a, b) => perG(a) - perG(b))
   return (
     <Root ctx={ctx} spacing={7}>
-      <Header ctx={ctx} title="性价比" icon="yensign.circle.fill" right="每 G" />
+      <Header ctx={ctx} title="性价比" right="每 G" />
       <HStack spacing={6}>
         {sorted.slice(0, 3).map((s, i) => (
           <Cell ctx={ctx} gap={3}>
@@ -240,7 +240,7 @@ function Stat(props: { ctx: Ctx; label: string; value: string; color?: any }) {
 export function MonthStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, all } = ctx
-  if (!ctx.subs.length) return <NoSub ctx={ctx} title="用量月报" icon="doc.text.below.ecg.fill" />
+  if (!ctx.subs.length) return <NoSub ctx={ctx} title="用量月报" />
   const m = all.month
   const days = m.days
   const first = days[0]?.d ?? ''
@@ -252,7 +252,7 @@ export function MonthStyle(props: { ctx: Ctx }) {
   const c = m.change
   return (
     <Root ctx={ctx} spacing={8}>
-      <Header ctx={ctx} title={`${Number(first.slice(5, 7)) || ''}月用量`} icon="doc.text.below.ecg.fill" font={14} right={`${ctx.subs.length} 个机场合计`} />
+      <Header ctx={ctx} title={`${Number(first.slice(5, 7)) || ''}月用量`} font={14} right={`${ctx.subs.length} 个机场合计`} />
       <HStack spacing={6}>
         <Stat ctx={ctx} label="本月" value={fmtBytes(m.total)} />
         <Stat ctx={ctx} label="日均" value={fmtBytes(m.avg)} />

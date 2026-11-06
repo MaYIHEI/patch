@@ -26,12 +26,12 @@ export function RingStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th } = ctx
   const s = mainSub(ctx)
-  if (!s) return <Root ctx={ctx}><Header ctx={ctx} title="机场用量" icon="chart.pie.fill" font={12} /><Empty ctx={ctx} icon="plus.circle" text={NO_SUB} /></Root>
-  if (!s.usage) return <Root ctx={ctx}><Header ctx={ctx} title={s.name} icon="chart.pie.fill" font={12} /><Empty ctx={ctx} icon="exclamationmark.triangle" text={s.err ?? '读取中'} /></Root>
+  if (!s) return <Root ctx={ctx}><Header ctx={ctx} title="机场用量" font={12} /><Empty ctx={ctx} icon="plus.circle" text={NO_SUB} /></Root>
+  if (!s.usage) return <Root ctx={ctx}><Header ctx={ctx} title={s.name} font={12} /><Empty ctx={ctx} icon="exclamationmark.triangle" text={s.err ?? '读取中'} /></Root>
   const unlimited = s.usage.total <= 0
   return (
     <Root ctx={ctx} spacing={6}>
-      <Header ctx={ctx} title={`${staleMark(s)}${s.name}`} icon="chart.pie.fill" font={12} />
+      <Header ctx={ctx} title={`${staleMark(s)}${s.name}`} font={12} />
       <HStack frame={{ maxWidth: 'infinity' }}>
         <Spacer minLength={0} />
         <UsageRing ctx={ctx} ratio={unlimited ? 0 : s.ratio} size={72} line={9}>
@@ -58,13 +58,13 @@ export function TrendStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th } = ctx
   const s = mainSub(ctx)
-  if (!s) return <Root ctx={ctx}><Header ctx={ctx} title="用量趋势" icon="chart.bar.fill" /><Empty ctx={ctx} icon="plus.circle" text={NO_SUB} /></Root>
+  if (!s) return <Root ctx={ctx}><Header ctx={ctx} title="用量趋势" /><Empty ctx={ctx} icon="plus.circle" text={NO_SUB} /></Root>
   const days = s.daily.slice(-14)
   const known = days.filter((v): v is number => v !== null)
   const today = days[days.length - 1]
   return (
     <Root ctx={ctx} spacing={8}>
-      <Header ctx={ctx} title={`${staleMark(s)}${s.name}`} icon="chart.bar.fill" right={s.deadline ? `${md(s.deadline)} ${s.deadlineWord}` : s.err && !s.usage ? s.err : undefined} />
+      <Header ctx={ctx} title={`${staleMark(s)}${s.name}`} right={s.deadline ? `${md(s.deadline)} ${s.deadlineWord}` : s.err && !s.usage ? s.err : undefined} />
       <HStack spacing={14} alignment="top" frame={{ maxHeight: 'infinity' }}>
         <VStack alignment="leading" spacing={4} frame={{ width: 118, alignment: 'leading' }}>
           <HStack alignment="lastTextBaseline" spacing={3}>
