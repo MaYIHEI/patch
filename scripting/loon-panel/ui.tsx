@@ -218,7 +218,7 @@ export function Header(props: { ctx: Ctx; title: string; icon?: string; right?: 
   const { th } = props.ctx
   return (
     <HStack spacing={5}>
-      {props.icon ? <Image systemName={props.icon} font={(props.font ?? 13) - 1} fontWeight="semibold" foregroundStyle={th.t3} /> : null}
+      {props.icon ? <Image systemName={props.icon} font={(props.font ?? 13) - 1} fontWeight="semibold" foregroundStyle={th.accent} /> : null}
       <Text font={props.font ?? 13} fontWeight="semibold" foregroundStyle={th.t1} lineLimit={1}>{props.title}</Text>
       <Spacer minLength={4} />
       {props.right ? <Text font={11} foregroundStyle={props.rightColor ?? th.t3} lineLimit={1}>{props.right}</Text> : null}
