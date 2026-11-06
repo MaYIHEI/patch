@@ -2,7 +2,7 @@
 // 只给 App 页面用, 不进小组件. 新组件把这个文件复制过去就能用, 不依赖组件里的其他文件
 
 import {
-  Button, Circle, HStack, Image, NavigationLink, Picker, Rectangle, RoundedRectangle, ScrollView, Spacer, Text, Toggle, VStack,
+  Button, HStack, Image, NavigationLink, Picker, Rectangle, RoundedRectangle, ScrollView, Spacer, Text, Toggle, VStack,
 } from 'scripting'
 import type { Color } from 'scripting'
 
@@ -20,7 +20,7 @@ export function Page(props: { title: string; large?: boolean; bar?: any; childre
       navigationTitle={props.title}
       navigationBarTitleDisplayMode={props.large ? 'large' : 'inline'}
       toolbar={props.bar}
-      background="systemGroupedBackground"
+      background={<Rectangle fill="systemGroupedBackground" ignoresSafeArea />}
     >
       <VStack alignment="leading" spacing={22} padding={{ horizontal: 16, vertical: 12 }}>{props.children}</VStack>
     </ScrollView>
@@ -66,7 +66,7 @@ type Label = { icon: string; color: Color; title: string; sub?: string }
 
 function Line(props: Label & { children?: any }) {
   return (
-    <HStack spacing={14} padding={{ horizontal: 14, vertical: 11 }} frame={{ maxWidth: 'infinity', minHeight: 56 }}>
+    <HStack spacing={14} padding={{ horizontal: 14, vertical: 11 }} frame={{ maxWidth: 'infinity', minHeight: 48 }}>
       <Chip icon={props.icon} color={props.color} />
       <VStack alignment="leading" spacing={2}>
         <Text font={16} fontWeight="medium" foregroundStyle="label" lineLimit={1}>{props.title}</Text>
@@ -127,41 +127,7 @@ export function PickerRow<T extends string | number>(props: Label & { value: T; 
   )
 }
 
-/** 页面顶部: 大图标 + 名字 + 状态 */
-export function Hero(props: { icon: string; color: Color; title: string; status: string; statusColor: Color; children?: any }) {
-  return (
-    <Card inner={18}>
-      <VStack alignment="leading" spacing={16}>
-        <HStack spacing={14}>
-          <Chip icon={props.icon} color={props.color} size={54} />
-          <VStack alignment="leading" spacing={4}>
-            <Text font={23} fontWeight="bold" foregroundStyle="label" lineLimit={1}>{props.title}</Text>
-            <HStack spacing={6}>
-              <Circle fill={props.statusColor} frame={{ width: 7, height: 7 }} />
-              <Text font={13} foregroundStyle="secondaryLabel" lineLimit={2}>{props.status}</Text>
-            </HStack>
-          </VStack>
-          <Spacer minLength={0} />
-        </HStack>
-        {props.children ? <HStack spacing={10}>{props.children}</HStack> : null}
-      </VStack>
-    </Card>
-  )
-}
-
 /** 行尾的小按钮 */
 export function SmallButton(props: { title: string; action: () => void; disabled?: boolean }) {
   return <Button title={props.title} buttonStyle={HAS_GLASS ? 'glass' : 'bordered'} controlSize="small" disabled={props.disabled} action={props.action} />
-}
-
-/** Hero 里的玻璃按钮, 等宽 */
-export function GlassButton(props: { title: string; icon: string; action: () => void; prominent?: boolean; disabled?: boolean }) {
-  return (
-    <Button action={props.action} buttonStyle={!HAS_GLASS ? 'bordered' : props.prominent ? 'glassProminent' : 'glass'} disabled={props.disabled} frame={{ maxWidth: 'infinity' }}>
-      <HStack spacing={6} frame={{ maxWidth: 'infinity' }} padding={{ vertical: 3 }}>
-        <Image systemName={props.icon} font={14} />
-        <Text font={14} fontWeight="semibold" lineLimit={1}>{props.title}</Text>
-      </HStack>
-    </Button>
-  )
 }

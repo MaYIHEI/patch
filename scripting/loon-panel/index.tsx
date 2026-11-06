@@ -30,6 +30,8 @@ import {
   Toggle,
   VStack,
   ZStack,
+  Rectangle,
+  Menu,
   Widget,
   Path,
   fetch,
@@ -47,7 +49,7 @@ import {
   fmtBytes, expireText, md, shiftDay, todayStr, type SubView,
 } from './subs'
 import { checkNat, lastNat, type Nat } from './net'
-import { Page, Group as KitGroup, Hero, Chip, SmallButton, GlassButton, NavRow, ActionRow, InfoRow, ToggleRow, PickerRow } from './kit'
+import { Page, Group as KitGroup, Chip, SmallButton, NavRow, ActionRow, InfoRow, ToggleRow, PickerRow } from './kit'
 import {
   getPrefs, setPrefs, getLook, setLook, getDefaults, setDefault, getRemoteTargets, setRemoteTargets,
   DEFAULT_LOOK, RECOMMENDED_BG, RECOMMENDED_ACCENT, type Look, type Family, type Prefs,
@@ -194,13 +196,13 @@ function WidgetTab(props: { shared: Shared; act: (q: {}, label: string) => Promi
     <Page title="小组件" large bar={{ cancellationAction: props.close, topBarTrailing: <Button title="刷新" systemImage="arrow.clockwise" action={() => shared.reload(true)} /> }}>
       {!live || !subs.length || !loon?.check ? <Guide shared={shared} act={props.act} busy={props.busy} toSubs={props.toSubs} /> : null}
       <VStack spacing={14} frame={{ maxWidth: 'infinity' }}>
-        <Preview style={style} family={family} loon={data.loon} subs={data.subs} />
         <Picker title="尺寸" value={family} onChanged={(v: any) => setFamily(v as Family)} pickerStyle="segmented">
           <Text tag="systemSmall">小</Text>
           <Text tag="systemMedium">中</Text>
           <Text tag="systemLarge">大</Text>
           <Text tag="accessoryRectangular">锁屏</Text>
         </Picker>
+        <Preview style={style} family={family} loon={data.loon} subs={data.subs} />
       </VStack>
       <KitGroup note="加到桌面: 长按桌面空白处 → + → 搜 Scripting → 选 loon-panel。">
         <NavRow icon="square.grid.2x2" color="systemBlue" title="样式" value={style.name} destination={<StyleLibrary {...shared} onChanged={props.onChanged} />} />
@@ -303,15 +305,13 @@ function AllGroupsPage(props: { loon: LoonData; act: (q: Act, label: string) => 
 
 /** 首次引导: 导入插件 → 添加订阅 → 跑一次体检; 做完的打勾 */
 function Guide(props: { shared: Shared; act: (q: {}, label: string) => Promise<void>; busy: string; toSubs: () => void }) {
-  const { loon, loonErr, subs, reload } = props.shared
+  const { loon, loonErr, subs } = props.shared
   const live = !!loon && !loon.stale
-  const step = (n: number, done: boolean, title: string, sub: string, button: any) => (
+  const step = (n: number, title: string, sub: string, button: any) => (
     <HStack spacing={12} padding={{ horizontal: 14, vertical: 12 }}>
-      {done
-        ? <Chip icon="checkmark" color="systemGreen" size={28} />
-        : <Chip icon={`${n}.circle`} color="systemBlue" size={28} />}
+      <Chip icon={`${n}.circle.fill`} color="systemBlue" />
       <VStack alignment="leading" spacing={2}>
-        <Text font={15} fontWeight="medium" fontDesign="rounded">{title}</Text>
+        <Text font={15} fontWeight="medium">{title}</Text>
         <Text font={12} foregroundStyle="secondaryLabel">{sub}</Text>
       </VStack>
       <Spacer />
@@ -320,13 +320,10 @@ function Guide(props: { shared: Shared; act: (q: {}, label: string) => Promise<v
   )
   return (
     <VStack alignment="leading" spacing={8}>
-      <KitGroup title="开始使用" inset={54}>
-        {step(1, live, '导入 Loon 插件', live ? '已连上插件' : '一键添加「Loon 面板」插件, 装好后回来刷新',
-          <SmallButton title={live ? '刷新' : '导入'} action={() => { live ? reload() : Safari.openURL(LOON_IMPORT) }} />)}
-        {step(2, subs.length > 0, '添加机场订阅', subs.length ? `已添加 ${subs.length} 个` : '订阅链接只存在钥匙串里',
-          <SmallButton title="添加" action={props.toSubs} />)}
-        {step(3, !!loon?.check, '跑一次体检', loon?.check ? `上次 ${ago(loon.check.t)}` : '测当前节点的延迟和出口; 之后插件定时体检',
-          <SmallButton title="体检" disabled={!live || !!props.busy} action={() => { props.act({}, '体检当前节点') }} />)}
+      <KitGroup title="还差这几步" inset={54}>
+        {!live ? step(1, '导入 Loon 插件', '一键添加「Loon 面板」插件, 装好后回来刷新', <SmallButton title="导入" action={() => { Safari.openURL(LOON_IMPORT) }} />) : null}
+        {!subs.length ? step(2, '添加机场订阅', '订阅链接只存在钥匙串里', <SmallButton title="添加" action={props.toSubs} />) : null}
+        {!loon?.check ? step(3, '跑一次体检', '测当前节点的延迟和出口; 之后插件定时体检', <SmallButton title="体检" disabled={!live || !!props.busy} action={() => { props.act({}, '体检当前节点') }} />) : null}
       </KitGroup>
       {!live ? (
         <Text font={12} foregroundStyle="secondaryLabel" padding={{ horizontal: 16 }}>
@@ -626,10 +623,17 @@ function SubsPage(props: Shared & { close: any }) {
   }
 
   return (
-    <List navigationTitle={title} toolbar={{ cancellationAction: props.close, topBarTrailing: <EditButton /> }}>
+    <List navigationTitle={title} toolbar={{ cancellationAction: props.close, topBarLeading: list.length > 1 ? <EditButton /> : undefined, topBarTrailing: (
+      <Menu title="添加" systemImage="plus">
+        <Button title="从 Loon 配置文件导入" systemImage="doc.badge.plus" action={fromFile} />
+        <Button title="从剪贴板添加" systemImage="doc.on.clipboard" action={fromPaste} />
+        <Button title="手动添加" systemImage="square.and.pencil" action={add} />
+        <Button title="立即刷新用量" systemImage="arrow.clockwise" action={async () => { setNote('刷新中...'); await refresh(true); setNote(`已刷新 ${hhmm(Date.now())}`) }} />
+      </Menu>
+    ) }}>
       <Section
         header={<Text>{`机场 · ${list.length}`}</Text>}
-        footer={<Text>第一个是主订阅 (小号、中号、锁屏显示它); 点右上角「编辑」拖动排序。用量 10 分钟内复用上次结果, 点「立即刷新」会重新读取。</Text>}
+        footer={<Text>{note || '第一个是主订阅, 小号、中号和锁屏显示它; 点左上角「编辑」拖动排序。'}</Text>}
       >
         <ForEach
           count={list.length}
@@ -652,14 +656,13 @@ function SubsPage(props: Shared & { close: any }) {
           onMove={onMove}
         />
       </Section>
-      <Section header={<Text>添加</Text>} footer={<Text>Loon 脚本读不到订阅链接, 所以从配置里导入: 在 Loon 导出配置文件后选择它, 或复制配置内容、订阅链接后点「从剪贴板添加」。只添加能读到用量的订阅, 链接只存在本机钥匙串。</Text>}>
-        <Button title="从 Loon 配置文件导入" systemImage="doc.badge.plus" action={fromFile} />
-        <Button title="从剪贴板添加" systemImage="doc.on.clipboard" action={fromPaste} />
-        <Button title="手动添加" systemImage="plus" action={add} />
-      </Section>
-      <Section footer={note ? <Text>{note}</Text> : undefined}>
-        <Button title="立即刷新用量" action={async () => { setNote('刷新中...'); await refresh(true); setNote(`已刷新 ${hhmm(Date.now())}`) }} />
-      </Section>
+      {!list.length ? (
+        <Section footer={<Text>Loon 脚本读不到订阅链接, 所以从配置里导入: 在 Loon 导出配置文件后选择它, 或复制配置内容、订阅链接后从剪贴板添加。只添加能读到用量的订阅, 链接只存在本机钥匙串。</Text>}>
+          <Button title="从 Loon 配置文件导入" systemImage="doc.badge.plus" action={fromFile} />
+          <Button title="从剪贴板添加" systemImage="doc.on.clipboard" action={fromPaste} />
+          <Button title="手动添加" systemImage="square.and.pencil" action={add} />
+        </Section>
+      ) : null}
     </List>
   )
 }
@@ -805,7 +808,7 @@ function StyleLibrary(props: Shared & { onChanged: () => void }) {
   }
 
   return (
-    <ScrollView navigationTitle="样式库" navigationBarTitleDisplayMode="inline" background="systemGroupedBackground">
+    <ScrollView navigationTitle="样式库" navigationBarTitleDisplayMode="inline" background={<Rectangle fill="systemGroupedBackground" ignoresSafeArea />}>
       <VStack alignment="leading" spacing={18} padding={16}>
         <Picker title="尺寸" value={tab} onChanged={(v: any) => setTab(v as SizeTab)} pickerStyle="segmented">
           <Text tag="systemSmall">小</Text>
@@ -1022,7 +1025,6 @@ function SettingsPage(props: Shared & { close: any; onChanged: () => void }) {
     }
   }
 
-  const live = !!loon && !loon.stale
   const st = loonStatus(loon)
   const o = loon?.opts
   const onOff = (v?: boolean) => (v ? '开' : '关')
@@ -1030,31 +1032,31 @@ function SettingsPage(props: Shared & { close: any; onChanged: () => void }) {
 
   return (
     <Page title="设置" large bar={{ cancellationAction: props.close }}>
-      <Hero
-        icon="gauge.with.dots.needle.67percent"
-        color="systemBlue"
-        title="Loon 面板"
-        status={testText || (oldPlugin ? '插件版本太旧, 先更新' : live ? `${st.text} · ${loon?.groups.length ?? 0} 个策略组${loon?.check ? ` · ${ago(loon.check.t)}体检` : ''}` : st.text)}
-        statusColor={oldPlugin ? WARN : st.level === 'ok' ? OK : st.level === 'warn' ? WARN : BAD}
-      >
-        <GlassButton title="测试连接" icon="bolt.horizontal.fill" action={test} />
-        <GlassButton title={oldPlugin ? '更新插件' : '导入插件'} icon="square.and.arrow.down" prominent={oldPlugin || !live} action={() => { Safari.openURL(LOON_IMPORT) }} />
-      </Hero>
+      <KitGroup title="Loon">
+        <ActionRow
+          icon={st.level === 'ok' && !oldPlugin ? 'checkmark.circle.fill' : 'exclamationmark.circle.fill'}
+          color={oldPlugin ? WARN : st.level === 'ok' ? OK : st.level === 'warn' ? WARN : BAD}
+          title={oldPlugin ? '插件版本太旧' : st.text}
+          sub={testText || '点一下测试连接'}
+          action={test}
+        />
+        <ActionRow icon="square.and.arrow.down" color="systemBlue" title="导入 / 更新 Loon 插件" action={() => { Safari.openURL(LOON_IMPORT) }} />
+      </KitGroup>
 
       <KitGroup title="检测和提醒">
-        <NavRow icon="stethoscope" color="systemGreen" title="节点检测" sub={o?.timeout ? `超时 ${o.timeout / 1000} 秒 · 通知${onOff(o.notify)} · 自动切换${onOff(o.auto)}` : '开着 Loon 才能修改'} destination={<CheckPage loon={loon} reload={props.reload} />} />
-        <NavRow icon="bell.badge.fill" color="systemOrange" title="用量提醒" sub={alerts || '已关闭'} destination={<AlertsPage />} />
+        <NavRow icon="stethoscope" color="systemBlue" title="节点检测" sub={o?.timeout ? `超时 ${o.timeout / 1000} 秒 · 通知${onOff(o.notify)} · 自动切换${onOff(o.auto)}` : '开着 Loon 才能修改'} destination={<CheckPage loon={loon} reload={props.reload} />} />
+        <NavRow icon="bell.badge.fill" color="systemBlue" title="用量提醒" sub={alerts || '已关闭'} destination={<AlertsPage />} />
       </KitGroup>
 
       <KitGroup title="小组件">
-        <PickerRow icon="clock.fill" color="systemIndigo" title="刷新间隔" value={prefs.refresh} options={[[15, '15 分钟'], [30, '30 分钟'], [60, '60 分钟']]} onChanged={v => update({ refresh: v })} />
-        <NavRow icon="arrow.triangle.2.circlepath" color="systemTeal" title="体检完自动刷新" sub={o?.push ? '已设置' : '不用等系统定时刷新'} destination={<AutoRefreshPage />} />
+        <PickerRow icon="clock.fill" color="systemBlue" title="刷新间隔" value={prefs.refresh} options={[[15, '15 分钟'], [30, '30 分钟'], [60, '60 分钟']]} onChanged={v => update({ refresh: v })} />
+        <NavRow icon="arrow.triangle.2.circlepath" color="systemBlue" title="体检完自动刷新" sub={o?.push ? '已设置' : '不用等系统定时刷新'} destination={<AutoRefreshPage />} />
       </KitGroup>
 
       <KitGroup title="更多" note="策略组的常用、主策略组、解锁、全量体检和锁定, 在首页点进策略组设置。">
-        <NavRow icon="internaldrive.fill" color="gray" title="数据和缓存" destination={<DataPage reload={props.reload} />} />
+        <NavRow icon="internaldrive.fill" color="systemBlue" title="数据和缓存" destination={<DataPage reload={props.reload} />} />
         <ActionRow icon="arrow.down.circle.fill" color="systemBlue" title="检查更新" value={updateText} action={checkUpdate} />
-        <InfoRow icon="info.circle.fill" color="gray" title="版本" value={`${version}${loon?.version ? ` · 插件 ${loon.version}` : ''}`} />
+        <InfoRow icon="info.circle.fill" color="systemBlue" title="版本" value={`${version}${loon?.version ? ` · 插件 ${loon.version}` : ''}`} />
       </KitGroup>
     </Page>
   )
@@ -1086,13 +1088,13 @@ function CheckPage(props: { loon: LoonData | null; reload: () => Promise<void> }
     <Page title="节点检测">
       <KitGroup note={note || (live ? '这些由 Loon 在后台执行。体检频率是 Loon 插件里唯一的参数, 默认 30 分钟一次。' : '要开着 Loon 并更新到最新插件才能修改。')}>
         <ToggleRow icon="wifi" color="systemBlue" title="网络切换后复测" value={o?.net ?? true} disabled={!live} onChanged={v => { save({ net: v }) }} />
-        <ToggleRow icon="bell.fill" color="systemOrange" title="节点异常发通知" sub="连续 3 次超时, 或锁定被改回时" value={o?.notify ?? true} disabled={!live} onChanged={v => { save({ notify: v }) }} />
-        <ToggleRow icon="bolt.fill" color="systemYellow" title="挂了自动切到最快" sub="锁定的策略组不会切" value={o?.auto ?? false} disabled={!live} onChanged={v => { save({ auto: v }) }} />
-        <PickerRow icon="timer" color="systemIndigo" title="单次超时" value={o?.timeout ?? 5000} disabled={!live} options={[[3000, '3 秒'], [5000, '5 秒'], [8000, '8 秒']]} onChanged={v => { save({ timeout: v }) }} />
+        <ToggleRow icon="bell.fill" color="systemBlue" title="节点异常发通知" sub="连续 3 次超时, 或锁定被改回时" value={o?.notify ?? true} disabled={!live} onChanged={v => { save({ notify: v }) }} />
+        <ToggleRow icon="bolt.fill" color="systemBlue" title="挂了自动切到最快" sub="锁定的策略组不会切" value={o?.auto ?? false} disabled={!live} onChanged={v => { save({ auto: v }) }} />
+        <PickerRow icon="timer" color="systemBlue" title="单次超时" value={o?.timeout ?? 5000} disabled={!live} options={[[3000, '3 秒'], [5000, '5 秒'], [8000, '8 秒']]} onChanged={v => { save({ timeout: v }) }} />
       </KitGroup>
       <KitGroup title="检测地址">
-        <ActionRow icon="speedometer" color="systemGreen" title="测速地址" sub={o?.test_url} disabled={!live} action={() => { askAddress('测速地址', 'test_url', o?.test_url) }} />
-        <ActionRow icon="network" color="systemTeal" title="出口 IP 地址" sub={o?.ip_url} disabled={!live} action={() => { askAddress('出口 IP 地址', 'ip_url', o?.ip_url) }} />
+        <ActionRow icon="speedometer" color="systemBlue" title="测速地址" sub={o?.test_url} disabled={!live} action={() => { askAddress('测速地址', 'test_url', o?.test_url) }} />
+        <ActionRow icon="network" color="systemBlue" title="出口 IP 地址" sub={o?.ip_url} disabled={!live} action={() => { askAddress('出口 IP 地址', 'ip_url', o?.ip_url) }} />
       </KitGroup>
     </Page>
   )
@@ -1108,9 +1110,9 @@ function AlertsPage() {
   return (
     <Page title="用量提醒">
       <KitGroup note="小组件刷新时检查, 条件成立时发一次通知。">
-        <ToggleRow icon="chart.pie.fill" color="systemOrange" title="用到 80% 和 90%" value={prefs.alerts.usage} onChanged={v => set({ ...prefs.alerts, usage: v })} />
-        <ToggleRow icon="hourglass" color="systemRed" title="预计 3 天内用完" value={prefs.alerts.runout} onChanged={v => set({ ...prefs.alerts, runout: v })} />
-        <ToggleRow icon="calendar" color="systemPurple" title="到期前 3 天" value={prefs.alerts.expire} onChanged={v => set({ ...prefs.alerts, expire: v })} />
+        <ToggleRow icon="chart.pie.fill" color="systemBlue" title="用到 80% 和 90%" value={prefs.alerts.usage} onChanged={v => set({ ...prefs.alerts, usage: v })} />
+        <ToggleRow icon="hourglass" color="systemBlue" title="预计 3 天内用完" value={prefs.alerts.runout} onChanged={v => set({ ...prefs.alerts, runout: v })} />
+        <ToggleRow icon="calendar" color="systemBlue" title="到期前 3 天" value={prefs.alerts.expire} onChanged={v => set({ ...prefs.alerts, expire: v })} />
       </KitGroup>
     </Page>
   )
@@ -1122,7 +1124,7 @@ function DataPage(props: { reload: () => Promise<void> }) {
     <Page title="数据和缓存">
       <KitGroup note={note || `小组件从 ${DATA_URL} 读 Loon 的数据。用量历史只存数字, 约 60 天, 不存订阅链接。`}>
         <ActionRow icon="safari.fill" color="systemBlue" title="用 Safari 打开数据地址" action={() => { Safari.openURL(DATA_URL) }} />
-        <ActionRow icon="arrow.clockwise" color="systemTeal" title="清除 Loon 数据缓存" action={() => { clearLoonCache(); setNote('缓存已清除') }} />
+        <ActionRow icon="arrow.clockwise" color="systemBlue" title="清除 Loon 数据缓存" action={() => { clearLoonCache(); setNote('缓存已清除') }} />
         <ActionRow icon="trash.fill" color="systemRed" title="清除用量历史" action={async () => {
           if (!(await Dialog.confirm({ title: '清除全部用量历史?', message: '趋势图和预测会从头记录', cancelLabel: '取消', confirmLabel: '清除' }))) return
           clearHistory()
