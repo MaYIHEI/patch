@@ -266,18 +266,20 @@ export function PickerStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, loon } = ctx
   if (!loon) return <NoLoon ctx={ctx} title="切换器" icon="arrow.triangle.swap" />
-  const { group: g, nodes, page, pages, groups } = pickerView(loon, ctx.prefs, ctx.size === 'l' ? 16 : 6)
+  const { group: g, nodes, page, pages, groups } = pickerView(loon, ctx.prefs, ctx.size === 'l' ? 12 : 6)
   if (!g) return <NoLoon ctx={ctx} title="切换器" icon="arrow.triangle.swap" />
+  // 节点少时两列, 卡片撑满整个小组件, 不留空
+  const cols = nodes.length <= 4 ? 2 : 3
+  const big = ctx.size === 'l' && nodes.length <= cols * 2
   const cell = (name: string) => {
     const r = loon.nodes[name]
     const on = name === g.now
     return (
       <Tap ctx={ctx} intent={!on && !loon.stale ? SwitchIntent({ group: g.name, node: name }) : undefined}>
-        <HStack spacing={3} padding={{ horizontal: 8, vertical: 6 }} frame={{ maxWidth: 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={9} fill={on ? th.accent : th.card} />}>
-          <Text font={11} fontWeight="medium" foregroundStyle={on ? '#FFFFFF' : th.t1} lineLimit={1} minScaleFactor={0.7}>{nodeLabel(name, r)}</Text>
-          <Spacer minLength={2} />
-          {r ? <Text font={10} monospacedDigit foregroundStyle={on ? '#FFFFFF' : latencyInk(ctx, r)} lineLimit={1}>{r.ok ? String(r.ms) : '超时'}</Text> : null}
-        </HStack>
+        <VStack alignment="leading" spacing={2} padding={{ horizontal: 10, vertical: 6 }} frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={12} style="continuous" fill={on ? th.accent : th.card} />}>
+          <Text font={big ? 13 : 11} foregroundStyle={on ? '#FFFFFF' : th.t2} lineLimit={1} minScaleFactor={0.7}>{nodeLabel(name, r)}</Text>
+          <Text font={big ? 24 : 14} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={on ? '#FFFFFF' : r ? latencyInk(ctx, r) : th.t3} lineLimit={1} minScaleFactor={0.7}>{latencyText(r)}</Text>
+        </VStack>
       </Tap>
     )
   }
@@ -294,13 +296,12 @@ export function PickerStyle(props: { ctx: Ctx }) {
           </HStack>
         )}
       />
-      {chunk(nodes, 2).map(row => (
-        <HStack spacing={5}>
+      {chunk(nodes, cols).map(row => (
+        <HStack spacing={5} frame={{ maxHeight: 'infinity' }}>
           {row.map(cell)}
-          {row.length < 2 ? <VStack frame={{ maxWidth: 'infinity' }} /> : null}
+          {Array.from({ length: cols - row.length }, () => <VStack frame={{ maxWidth: 'infinity' }} />)}
         </HStack>
       ))}
-      <Spacer minLength={0} />
     </Root>
   )
 }
