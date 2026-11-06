@@ -3,8 +3,8 @@
 
 import { VStack, HStack, Text, Spacer, Image } from 'scripting'
 
-import { mainGroup, rankedNodes, healthCount, availability, modeName, type NodeResult } from '../loon'
-import { Root, Header, Num, Empty, Cell, Pill, Spark, RefreshButton, latencyInk, latencyText, nodeLabel, asnText, flag, ago, syncText, chunk, withAlpha, type Ctx } from '../ui'
+import { mainGroup, rankedNodes, healthCount, availability, type NodeResult } from '../loon'
+import { Root, ModeTap, Header, Num, Empty, Cell, Pill, Spark, RefreshButton, latencyInk, latencyText, nodeLabel, asnText, flag, ago, syncText, chunk, withAlpha, type Ctx } from '../ui'
 
 const NO_LOON = '读不到 Loon 数据\n打开 App 看排查步骤'
 
@@ -29,7 +29,7 @@ export function NodeStyle(props: { ctx: Ctx }) {
   const r = leaf.r
   return (
     <Root ctx={ctx} spacing={4}>
-      <Header ctx={ctx} title={leaf.group} font={12} right={modeName(ctx.loon.mode)} rightColor={th.accent} />
+      <Header ctx={ctx} title={leaf.group} font={12} trailing={<ModeTap ctx={ctx} />} />
       <Spacer minLength={0} />
       <Text font={15} fontWeight="semibold" foregroundStyle={th.t1} lineLimit={2} minScaleFactor={0.7}>{nodeLabel(leaf.name, r)}</Text>
       <HStack alignment="lastTextBaseline" spacing={3}>
