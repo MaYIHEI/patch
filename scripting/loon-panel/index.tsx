@@ -45,6 +45,7 @@ import {
   fmtBytes, expireText, md, shiftDay, todayStr, type SubView,
 } from './subs'
 import { checkNat, lastNat, type Nat } from './net'
+import { Page, Group as KitGroup, Hero, GlassButton, NavRow, ActionRow, InfoRow, ToggleRow, PickerRow } from './kit'
 import {
   getPrefs, setPrefs, getLook, setLook, getDefaults, setDefault, getRemoteTargets, setRemoteTargets,
   DEFAULT_LOOK, RECOMMENDED_BG, RECOMMENDED_ACCENT, type Look, type Family, type Prefs,
@@ -1076,33 +1077,41 @@ function SettingsPage(props: Shared & { onChanged: () => void }) {
     }
   }
 
+  const live = !!loon && !loon.stale
+  const st = loonStatus(loon)
+  const o = loon?.opts
+  const onOff = (v?: boolean) => (v ? '开' : '关')
+  const alerts = [prefs.alerts.usage && '用量', prefs.alerts.runout && '用完', prefs.alerts.expire && '到期'].filter(Boolean).join('、')
+
   return (
-    <Form navigationTitle="设置" navigationBarTitleDisplayMode="inline">
-      <Section header={<Text>Loon</Text>} footer={oldPlugin ? <Text foregroundStyle={WARN}>插件版本太旧, 节点检测的设置改不了, 先点「导入 / 更新 Loon 插件」。</Text> : undefined}>
-        <Button title={testText ? `测试连接 · ${testText}` : '测试连接'} action={test} />
-        <Button title="导入 / 更新 Loon 插件" action={() => { Safari.openURL(LOON_IMPORT) }} />
-      </Section>
+    <Page title="设置">
+      <Hero
+        icon="gauge.with.dots.needle.67percent"
+        color="systemBlue"
+        title="Loon 面板"
+        status={testText || (oldPlugin ? '插件版本太旧, 先更新' : live ? `${st.text} · ${loon?.groups.length ?? 0} 个策略组${loon?.check ? ` · ${ago(loon.check.t)}体检` : ''}` : st.text)}
+        statusColor={oldPlugin ? WARN : st.level === 'ok' ? OK : st.level === 'warn' ? WARN : BAD}
+      >
+        <GlassButton title="测试连接" icon="bolt.horizontal.fill" action={test} />
+        <GlassButton title={oldPlugin ? '更新插件' : '导入插件'} icon="square.and.arrow.down" prominent={oldPlugin || !live} action={() => { Safari.openURL(LOON_IMPORT) }} />
+      </Hero>
 
-      <Section>
-        <NavigationLink destination={<CheckPage loon={loon} reload={props.reload} />}><Text>节点检测</Text></NavigationLink>
-        <NavigationLink destination={<AlertsPage />}><Text>用量提醒</Text></NavigationLink>
-        <Picker title="小组件刷新间隔" value={prefs.refresh} onChanged={(v: any) => update({ refresh: Number(v) as 15 | 30 | 60 })}>
-          <Text tag={15}>15 分钟</Text>
-          <Text tag={30}>30 分钟</Text>
-          <Text tag={60}>60 分钟</Text>
-        </Picker>
-        <NavigationLink destination={<AutoRefreshPage />}><Text>{`体检完自动刷新小组件${loon?.opts?.push ? ' · 已设置' : ''}`}</Text></NavigationLink>
-      </Section>
+      <KitGroup title="检测和提醒">
+        <NavRow icon="stethoscope" color="systemGreen" title="节点检测" sub={o?.timeout ? `超时 ${o.timeout / 1000} 秒 · 通知${onOff(o.notify)} · 自动切换${onOff(o.auto)}` : '开着 Loon 才能修改'} destination={<CheckPage loon={loon} reload={props.reload} />} />
+        <NavRow icon="bell.badge.fill" color="systemOrange" title="用量提醒" sub={alerts || '已关闭'} destination={<AlertsPage />} />
+      </KitGroup>
 
-      <Section footer={<Text>策略组的常用、主策略组、解锁、全量体检和锁定, 在首页点进策略组设置。</Text>}>
-        <NavigationLink destination={<DataPage reload={props.reload} />}><Text>数据和缓存</Text></NavigationLink>
-      </Section>
+      <KitGroup title="小组件">
+        <PickerRow icon="clock.fill" color="systemIndigo" title="刷新间隔" value={prefs.refresh} options={[[15, '15 分钟'], [30, '30 分钟'], [60, '60 分钟']]} onChanged={v => update({ refresh: v })} />
+        <NavRow icon="arrow.triangle.2.circlepath" color="systemTeal" title="体检完自动刷新" sub={o?.push ? '已设置' : '不用等系统定时刷新'} destination={<AutoRefreshPage />} />
+      </KitGroup>
 
-      <Section header={<Text>关于</Text>}>
-        <LabeledContent label={<Text>版本</Text>} value={`${version}${loon?.version ? ` · 插件 ${loon.version}` : ''}`} />
-        <Button title={updateText ? `检查更新 · ${updateText}` : '检查更新'} action={checkUpdate} />
-      </Section>
-    </Form>
+      <KitGroup title="更多" note="策略组的常用、主策略组、解锁、全量体检和锁定, 在首页点进策略组设置。">
+        <NavRow icon="internaldrive.fill" color="gray" title="数据和缓存" destination={<DataPage reload={props.reload} />} />
+        <ActionRow icon="arrow.down.circle.fill" color="systemBlue" title="检查更新" value={updateText} action={checkUpdate} />
+        <InfoRow icon="info.circle.fill" color="gray" title="版本" value={`${version}${loon?.version ? ` · 插件 ${loon.version}` : ''}`} />
+      </KitGroup>
+    </Page>
   )
 }
 
@@ -1129,22 +1138,18 @@ function CheckPage(props: { loon: LoonData | null; reload: () => Promise<void> }
   }
 
   return (
-    <Form navigationTitle="节点检测" navigationBarTitleDisplayMode="inline">
-      <Section footer={<Text>{note || (live ? '体检频率是 Loon 插件里唯一的参数, 默认 30 分钟一次。' : '要开着 Loon 并更新到最新插件才能修改。')}</Text>}>
-        <Toggle title="网络切换后复测" value={o?.net ?? true} disabled={!live} onChanged={(v: boolean) => { save({ net: v }) }} />
-        <Toggle title="节点异常发通知" value={o?.notify ?? true} disabled={!live} onChanged={(v: boolean) => { save({ notify: v }) }} />
-        <Toggle title="挂了自动切到最快" value={o?.auto ?? false} disabled={!live} onChanged={(v: boolean) => { save({ auto: v }) }} />
-        <Picker title="单次超时" value={o?.timeout ?? 5000} disabled={!live} onChanged={(v: any) => { save({ timeout: Number(v) }) }}>
-          <Text tag={3000}>3 秒</Text>
-          <Text tag={5000}>5 秒</Text>
-          <Text tag={8000}>8 秒</Text>
-        </Picker>
-      </Section>
-      <Section header={<Text>检测地址</Text>}>
-        <Button title="测速地址" disabled={!live} action={() => { askAddress('测速地址', 'test_url', o?.test_url) }} />
-        <Button title="出口 IP 地址" disabled={!live} action={() => { askAddress('出口 IP 地址', 'ip_url', o?.ip_url) }} />
-      </Section>
-    </Form>
+    <Page title="节点检测">
+      <KitGroup note={note || (live ? '这些由 Loon 在后台执行。体检频率是 Loon 插件里唯一的参数, 默认 30 分钟一次。' : '要开着 Loon 并更新到最新插件才能修改。')}>
+        <ToggleRow icon="wifi" color="systemBlue" title="网络切换后复测" value={o?.net ?? true} disabled={!live} onChanged={v => { save({ net: v }) }} />
+        <ToggleRow icon="bell.fill" color="systemOrange" title="节点异常发通知" sub="连续 3 次超时, 或锁定被改回时" value={o?.notify ?? true} disabled={!live} onChanged={v => { save({ notify: v }) }} />
+        <ToggleRow icon="bolt.fill" color="systemYellow" title="挂了自动切到最快" sub="锁定的策略组不会切" value={o?.auto ?? false} disabled={!live} onChanged={v => { save({ auto: v }) }} />
+        <PickerRow icon="timer" color="systemIndigo" title="单次超时" value={o?.timeout ?? 5000} disabled={!live} options={[[3000, '3 秒'], [5000, '5 秒'], [8000, '8 秒']]} onChanged={v => { save({ timeout: v }) }} />
+      </KitGroup>
+      <KitGroup title="检测地址">
+        <ActionRow icon="speedometer" color="systemGreen" title="测速地址" sub={o?.test_url} disabled={!live} action={() => { askAddress('测速地址', 'test_url', o?.test_url) }} />
+        <ActionRow icon="network" color="systemTeal" title="出口 IP 地址" sub={o?.ip_url} disabled={!live} action={() => { askAddress('出口 IP 地址', 'ip_url', o?.ip_url) }} />
+      </KitGroup>
+    </Page>
   )
 }
 
@@ -1156,31 +1161,31 @@ function AlertsPage() {
     setPrefs(next)
   }
   return (
-    <Form navigationTitle="用量提醒" navigationBarTitleDisplayMode="inline">
-      <Section footer={<Text>小组件刷新时检查, 条件成立时发一次通知。</Text>}>
-        <Toggle title="用到 80% 和 90%" value={prefs.alerts.usage} onChanged={(v: boolean) => set({ ...prefs.alerts, usage: v })} />
-        <Toggle title="预计 3 天内用完" value={prefs.alerts.runout} onChanged={(v: boolean) => set({ ...prefs.alerts, runout: v })} />
-        <Toggle title="到期前 3 天" value={prefs.alerts.expire} onChanged={(v: boolean) => set({ ...prefs.alerts, expire: v })} />
-      </Section>
-    </Form>
+    <Page title="用量提醒">
+      <KitGroup note="小组件刷新时检查, 条件成立时发一次通知。">
+        <ToggleRow icon="chart.pie.fill" color="systemOrange" title="用到 80% 和 90%" value={prefs.alerts.usage} onChanged={v => set({ ...prefs.alerts, usage: v })} />
+        <ToggleRow icon="hourglass" color="systemRed" title="预计 3 天内用完" value={prefs.alerts.runout} onChanged={v => set({ ...prefs.alerts, runout: v })} />
+        <ToggleRow icon="calendar" color="systemPurple" title="到期前 3 天" value={prefs.alerts.expire} onChanged={v => set({ ...prefs.alerts, expire: v })} />
+      </KitGroup>
+    </Page>
   )
 }
 
 function DataPage(props: { reload: () => Promise<void> }) {
   const [note, setNote] = useState('')
   return (
-    <Form navigationTitle="数据和缓存" navigationBarTitleDisplayMode="inline">
-      <Section footer={<Text>{note || `小组件从 ${DATA_URL} 读 Loon 的数据。用量历史只存数字, 约 60 天, 不存订阅链接。`}</Text>}>
-        <Button title="用 Safari 打开数据地址" action={() => { Safari.openURL(DATA_URL) }} />
-        <Button title="清除 Loon 数据缓存" action={() => { clearLoonCache(); setNote('缓存已清除') }} />
-        <Button title="清除用量历史" role="destructive" action={async () => {
+    <Page title="数据和缓存">
+      <KitGroup note={note || `小组件从 ${DATA_URL} 读 Loon 的数据。用量历史只存数字, 约 60 天, 不存订阅链接。`}>
+        <ActionRow icon="safari.fill" color="systemBlue" title="用 Safari 打开数据地址" action={() => { Safari.openURL(DATA_URL) }} />
+        <ActionRow icon="arrow.clockwise" color="systemTeal" title="清除 Loon 数据缓存" action={() => { clearLoonCache(); setNote('缓存已清除') }} />
+        <ActionRow icon="trash.fill" color="systemRed" title="清除用量历史" action={async () => {
           if (!(await Dialog.confirm({ title: '清除全部用量历史?', message: '趋势图和预测会从头记录', cancelLabel: '取消', confirmLabel: '清除' }))) return
           clearHistory()
           setNote('历史已清除')
           await props.reload()
         }} />
-      </Section>
-    </Form>
+      </KitGroup>
+    </Page>
   )
 }
 
@@ -1225,17 +1230,17 @@ function AutoRefreshPage() {
   }
 
   return (
-    <Form navigationTitle="自动刷新" navigationBarTitleDisplayMode="inline">
-      <Section footer={<Text>{note || 'Loon 体检完马上刷新桌面小组件, 不用等系统定时。需要 iOS 26 以上和 Scripting 的 Remote Push, 和推送通知共用每日额度。'}</Text>}>
-        {major < 26 ? <Text foregroundStyle={WARN}>当前系统低于 iOS 26, 暂时不能用。</Text> : null}
-        <Text font={14}>1. Scripting → 工具 → Remote Push 连接这台设备</Text>
-        <Button title="2. 授权小组件远程刷新" action={enable} />
-        <Text font={14}>3. 长按桌面 loon-panel 小组件 → 编辑小组件 → 打开 Remote Updates</Text>
-        <Button title={`4. 读取小组件 target${ids.length ? ` · ${ids.length} 个` : ''}`} action={load} />
-        <Text font={14}>5. 在 Remote Updates 里生成发送密钥 (Create Sender Key), 只勾 widgets:reload</Text>
-        <Button title="6. 把发送密钥交给 Loon 插件" action={send} disabled={!ids.length} />
-      </Section>
-    </Form>
+    <Page title="自动刷新">
+      <KitGroup note={note || 'Loon 体检完马上刷新桌面小组件, 不用等系统定时。需要 iOS 26 以上和 Scripting 的 Remote Push, 和推送通知共用每日额度。'}>
+        {major < 26 ? <InfoRow icon="exclamationmark.triangle.fill" color={WARN} title="当前系统低于 iOS 26, 暂时不能用" /> : null}
+        <InfoRow icon="1.circle.fill" color="systemBlue" title="连接 Remote Push" sub="Scripting → 工具 → Remote Push 连接这台设备" />
+        <ActionRow icon="2.circle.fill" color="systemBlue" title="授权小组件远程刷新" action={enable} />
+        <InfoRow icon="3.circle.fill" color="systemBlue" title="打开小组件的 Remote Updates" sub="长按桌面 loon-panel 小组件 → 编辑小组件" />
+        <ActionRow icon="4.circle.fill" color="systemBlue" title="读取小组件 target" value={ids.length ? `${ids.length} 个` : undefined} action={load} />
+        <InfoRow icon="5.circle.fill" color="systemBlue" title="生成发送密钥" sub="Remote Updates → Create Sender Key, 只勾 widgets:reload" />
+        <ActionRow icon="6.circle.fill" color="systemBlue" title="把发送密钥交给 Loon 插件" disabled={!ids.length} action={send} />
+      </KitGroup>
+    </Page>
   )
 }
 
