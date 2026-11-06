@@ -32,6 +32,12 @@ scripting/
 
 ---
 
+## 🎨 Scripting 界面风格
+
+App 页面统一用 `scripting/loon-panel/kit.tsx`:流光渐变底、液态玻璃卡片、圆形渐变图标、圆体字,iOS 26 以下自动换成系统材质。Scripting 脚本之间不能互相引用,新组件把这个文件复制过去,用 `Page`、`Group`、`Hero` 和各种 `Row` 搭页面。
+
+---
+
 ## 📝 添加步骤
 
 ### 1. 创建组件目录
