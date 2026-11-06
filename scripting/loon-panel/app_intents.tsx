@@ -3,7 +3,7 @@
 
 import { AppIntentManager, AppIntentProtocol, Widget, ControlWidget } from 'scripting'
 
-import { setLoon, loadLoon, mainGroup, ownerGroup, switchTarget, nextGroupPage, nextPickGroup, nextPickPage } from './loon'
+import { setLoon, loadLoon, mainGroup, ownerGroup, switchTarget, turnGroupPage, nextPickGroup, turnPickPage } from './loon'
 import { loadSubs } from './subs'
 import { getPrefs } from './settings'
 
@@ -81,12 +81,12 @@ export const RefreshIntent = AppIntentManager.register({
   },
 })
 
-/** 策略组卡片和看板翻到下一页 */
-export const NextGroupsIntent = AppIntentManager.register({
-  name: 'LoonPanelNextGroupsIntent',
+/** 策略组卡片和看板翻页: step 是 1 或 -1 */
+export const TurnGroupsIntent = AppIntentManager.register({
+  name: 'LoonPanelTurnGroupsIntent',
   protocol: AppIntentProtocol.AppIntent,
-  perform: async (_: undefined) => {
-    nextGroupPage()
+  perform: async ({ step }: { step: number }) => {
+    turnGroupPage(step)
     Widget.reloadAll()
   },
 })
@@ -101,11 +101,11 @@ export const NextPickGroupIntent = AppIntentManager.register({
   },
 })
 
-export const NextPickPageIntent = AppIntentManager.register({
-  name: 'LoonPanelNextPickPageIntent',
+export const TurnPickPageIntent = AppIntentManager.register({
+  name: 'LoonPanelTurnPickPageIntent',
   protocol: AppIntentProtocol.AppIntent,
-  perform: async (_: undefined) => {
-    nextPickPage()
+  perform: async ({ step }: { step: number }) => {
+    turnPickPage(step)
     Widget.reloadAll()
   },
 })
