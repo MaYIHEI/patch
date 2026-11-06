@@ -23,14 +23,16 @@ const DAY = 86_400_000
 const HOUR = 3_600_000
 const KEEP_DAYS = 62
 const SAMPLE_DAYS = 3
-/** 只读响应头很省, 但订阅接口也别请求太勤: 10 分钟内复用上次结果 (手动刷新除外) */
-const TTL = 10 * 60_000
+/** 默认几小时读一次: 请求太勤有的机场会封号 */
+export const DEFAULT_EVERY = 12
+/** 手动刷新的冷却, 连点也不重复请求 */
+const COOLDOWN = 30 * 60_000
 /** 常见客户端标识; 不带任何个人信息 */
 const UA = 'Loon/3.2.4 CFNetwork/3826.500.111 Darwin/24.4.0'
 const DAYS = 62
 
-/** resetDay: 每月几号重置流量, 0 = 不重置; price: 每期多少钱, 0 = 没填 */
-export type Sub = { id: string; name: string; resetDay?: number; price?: number }
+/** resetDay: 每月几号重置流量, 0 = 不重置; price: 每期多少钱, 0 = 没填; every: 几小时读一次, 0 = 手动填写, 从不请求订阅 */
+export type Sub = { id: string; name: string; resetDay?: number; price?: number; every?: number }
 /** upload / download / total 单位字节, expire 秒 (0 = 没有到期日), t 读取时间 */
 export type Usage = { up: number; down: number; total: number; expire: number; t: number; plan?: string; site?: string }
 type UsageEntry = { usage?: Usage; err?: string; at: number }
@@ -48,9 +50,9 @@ export const listSubs = () => readJSON<Sub[]>(LIST_KEY, [])
 export const saveSubs = (list: Sub[]) => AppStorage.set(LIST_KEY, JSON.stringify(list))
 export const subURL = (id: string) => Keychain.get(secretKey(id)) ?? ''
 
-export function addSub(name: string, url: string): Sub {
-  const sub = { id: `s${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name: name.trim() }
-  if (!Keychain.set(secretKey(sub.id), url.trim())) throw new Error('写入钥匙串失败')
+export function addSub(name: string, url: string, every = DEFAULT_EVERY): Sub {
+  const sub = { id: `s${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name: name.trim(), every }
+  if (url && !Keychain.set(secretKey(sub.id), url.trim())) throw new Error('写入钥匙串失败')
   saveSubs([...listSubs(), sub])
   return sub
 }
@@ -98,14 +100,21 @@ export function parseSubs(text: string): { name: string; url: string }[] {
   return out
 }
 
-/** 只添加读得到用量的 (节点转换、自建订阅常常没有 Subscription-Userinfo); 同名的跳过 */
-export async function importSubs(found: { name: string; url: string }[]): Promise<{ added: string[]; noUsage: string[]; same: string[] }> {
+/** 导入时不发请求: 有的链接读一次就失效; 手动填写的不保存链接; 同名的跳过 */
+export function importSubs(found: { name: string; url: string }[], every: number): { added: string[]; same: string[] } {
   const have = new Set(listSubs().map(s => s.name))
-  const same = found.filter(x => have.has(x.name)).map(x => x.name)
   const fresh = found.filter(x => !have.has(x.name))
-  const tried = await Promise.all(fresh.map(x => fetchUsage(x.url).then(() => true, () => false)))
-  fresh.forEach((x, i) => { if (tried[i]) addSub(x.name, x.url) })
-  return { added: fresh.filter((_, i) => tried[i]).map(x => x.name), noUsage: fresh.filter((_, i) => !tried[i]).map(x => x.name), same }
+  fresh.forEach(x => addSub(x.name, every ? x.url : '', every))
+  return { added: fresh.map(x => x.name), same: found.filter(x => have.has(x.name)).map(x => x.name) }
+}
+
+/** 手动填写用量, 单位字节; expire 秒, 0 = 没有到期日 */
+export function setUsage(id: string, used: number, total: number, expire: number): void {
+  const usage: Usage = { up: 0, down: used, total, expire, t: Date.now() }
+  const all = readJSON<Record<string, UsageEntry>>(USAGE_KEY, {})
+  all[id] = { usage, at: usage.t }
+  AppStorage.set(USAGE_KEY, JSON.stringify(all))
+  record(id, usage)
 }
 
 /** "upload=1; download=2; total=3; expire=4" → 用量; 没有 total 和 download 时返回 null */
@@ -122,8 +131,8 @@ export function parseUserinfo(text: string, t = Date.now()): Usage | null {
 }
 
 /**
- * 读用量, 尽量不下载订阅正文 (常见 1-5MB): 先 HEAD, 不行只取 1 字节, 最后才完整 GET;
- * 完整 GET 还没有这个头时读响应体 (有的自建端点把用量写在 body 里)
+ * 读用量, 只发一个请求: 有的机场按次数限制, 失败了也不换方式重试;
+ * 用 Range 只取 1 字节, 不下载订阅正文 (常见 1-5MB); 没有这个头时读响应体 (有的自建端点把用量写在 body 里)
  * 链接末尾可以带 #headers=<URL 编码的 JSON>, 作为请求头一起发 (比如 Authorization)
  * 出错信息不带链接, 免得订阅地址出现在界面或日志里
  */
@@ -136,31 +145,19 @@ export async function fetchUsage(url: string): Promise<Usage> {
     try { extra = JSON.parse(decodeURIComponent(frag.slice(8))) } catch { throw new Error('#headers= 后面不是 JSON') }
   }
   if (!/^https?:\/\//i.test(base)) throw new Error('订阅链接要以 http:// 或 https:// 开头')
-  const headers = { 'User-Agent': UA, ...extra }
-  const init = { timeout: 12, allowInsecureRequest: /^http:/i.test(base) }
-  const read = (res: { headers: { get(k: string): string | null } }) => {
-    const info = parseUserinfo(res.headers.get('subscription-userinfo') ?? '')
-    if (!info) return null
-    info.plan = res.headers.get('plan-name') ?? undefined
-    info.site = res.headers.get('profile-web-page-url') ?? undefined
-    return info
-  }
-  for (const attempt of [{ method: 'HEAD', headers }, { method: 'GET', headers: { ...headers, Range: 'bytes=0-0' } }]) {
-    try {
-      const res = await fetch(base, { ...init, ...attempt })
-      const info = res.ok ? read(res) : null
-      if (info) return info
-    } catch { /* 换下一种 */ }
-  }
   let res
   try {
-    res = await fetch(base, { ...init, headers })
+    res = await fetch(base, { timeout: 12, allowInsecureRequest: /^http:/i.test(base), headers: { 'User-Agent': UA, Range: 'bytes=0-0', ...extra } })
   } catch {
     throw new Error('连不上订阅地址')
   }
   if (!res.ok) throw new Error(`订阅地址返回 ${res.status}`)
-  const info = read(res)
-  if (info) return info
+  const info = parseUserinfo(res.headers.get('subscription-userinfo') ?? '')
+  if (info) {
+    info.plan = res.headers.get('plan-name') ?? undefined
+    info.site = res.headers.get('profile-web-page-url') ?? undefined
+    return info
+  }
   const text = await res.text().catch(() => '')
   const fromBody = text.length < 1000 ? parseUserinfo(text) : null
   if (fromBody) return fromBody
@@ -174,6 +171,7 @@ export type SubView = {
   name: string
   resetDay: number
   price: number
+  every: number      // 几小时读一次, 0 = 手动填写
   usage?: Usage
   err?: string       // 最近一次读取失败的原因 (有旧数据时照常显示旧数据)
   stale: boolean     // 显示的是旧数据
@@ -191,14 +189,14 @@ export type SubView = {
   fc: Forecast
 }
 
-/** 读全部订阅的用量; force 时不管缓存 */
+/** 读到时间的订阅; force 是手动刷新, 只受冷却限制; 手动填写的从不请求 */
 export async function loadSubs(force = false): Promise<SubView[]> {
   const subs = listSubs()
   const cache = readJSON<Record<string, UsageEntry>>(USAGE_KEY, {})
   const now = Date.now()
-  await Promise.all(subs.map(async s => {
+  await Promise.all(subs.filter(s => s.every !== 0).map(async s => {
     const old = cache[s.id]
-    if (!force && old && now - old.at < TTL) return
+    if (old && now - old.at < (force ? COOLDOWN : (s.every ?? DEFAULT_EVERY) * HOUR)) return
     const url = subURL(s.id)
     try {
       if (!url) throw new Error('钥匙串里没有订阅链接, 请重新填写')
@@ -234,7 +232,7 @@ function viewOf(s: Sub, entry: UsageEntry | undefined, points: Record<string, nu
   const deadline = reset && (!exp || reset < exp) ? reset : exp
   const deadlineWord = deadline && deadline === reset ? '重置' : '到期'
   return {
-    id: s.id, name: s.name, resetDay, price: s.price ?? 0,
+    id: s.id, name: s.name, resetDay, price: s.price ?? 0, every: s.every ?? DEFAULT_EVERY,
     usage, err: entry?.err, stale: !!entry?.err && !!usage,
     used, remain, ratio: usage && usage.total > 0 ? Math.min(1, used / usage.total) : 0,
     daily, today, hourly: hourlySeries(samples), recent: recentRate(samples), interval: updateInterval(samples),

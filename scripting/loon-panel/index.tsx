@@ -42,8 +42,8 @@ import {
   type Deep, type LoonData, type Group, type NodeResult, type OptsPatch,
 } from './loon'
 import {
-  loadSubs, cachedSubs, sampleSubs, listSubs, saveSubs, addSub, updateSub, removeSub, fetchUsage, clearHistory, recordedDays, localEvents, overview, parseSubs, importSubs,
-  fmtBytes, expireText, md, shiftDay, todayStr, type SubView,
+  loadSubs, cachedSubs, sampleSubs, listSubs, saveSubs, addSub, updateSub, removeSub, setUsage, subURL, bjDate, DEFAULT_EVERY, clearHistory, recordedDays, localEvents, overview, parseSubs, importSubs,
+  fmtBytes, expireText, md, shiftDay, todayStr, type SubView, type Usage,
 } from './subs'
 import { checkNat, lastNat, type Nat } from './net'
 import { Page, Card, Stage, Grid, Block, Panel, StatTile, ToggleTile, KV, NavTile, RoundButton, RoundLink, Group as KitGroup, Chip, SmallButton, NavRow, ActionRow, InfoRow, PickerRow } from './kit'
@@ -646,6 +646,37 @@ async function askURL(title: string): Promise<string | null> {
   return u
 }
 
+/** 选读取方式; 这一步之前不能碰订阅链接 */
+async function askEvery(): Promise<number | null> {
+  const i = await Dialog.actionSheet({
+    title: '怎么读取用量',
+    message: '机场不让随时拉取订阅就选手动填写, 面板不会请求订阅',
+    cancelButton: true,
+    actions: [{ label: `低频读取 (${DEFAULT_EVERY} 小时一次)` }, { label: '手动填写' }],
+  })
+  return i === 0 ? DEFAULT_EVERY : i === 1 ? 0 : null
+}
+
+/** 手动填写用量; 取消或填错返回 false */
+async function askUsage(s: { id: string; name: string }, u?: Usage): Promise<boolean> {
+  const G = 1024 ** 3
+  const gb = (n?: number) => (n ? String(Number((n / G).toFixed(2))) : '')
+  const total = await Dialog.prompt({ title: `${s.name} 的总流量`, message: '单位 GB; 留空表示不限量', defaultValue: gb(u?.total), keyboardType: 'decimalPad' })
+  if (total === null) return false
+  const used = await Dialog.prompt({ title: '已用流量', message: '单位 GB, 在机场官网看', defaultValue: gb(u ? u.up + u.down : 0), keyboardType: 'decimalPad' })
+  if (used === null) return false
+  const date = await Dialog.prompt({ title: '到期日', message: '格式 2026-12-31; 留空表示没有到期日', defaultValue: u?.expire ? bjDate(u.expire * 1000) : '' })
+  if (date === null) return false
+  const expire = date.trim() ? Date.parse(`${date.trim()}T23:59:59+08:00`) / 1000 : 0
+  const a = Number(total), b = Number(used)
+  if (!(a >= 0) || !(b >= 0) || Number.isNaN(expire)) {
+    await Dialog.alert({ title: '没有保存', message: '流量要填数字, 到期日格式是 2026-12-31' })
+    return false
+  }
+  setUsage(s.id, b * G, a * G, expire)
+  return true
+}
+
 function SubsPage(props: Shared & { close: any }) {
   const title = '机场'
   const [list, setList] = useState<SubView[]>(props.subs)
@@ -663,31 +694,29 @@ function SubsPage(props: Shared & { close: any }) {
   async function add() {
     const name = await Dialog.prompt({ title: '机场名字', message: '显示在小组件上, 比如「主力」', placeholder: '名字' })
     if (!name?.trim()) return
+    const every = await askEvery()
+    if (every === null) return
+    if (!every) {
+      const saved = await askUsage(addSub(name, '', 0))
+      setNote(saved ? `已添加 ${name.trim()}` : `已添加 ${name.trim()}, 点进去填写用量`)
+      return refresh(false)
+    }
     const url = await askURL(`${name.trim()} 的订阅链接`)
     if (!url) return
-    setNote('读取用量中...')
-    try {
-      const u = await fetchUsage(url)
-      addSub(name, url)
-      setNote(`已添加 ${name.trim()}: 已用 ${fmtBytes(u.up + u.down)}${u.total ? ` / ${fmtBytes(u.total)}` : ''}`)
-    } catch (e) {
-      const keep = await Dialog.confirm({ title: '没读到用量', message: `${(e as Error).message}。仍然添加吗?`, cancelLabel: '不添加', confirmLabel: '仍然添加' })
-      if (!keep) return setNote('')
-      addSub(name, url)
-      setNote(`已添加 ${name.trim()}, 但还没读到用量`)
-    }
+    addSub(name, url, every)
+    setNote(`已添加 ${name.trim()}`)
     await refresh(true)
   }
 
-  /** 配置文本 → 添加读得到用量的订阅 */
+  /** 配置文本 → 选好读取方式再添加, 导入时不请求订阅 */
   async function importText(text: string) {
     const found = parseSubs(text)
     if (!found.length) return setNote('没找到订阅链接')
-    setNote(`找到 ${found.length} 个, 读取用量中...`)
-    const r = await importSubs(found)
+    const every = await askEvery()
+    if (every === null) return
+    const r = importSubs(found, every)
     setNote([
-      r.added.length ? `已添加 ${r.added.join('、')}` : '没有新增',
-      r.noUsage.length ? `${r.noUsage.join('、')} 没有用量信息, 未添加` : '',
+      r.added.length ? `已添加 ${r.added.join('、')}${every ? '' : ', 点进去填写用量'}` : '没有新增',
       r.same.length ? `${r.same.join('、')} 已存在` : '',
     ].filter(Boolean).join('; '))
     await refresh(true)
@@ -712,7 +741,7 @@ function SubsPage(props: Shared & { close: any }) {
 
   if (!list.length) return (
     <Page title={title} large bar={{ cancellationAction: props.close }}>
-      <KitGroup note={note || 'Loon 脚本读不到订阅链接, 所以从配置里导入: 在 Loon 导出配置文件后选择它, 或复制配置内容、订阅链接后从剪贴板添加。只添加能读到用量的订阅, 链接只存在本机钥匙串。'}>
+      <KitGroup note={note || 'Loon 脚本读不到订阅链接, 所以从配置里导入: 在 Loon 导出配置文件后选择它, 或复制配置内容、订阅链接后从剪贴板添加。添加时选读取方式, 选之前不会请求订阅; 链接只存在本机钥匙串。'}>
         <ActionRow icon="doc.badge.plus" title="从 Loon 配置文件导入" action={fromFile} />
         <ActionRow icon="doc.on.clipboard" title="从剪贴板添加" action={fromPaste} />
         <ActionRow icon="square.and.pencil" title="手动添加" action={add} />
@@ -726,7 +755,7 @@ function SubsPage(props: Shared & { close: any }) {
         <Button title="从 Loon 配置文件导入" systemImage="doc.badge.plus" action={fromFile} />
         <Button title="从剪贴板添加" systemImage="doc.on.clipboard" action={fromPaste} />
         <Button title="手动添加" systemImage="square.and.pencil" action={add} />
-        <Button title="立即刷新用量" systemImage="arrow.clockwise" action={async () => { setNote('刷新中...'); await refresh(true); setNote(`已刷新 ${hhmm(Date.now())}`) }} />
+        <Button title="立即刷新用量" systemImage="arrow.clockwise" action={async () => { setNote('刷新中...'); await refresh(true); setNote(`已检查 ${hhmm(Date.now())}, 30 分钟内读过的不重复请求`) }} />
       </Menu>
     ) }}>
       {note ? <Text font={12} foregroundStyle="secondaryLabel" padding={{ horizontal: 20 }}>{note}</Text> : null}
@@ -824,6 +853,20 @@ function SubDetail(props: { sub: SubView; onChanged: () => Promise<void> }) {
     await props.onChanged()
   }
 
+  async function changeEvery(every: number) {
+    const url = every && !subURL(s.id) ? await askURL(`${s.name} 的订阅链接`) : undefined
+    if (url === null) return
+    updateSub(s.id, { every }, url)
+    setS({ ...s, every })
+    await props.onChanged()
+  }
+
+  async function fill() {
+    if (!(await askUsage(s, u))) return
+    setS(cachedSubs().find(x => x.id === s.id) ?? s)
+    await props.onChanged()
+  }
+
   async function editNumber(title: string, message: string, current: number, key: 'resetDay' | 'price', max: number) {
     const v = await Dialog.prompt({ title, message, defaultValue: current ? String(current) : '', placeholder: '留空清除', keyboardType: 'decimalPad' })
     if (v === null) return
@@ -850,7 +893,7 @@ function SubDetail(props: { sub: SubView; onChanged: () => Promise<void> }) {
             <Text font={16} fontWeight="bold" fontDesign="rounded" monospacedDigit>{u && u.total > 0 ? `${Math.round(s.ratio * 100)}%` : '∞'}</Text>
           </UsageRing>
           <VStack alignment="leading" spacing={3}>
-            <Text font={26} fontWeight="semibold" fontDesign="rounded" foregroundStyle="label" lineLimit={1} minScaleFactor={0.6}>{u ? (u.total > 0 ? `剩 ${fmtBytes(Math.max(0, u.total - s.used))}` : '不限流量') : '还没读到用量'}</Text>
+            <Text font={26} fontWeight="semibold" fontDesign="rounded" foregroundStyle="label" lineLimit={1} minScaleFactor={0.6}>{u ? (u.total > 0 ? `剩 ${fmtBytes(Math.max(0, u.total - s.used))}` : '不限流量') : s.every ? '还没读到用量' : '还没填写用量'}</Text>
             <Text font={13} foregroundStyle={s.fc.kind === 'runout' ? WARN : s.fc.kind === 'out' ? BAD : 'secondaryLabel'}>{s.fc.text}</Text>
             {s.err ? <Text font={12} foregroundStyle={u ? WARN : BAD}>{`最近一次读取失败: ${s.err}`}</Text> : null}
           </VStack>
@@ -858,7 +901,7 @@ function SubDetail(props: { sub: SubView; onChanged: () => Promise<void> }) {
       </Card>
 
       <Grid>
-        {u ? <StatTile label="已用" value={fmtBytes(s.used)} sub={`↑${fmtBytes(u.up)} ↓${fmtBytes(u.down)}`} /> : null}
+        {u ? <StatTile label="已用" value={fmtBytes(s.used)} sub={s.every ? `↑${fmtBytes(u.up)} ↓${fmtBytes(u.down)}` : undefined} /> : null}
         {u && u.total > 0 ? <StatTile label="总量" value={fmtBytes(u.total)} sub={u.plan} /> : null}
         {u?.expire ? <StatTile label="到期" value={expireText(u)} /> : null}
         {s.fc.avg ? <StatTile label="近 7 天日均" value={fmtBytes(s.fc.avg)} /> : null}
@@ -882,12 +925,14 @@ function SubDetail(props: { sub: SubView; onChanged: () => Promise<void> }) {
         </HStack>
       </Panel>
 
-      <KitGroup note={note || (u ? `读取于 ${new Date(u.t).getMonth() + 1}月${new Date(u.t).getDate()}日 ${hhmm(u.t)}` : undefined)}>
+      <KitGroup note={note || (u ? `${s.every ? '读取' : '填写'}于 ${new Date(u.t).getMonth() + 1}月${new Date(u.t).getDate()}日 ${hhmm(u.t)}` : undefined)}>
+        <PickerRow icon="clock" title="读取方式" value={s.every} options={[[1, '1 小时一次'], [3, '3 小时一次'], [6, '6 小时一次'], [12, '12 小时一次'], [24, '24 小时一次'], [0, '手动填写']]} onChanged={v => { changeEvery(v) }} />
+        {s.every ? null : <ActionRow icon="square.and.pencil" title="填写用量" action={fill} />}
         <ActionRow icon="calendar" title="每月重置日" value={s.resetDay ? `${s.resetDay} 号` : '未设置'} action={() => { editNumber('每月几号重置流量', '填 1 到 31; 填了之后预测和每天额度按重置日算', s.resetDay, 'resetDay', 31) }} />
         <ActionRow icon="yensign.circle" title="每期价格" value={s.price ? `¥${s.price}` : '未设置'} action={() => { editNumber('每期多少钱', '用来算每 G 多少钱和性价比', s.price, 'price', 100000) }} />
         {u?.site ? <ActionRow icon="safari" title="打开机场官网" action={() => { Safari.openURL(u.site!) }} /> : null}
         <ActionRow icon="pencil" title="改名" action={rename} />
-        <ActionRow icon="link" title="更换订阅链接" action={changeURL} />
+        {s.every ? <ActionRow icon="link" title="更换订阅链接" action={changeURL} /> : null}
         <ActionRow icon="trash" color="systemRed" title="删除这个订阅" action={remove} />
       </KitGroup>
     </Page>
