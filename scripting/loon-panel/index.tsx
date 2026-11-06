@@ -49,12 +49,12 @@ import {
   fmtBytes, expireText, md, shiftDay, todayStr, type SubView,
 } from './subs'
 import { checkNat, lastNat, type Nat } from './net'
-import { Page, Card, Stage, Group as KitGroup, Chip, SmallButton, NavRow, ActionRow, InfoRow, ToggleRow, PickerRow } from './kit'
+import { Page, Card, Stage, Grid, NavTile, RoundButton, RoundLink, Group as KitGroup, Chip, SmallButton, NavRow, ActionRow, InfoRow, ToggleRow, PickerRow } from './kit'
 import {
   getPrefs, setPrefs, getLook, setLook, getDefaults, setDefault, getRemoteTargets, setRemoteTargets,
   DEFAULT_LOOK, RECOMMENDED_BG, RECOMMENDED_ACCENT, type Look, type Family, type Prefs,
 } from './settings'
-import { makeTheme, UsageRing, DailyBars, HourBars, Spark, mediaColor, mediaWord, latencyColor, latencyText, nodeLabel, fullLabel, asnText, ago, hhmm, chunk, usageColor, OK, BAD, WARN, type Ctx } from './ui'
+import { makeTheme, Bar, UsageRing, DailyBars, HourBars, Spark, mediaColor, mediaWord, latencyColor, latencyText, nodeLabel, fullLabel, asnText, ago, hhmm, chunk, usageColor, OK, BAD, WARN, type Ctx } from './ui'
 import { ipTags } from './styles/net'
 import { rateText } from './styles/flow'
 import { stylesFor, styleById, paramOf, renderStyle, type StyleDef } from './styles/index'
@@ -207,10 +207,13 @@ function WidgetTab(props: { shared: Shared; act: (q: {}, label: string) => Promi
           <Text font={12} foregroundStyle="secondaryLabel">{`${style.name} · ${FAMILY_NAME[family]}${!loon || !subs.length ? ' · 示例数据' : ''}`}</Text>
         </Stage>
       </VStack>
-      <KitGroup note="加到桌面: 长按桌面空白处 → + → 搜 Scripting → 选 Loon 面板。">
-        <NavRow icon="square.grid.2x2" title="换个样式" value={`${stylesFor(family).length} 种`} destination={<StyleLibrary {...shared} start={family.startsWith('accessory') ? 'lock' : family as SizeTab} onChanged={props.onChanged} />} />
-        <NavRow icon="paintpalette" title="外观" value={look.mode === 'plain' ? '素净' : look.bgType === 'image' ? '自定义图片' : '自定义纯色'} destination={<AppearancePage {...shared} onChanged={props.onChanged} />} />
-      </KitGroup>
+      <VStack alignment="leading" spacing={8}>
+        <Grid>
+          <NavTile icon="square.grid.2x2" title="换个样式" value={`${stylesFor(family).length} 种`} destination={<StyleLibrary {...shared} start={family.startsWith('accessory') ? 'lock' : family as SizeTab} onChanged={props.onChanged} />} />
+          <NavTile icon="paintpalette" title="外观" value={look.mode === 'plain' ? '素净' : look.bgType === 'image' ? '自定义图片' : '自定义纯色'} destination={<AppearancePage {...shared} onChanged={props.onChanged} />} />
+        </Grid>
+        <Text font={12} foregroundStyle="secondaryLabel" padding={{ horizontal: 20 }}>加到桌面: 长按桌面空白处 → + → 搜 Scripting → 选 Loon 面板。</Text>
+      </VStack>
     </Page>
   )
 }
@@ -240,23 +243,27 @@ function NodesTab(props: { shared: Shared; act: (q: Act, label: string) => Promi
       <Picker title="模式" value={loon.mode} onChanged={(v: any) => { if (Number(v) !== loon.mode) act({ mode: Number(v) }, '切换模式') }} pickerStyle="segmented" disabled={!!busy || !live}>
         {MODES.map(m => <Text tag={m.id}>{m.name}</Text>)}
       </Picker>
-      <KitGroup inset={16}>
-        {others.map(g => link(g, <GroupLine group={g} loon={loon} />))}
+      <Grid>
+        {others.map(g => link(g, <GroupTile group={g} loon={loon} />))}
         {loon.groups.length > 1 ? (
           <NavigationLink destination={<AllGroupsPage loon={loon} act={act} reload={reload} />} buttonStyle="plain">
-            <HStack padding={{ horizontal: 16, vertical: 13 }}>
-              <Text font={14} foregroundStyle="secondaryLabel">{`全部 ${loon.groups.length} 个策略组`}</Text>
-              <Spacer />
-              <Image systemName="chevron.right" font={13} fontWeight="semibold" foregroundStyle="tertiaryLabel" />
-            </HStack>
+            <Card inner={14} tall={92}>
+              <VStack alignment="leading" spacing={3}>
+                <Text font={12} foregroundStyle="secondaryLabel">策略组</Text>
+                <Text font={22} fontWeight="semibold" fontDesign="rounded" foregroundStyle="label">{`全部 ${loon.groups.length}`}</Text>
+              </VStack>
+            </Card>
           </NavigationLink>
         ) : null}
-      </KitGroup>
-      <KitGroup note={note || undefined}>
-        <ActionRow icon="stethoscope" title="立即体检" disabled={!!busy || !live} action={() => { act({}, '体检当前节点') }} />
-        <ActionRow icon="arrow.down.circle" title="更新订阅" sub="跳到 Loon 更新" action={() => { Safari.openURL('loon://update?sub=all') }} />
-        {events.length ? <NavRow icon="list.bullet" title="发生了什么" sub={events[0].msg} value={`${events.length} 件`} destination={<EventsPage events={events} />} /> : null}
-      </KitGroup>
+      </Grid>
+      <VStack spacing={8}>
+        <HStack>
+          <RoundButton icon="stethoscope" title="立即体检" disabled={!!busy || !live} action={() => { act({}, '体检当前节点') }} />
+          <RoundButton icon="arrow.down.circle" title="更新订阅" action={() => { Safari.openURL('loon://update?sub=all') }} />
+          {events.length ? <RoundLink icon="list.bullet" title={`事件 ${events.length}`} destination={<EventsPage events={events} />} /> : null}
+        </HStack>
+        {note ? <Text font={12} foregroundStyle="secondaryLabel">{note}</Text> : null}
+      </VStack>
     </Page>
   )
 }
@@ -268,6 +275,21 @@ function Latency(props: { r?: NodeResult }) {
       <Circle fill={latencyColor(props.r)} frame={{ width: 6, height: 6 }} />
       <Text font={14} monospacedDigit foregroundStyle={props.r ? 'label' : 'secondaryLabel'}>{latencyText(props.r)}</Text>
     </HStack>
+  )
+}
+
+/** 节点页网格里的策略组; 正常时数字保持黑色, 慢和超时才给颜色 */
+function GroupTile(props: { group: Group; loon: LoonData }) {
+  const { group: g, loon } = props
+  const r = loon.nodes[g.leaf]
+  return (
+    <Card inner={14} tall={92}>
+      <VStack alignment="leading" spacing={3}>
+        <Text font={12} foregroundStyle="secondaryLabel" lineLimit={1}>{g.name}</Text>
+        <Text font={22} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={r && (!r.ok || r.ms >= 800) ? latencyColor(r) : 'label'}>{latencyText(r)}</Text>
+        <Text font={12} foregroundStyle="secondaryLabel" lineLimit={1}>{nodeLabel(g.leaf, r)}</Text>
+      </VStack>
+    </Card>
   )
 }
 
@@ -650,17 +672,6 @@ function SubsPage(props: Shared & { close: any }) {
     DocumentPicker.stopAcessingSecurityScopedResources()
   }
 
-  function onMove(indices: number[], newOffset: number) {
-    const order = list.map(s => s.id)
-    const moving = indices.map(i => order[i])
-    const rest = order.filter((_, i) => !indices.includes(i))
-    rest.splice(newOffset, 0, ...moving)
-    const byId = new Map(listSubs().map(s => [s.id, s]))
-    saveSubs(rest.map(id => byId.get(id)!).filter(Boolean))
-    setList(rest.map(id => list.find(s => s.id === id)!))
-    Widget.reloadAll()
-  }
-
   if (!list.length) return (
     <Page title={title} large bar={{ cancellationAction: props.close }}>
       <KitGroup note={note || 'Loon 脚本读不到订阅链接, 所以从配置里导入: 在 Loon 导出配置文件后选择它, 或复制配置内容、订阅链接后从剪贴板添加。只添加能读到用量的订阅, 链接只存在本机钥匙串。'}>
@@ -672,7 +683,7 @@ function SubsPage(props: Shared & { close: any }) {
   )
 
   return (
-    <List navigationTitle={title} toolbar={{ cancellationAction: props.close, topBarLeading: list.length > 1 ? <EditButton /> : undefined, topBarTrailing: (
+    <Page title={title} large bar={{ cancellationAction: props.close, topBarTrailing: (
       <Menu title="添加" systemImage="plus">
         <Button title="从 Loon 配置文件导入" systemImage="doc.badge.plus" action={fromFile} />
         <Button title="从剪贴板添加" systemImage="doc.on.clipboard" action={fromPaste} />
@@ -680,30 +691,71 @@ function SubsPage(props: Shared & { close: any }) {
         <Button title="立即刷新用量" systemImage="arrow.clockwise" action={async () => { setNote('刷新中...'); await refresh(true); setNote(`已刷新 ${hhmm(Date.now())}`) }} />
       </Menu>
     ) }}>
-      <Section
-        header={<Text>{`机场 · ${list.length}`}</Text>}
-        footer={<Text>{note || `第一个是主订阅, 小号、中号和锁屏显示它${list.length > 1 ? '; 点左上角「编辑」拖动排序' : ''}。`}</Text>}
-      >
-        <ForEach
-          count={list.length}
-          itemBuilder={(i: number) => {
-            const s = list[i]
-            return (
-              <NavigationLink key={s.id} destination={<SubDetail sub={s} onChanged={() => refresh(false)} />}>
-                <HStack spacing={12}>
-                  <UsageRing ctx={appCtx(null, [])} ratio={s.ratio} size={26} line={5} />
-                  <VStack alignment="leading" spacing={1}>
-                    <Text font={15}>{`${i === 0 ? '★ ' : ''}${s.name}`}</Text>
-                    <Text font={12} foregroundStyle={s.err ? (s.usage ? WARN : BAD) : 'secondaryLabel'} lineLimit={1}>
-                      {s.usage ? `${s.usage.total > 0 ? `${fmtBytes(s.used)} / ${fmtBytes(s.usage.total)}` : `已用 ${fmtBytes(s.used)}`} · ${s.fc.short}${s.err ? ' · ⚠ 旧数据' : ''}` : s.err ?? '读取中'}
-                    </Text>
-                  </VStack>
-                </HStack>
-              </NavigationLink>
-            )
-          }}
-          onMove={onMove}
-        />
+      {note ? <Text font={12} foregroundStyle="secondaryLabel" padding={{ horizontal: 20 }}>{note}</Text> : null}
+      {list.map((s, i) => (
+        <NavigationLink key={s.id} destination={<SubDetail sub={s} onChanged={() => refresh(false)} />} buttonStyle="plain">
+          <SubCard sub={s} first={i === 0 && list.length > 1} />
+        </NavigationLink>
+      ))}
+      {list.length > 1 ? (
+        <KitGroup>
+          <NavRow icon="arrow.up.arrow.down" title="调整顺序" sub="第一个是主订阅, 小号、中号和锁屏显示它" destination={<SubsOrderPage list={list} onChanged={() => refresh(false)} />} />
+        </KitGroup>
+      ) : null}
+    </Page>
+  )
+}
+
+/** 机场页的一张卡: 还剩多少是主角 */
+function SubCard(props: { sub: SubView; first: boolean }) {
+  const s = props.sub
+  const u = s.usage
+  const limited = !!u && u.total > 0
+  return (
+    <Card inner={16}>
+      <VStack alignment="leading" spacing={8}>
+        <HStack spacing={6}>
+          <Text font={14} foregroundStyle="label" lineLimit={1}>{s.name}</Text>
+          {props.first ? <Text font={11} foregroundStyle="secondaryLabel">主订阅</Text> : null}
+          <Spacer />
+          {s.deadline ? <Text font={12} foregroundStyle="secondaryLabel">{`${md(s.deadline)} ${s.deadlineWord}`}</Text> : null}
+        </HStack>
+        <HStack alignment="lastTextBaseline" spacing={5}>
+          <Text font={32} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle="label">{!u ? '-' : limited ? fmtBytes(s.remain) : `已用 ${fmtBytes(s.used)}`}</Text>
+          {limited ? <Text font={13} foregroundStyle="secondaryLabel">{`剩余 / ${fmtBytes(u.total)}`}</Text> : null}
+        </HStack>
+        {limited ? <Bar ctx={appCtx(null, [])} value={s.ratio} color={usageColor(s.ratio)} /> : null}
+        {u ? (
+          <HStack>
+            <Text font={12} foregroundStyle="secondaryLabel">{`今天 ${fmtBytes(s.today)}`}</Text>
+            <Spacer />
+            <Text font={12} foregroundStyle={s.fc.kind === 'runout' ? WARN : s.fc.kind === 'out' ? BAD : 'secondaryLabel'}>{s.fc.short}</Text>
+          </HStack>
+        ) : null}
+        {s.err ? <Text font={12} foregroundStyle={u ? WARN : BAD} lineLimit={1}>{u ? `旧数据: ${s.err}` : s.err}</Text> : null}
+      </VStack>
+    </Card>
+  )
+}
+
+function SubsOrderPage(props: { list: SubView[]; onChanged: () => Promise<void> }) {
+  const [list, setList] = useState(props.list)
+
+  function onMove(indices: number[], newOffset: number) {
+    const moving = indices.map(i => list[i])
+    const next = list.filter((_, i) => !indices.includes(i))
+    next.splice(newOffset, 0, ...moving)
+    const byId = new Map(listSubs().map(s => [s.id, s]))
+    saveSubs(next.map(s => byId.get(s.id)!).filter(Boolean))
+    setList(next)
+    Widget.reloadAll()
+    props.onChanged()
+  }
+
+  return (
+    <List navigationTitle="调整顺序" navigationBarTitleDisplayMode="inline" toolbar={{ topBarTrailing: <EditButton /> }}>
+      <Section footer={<Text>点右上角「编辑」拖动。第一个是主订阅, 小号、中号和锁屏显示它。</Text>}>
+        <ForEach count={list.length} itemBuilder={(i: number) => <Text key={list[i].id}>{list[i].name}</Text>} onMove={onMove} />
       </Section>
     </List>
   )
