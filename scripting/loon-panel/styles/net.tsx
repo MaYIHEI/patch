@@ -368,8 +368,8 @@ export function GroupCell(props: { ctx: Ctx; g: Group }) {
           <Text font={10} foregroundStyle={th.t2} lineLimit={1}>{g.name}</Text>
           {loon.locks?.[g.name] ? <Image systemName="lock.fill" font={8} foregroundStyle={th.t3} /> : null}
         </HStack>
-        <Text font={15} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={latencyInk(ctx, r)} lineLimit={1}>{latencyText(r)}</Text>
-        <Text font={10} foregroundStyle={going?.group === g.name ? th.accent : g.gone ? WARN : th.t3} lineLimit={1} minScaleFactor={0.85}>{going?.group === g.name ? `切换到 ${going.node}` : g.gone ? '节点已失效' : nodeLabel(g.leaf, r)}</Text>
+        <Text font={15} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={latencyInk(ctx, r)} lineLimit={1}>{g.leaf === 'DIRECT' ? '直连' : latencyText(r)}</Text>
+        <Text font={10} foregroundStyle={going?.group === g.name ? th.accent : g.gone ? WARN : th.t3} lineLimit={1} minScaleFactor={0.85}>{going?.group === g.name ? `切换到 ${going.node}` : g.gone ? '节点已失效' : g.leaf === 'DIRECT' ? '不走代理' : nodeLabel(g.leaf, r)}</Text>
       </Cell>
     </Tap>
   )
@@ -436,6 +436,7 @@ export function OverviewSmall(props: { ctx: Ctx }) {
         <VStack alignment="leading" spacing={2} padding={{ top: 8 }}>
           <Text font={17} fontWeight="semibold" foregroundStyle={th.t1} lineLimit={1} minScaleFactor={0.6}>{leaf ? nodeLabel(leaf.name, leaf.r) : '-'}</Text>
           <Text font={10} foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.8}>{leaf?.r?.org ?? ''}</Text>
+          <Text font={10} monospacedDigit foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.8}>{leaf?.r?.ip ?? ''}</Text>
         </VStack>
       )}
       <Spacer minLength={0} />
@@ -446,11 +447,14 @@ export function OverviewSmall(props: { ctx: Ctx }) {
           <Text font={11} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={latencyInk(ctx, leaf?.r)} lineLimit={1}>{latencyText(leaf?.r)}</Text>
         </HStack>
       ) : (
+        <VStack spacing={6}>
+        <Uptime h={leaf?.r?.h} height={5} />
         <HStack spacing={4}>
           <Metric ctx={ctx} value={leaf?.r?.ok ? String(leaf.r.ms) : latencyText(leaf?.r)} label="延迟" color={latencyInk(ctx, leaf?.r)} />
           <Metric ctx={ctx} value={a === null ? '-' : `${Math.round(a * 100)}%`} label="可用" />
           <Metric ctx={ctx} value={`${c.ok}`} label="节点" />
         </HStack>
+        </VStack>
       )}
     </Root>
   )
@@ -475,7 +479,9 @@ export function OverviewStyle(props: { ctx: Ctx }) {
           <Num value={u ? fmtBytes(u.total > 0 ? s.remain : s.used) : latencyText(leaf?.r)} size={24} color={u ? th.t1 : latencyInk(ctx, leaf?.r)} />
           {u && u.total > 0 ? <Bar ctx={ctx} value={s.ratio} color={usageColor(s.ratio)} height={4} /> : null}
           {u ? <Text font={10} foregroundStyle={th.t2} lineLimit={1} minScaleFactor={0.8}>{subLine(s)}</Text> : <Text font={11} foregroundStyle={th.t1} lineLimit={1} minScaleFactor={0.75}>{leaf ? nodeLabel(leaf.name, leaf.r) : ''}</Text>}
+          {u ? null : <Text font={10} monospacedDigit foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.8}>{leaf?.r?.ip ?? ''}</Text>}
           <Spacer minLength={0} />
+          {u ? null : <Uptime h={leaf?.r?.h} height={5} />}
           {u ? <Text font={10} foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.75}>{leaf ? `${nodeLabel(leaf.name, leaf.r)} ${latencyText(leaf.r)}` : ''}</Text> : <Text font={10} foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.75}>{healthText(ctx)}</Text>}
         </VStack>
         <VStack spacing={6} frame={{ maxWidth: 'infinity' }}>

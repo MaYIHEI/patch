@@ -6,7 +6,7 @@
 // 请求 http://1.1.1.1/loon-panel/deep?node=…: 对节点跑一次深度检测 (加 &speed=1 同时测速)
 // POST http://1.1.1.1/loon-panel/opts: 保存 App 里的设置, 正文是要改的项 (JSON); 空字符串 = 恢复默认
 
-const VERSION = '0.3.15'
+const VERSION = '0.3.21'
 const STORE_KEY = 'loon_panel'
 const CORE_KEY = 'loon_panel_core'
 // 检测核心库 (paperclip ipquality-web-test), 解锁和深度检测都用它, 这里不另写一份
@@ -154,6 +154,7 @@ function readStore() {
   try { s = JSON.parse($persistentStore.read(STORE_KEY) || '{}') } catch (e) { s = {} }
   if (!s || typeof s !== 'object') s = {}
   for (const k of ['nodes', 'media', 'deep', 'locks']) if (!s[k] || typeof s[k] !== 'object') s[k] = {}
+  delete s.nodes.DIRECT   // 旧版留下的记录: DIRECT 不再体检
   if (!Array.isArray(s.events)) s.events = []
   return s
 }
