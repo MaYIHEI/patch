@@ -12,7 +12,7 @@ const NO_LOON = '读不到 Loon 数据\n打开 App 看排查步骤'
 export function mainGroupLeaf(ctx: Ctx): { group: string; name: string; r?: NodeResult } | undefined {
   if (!ctx.loon) return undefined
   const g = mainGroup(ctx.loon, ctx.prefs)
-  return g ? { group: g.name, name: g.leaf, r: ctx.loon.nodes[g.leaf] } : undefined
+  return g ? { group: g.name, name: g.leaf, r: g.gone ? undefined : ctx.loon.nodes[g.leaf] } : undefined
 }
 
 /** 体检时间: 「体检 12:30」, 从没体检过提示去跑一次 */

@@ -116,6 +116,10 @@ function isNewer(remote: string, local: string): boolean {
 }
 
 /** 首屏和样式库用: 有真实数据用真实的, 没有用示例 */
+/** 用到机场用量的样式 */
+const TRAFFIC_STYLES = ['A', 'G', 'H', 'I', 'J', 'O', 'C', 'Q', 'X', 'E', 'Y', 'F', 'AC']
+const sampleNote = (id: string, loon: LoonData | null, subs: SubView[]) => (!loon ? ' · 示例数据' : !subs.length && TRAFFIC_STYLES.includes(id) ? ' · 流量是示例' : '')
+
 const previewData = (p: Shared) => ({ loon: p.loon ?? sampleLoon(), subs: p.subs.length ? p.subs : sampleSubs() })
 
 // ─────────────────────────────────────────────────────────────
@@ -204,7 +208,7 @@ function WidgetTab(props: { shared: Shared; act: (q: {}, label: string) => Promi
         </Picker>
         <Stage>
           <Preview style={style} family={family} loon={data.loon} subs={data.subs} />
-          <Text font={12} foregroundStyle="secondaryLabel">{`${style.name} · ${FAMILY_NAME[family]}${!loon || !subs.length ? ' · 示例数据' : ''}`}</Text>
+          <Text font={12} foregroundStyle="secondaryLabel">{`${style.name} · ${FAMILY_NAME[family]}${sampleNote(style.id, loon, subs)}`}</Text>
         </Stage>
       </VStack>
       {more.length ? (
@@ -306,13 +310,13 @@ function Latency(props: { r?: NodeResult }) {
 /** 节点页网格里的策略组; 正常时数字保持黑色, 慢和超时才给颜色 */
 function GroupTile(props: { group: Group; loon: LoonData }) {
   const { group: g, loon } = props
-  const r = loon.nodes[g.leaf]
+  const r = g.gone ? undefined : loon.nodes[g.leaf]
   return (
     <Card inner={14} tall={92}>
       <VStack alignment="leading" spacing={3}>
         <Text font={12} foregroundStyle="secondaryLabel" lineLimit={1}>{g.name}</Text>
         <Text font={22} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={r && (!r.ok || r.ms >= 800) ? latencyColor(r) : 'label'}>{latencyText(r)}</Text>
-        <Text font={12} foregroundStyle="secondaryLabel" lineLimit={1}>{nodeLabel(g.leaf, r)}</Text>
+        <Text font={12} foregroundStyle={g.gone ? WARN : 'secondaryLabel'} lineLimit={1}>{g.gone ? `${g.leaf} 已失效` : nodeLabel(g.leaf, r)}</Text>
       </VStack>
     </Card>
   )
@@ -321,7 +325,7 @@ function GroupTile(props: { group: Group; loon: LoonData }) {
 /** 节点页顶部: 主策略组现在好不好 */
 function HeroCard(props: { group: Group; loon: LoonData }) {
   const { group: g, loon } = props
-  const r = loon.nodes[g.leaf]
+  const r = g.gone ? undefined : loon.nodes[g.leaf]
   const c = healthCount(loon)
   return (
     <Card inner={18}>
@@ -331,7 +335,7 @@ function HeroCard(props: { group: Group; loon: LoonData }) {
           <Text font={44} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={r && (!r.ok || r.ms >= 800) ? latencyColor(r) : 'label'}>{r ? (r.ok ? String(r.ms) : '超时') : '未测'}</Text>
           {r?.ok ? <Text font={15} foregroundStyle="secondaryLabel">ms</Text> : null}
         </HStack>
-        <Text font={15} foregroundStyle="label" lineLimit={1}>{nodeLabel(g.leaf, r)}</Text>
+        <Text font={15} foregroundStyle={g.gone ? WARN : 'label'} lineLimit={1}>{g.gone ? `${g.leaf} 已失效，重新选一个节点` : nodeLabel(g.leaf, r)}</Text>
         {r?.h?.length ? <Spark ctx={appCtx(null, [])} h={r.h} height={30} count={24} tone="systemBlue" /> : null}
         <HStack>
           {c.total ? <Text font={12} foregroundStyle="secondaryLabel">{`${c.ok}/${c.total} 个节点可用`}</Text> : null}
@@ -1147,7 +1151,7 @@ function AppearancePage(props: Shared & { onChanged: () => void }) {
     <Page title="外观">
       <Stage>
         <Preview style={style} family={fam} loon={data.loon} subs={data.subs} look={look} scale={fam === 'systemLarge' ? 0.8 : 1} />
-        <Text font={12} foregroundStyle="secondaryLabel">{`${style.name} · ${FAMILY_NAME[fam]}${props.loon && props.subs.length ? '' : ' · 示例数据'}`}</Text>
+        <Text font={12} foregroundStyle="secondaryLabel">{`${style.name} · ${FAMILY_NAME[fam]}${sampleNote(style.id, props.loon, props.subs)}`}</Text>
       </Stage>
       <Picker title="尺寸" value={fam} onChanged={(v: any) => setFam(v as Family)} pickerStyle="segmented">
         <Text tag="systemSmall">小</Text>
