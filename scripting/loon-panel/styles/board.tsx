@@ -1,7 +1,7 @@
 // loon-panel / styles/board.tsx
 // E 全景看板 (大): 模式切换 · 多机场对比 · 策略组当前节点和延迟 (点行切到最快) · 出口信息
 
-import { VStack, HStack, Text, Spacer, Image, Capsule, Rectangle } from 'scripting'
+import { VStack, HStack, Text, Spacer, Image, Capsule, Rectangle, RoundedRectangle } from 'scripting'
 
 import { MODES, groupPage, healthCount, unlockNode, loonStatus } from '../loon'
 import { fmtBytes } from '../subs'
@@ -9,7 +9,7 @@ import { ModeIntent, CheckIntent, readNote } from '../app_intents'
 import { mainGroupLeaf } from './node'
 import { PageButton, GroupCell, Tap } from './net'
 import { pct, fcColor, staleMark } from './usage'
-import { Root, Logo, Bar, RefreshButton, chunk, usageColor, mediaColor, asnText, flag, syncText, OK, BAD, WARN, type Ctx } from '../ui'
+import { Root, Logo, Bar, RefreshButton, chunk, usageColor, mediaColor, flag, syncText, OK, BAD, WARN, type Ctx } from '../ui'
 
 function Section(props: { ctx: Ctx; title: string; right?: string; trailing?: any }) {
   const { th } = props.ctx
@@ -56,9 +56,10 @@ export function BoardStyle(props: { ctx: Ctx }) {
   const health = loon ? healthCount(loon) : null
   const note = ctx.inApp ? null : readNote()
   const status = loonStatus(loon)
-  const media = loon ? unlockNode(loon, ctx.prefs)?.list ?? [] : []
+  const unlock = loon ? unlockNode(loon, ctx.prefs) : undefined
+  const media = unlock?.list ?? []
   return (
-    <Root ctx={ctx} spacing={8}>
+    <Root ctx={ctx} spacing={6}>
       <HStack spacing={6}>
         <Logo size={18} />
         <Text font={15} fontWeight="bold" foregroundStyle={th.t1}>Loon 面板</Text>
@@ -107,20 +108,24 @@ export function BoardStyle(props: { ctx: Ctx }) {
         <Text font={11} foregroundStyle={th.t3}>读不到 Loon 数据, 打开 App 看排查步骤</Text>
       )}
 
-      {media.length ? (
-        <HStack spacing={5}>
-          <Text font={10} foregroundStyle={th.t3}>解锁</Text>
-          {media.slice(0, 6).map(m => <Text font={10} fontWeight="medium" foregroundStyle={mediaColor(m)} lineLimit={1} minScaleFactor={0.7}>{m.name}</Text>)}
-        </HStack>
-      ) : null}
       <Spacer minLength={0} />
-      {leaf?.r?.ip ? (
-        <HStack spacing={6} padding={{ horizontal: 10, vertical: 5 }} background={<Capsule fill={th.card} />}>
-          <Text font={10} foregroundStyle={th.t2}>出口</Text>
-          <Text font={10} fontWeight="semibold" monospacedDigit foregroundStyle={th.t1} lineLimit={1} minScaleFactor={0.7}>{`${flag(leaf.r.cc)} ${leaf.r.ip}`}</Text>
-          <Text font={10} foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.7}>{loon?.direct?.org ? `直连 ${loon.direct.org}` : asnText(leaf.r)}</Text>
-          <Spacer minLength={0} />
-        </HStack>
+      {leaf ? (
+        <VStack spacing={3} padding={{ horizontal: 10, vertical: 6 }} background={<RoundedRectangle cornerRadius={12} style="continuous" fill={th.card} />}>
+          <HStack spacing={6}>
+            <Text font={10} foregroundStyle={th.t2} lineLimit={1}>{`出口 · ${leaf.group}`}</Text>
+            <Spacer minLength={4} />
+            <Text font={10} fontWeight="semibold" monospacedDigit foregroundStyle={leaf.r?.ip ? th.t1 : th.t3} lineLimit={1} minScaleFactor={0.7}>{leaf.r?.ip ? `${flag(leaf.r.cc)} ${leaf.r.ip}` : '没读到出口 IP'}</Text>
+          </HStack>
+          {unlock ? (
+            <HStack spacing={5}>
+              <Text font={10} foregroundStyle={th.t2} lineLimit={1}>{`解锁 · ${unlock.group}`}</Text>
+              <Spacer minLength={4} />
+              {media.length
+                ? media.slice(0, 4).map(m => <Text font={10} fontWeight="medium" foregroundStyle={mediaColor(m)} lineLimit={1} minScaleFactor={0.7}>{m.name}</Text>)
+                : <Text font={10} foregroundStyle={th.t3} lineLimit={1}>还没检测</Text>}
+            </HStack>
+          ) : null}
+        </VStack>
       ) : null}
     </Root>
   )

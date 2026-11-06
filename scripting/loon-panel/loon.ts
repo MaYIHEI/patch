@@ -150,16 +150,19 @@ export function shownGroups(d: LoonData, prefs: Prefs): Group[] {
   return picked.length ? picked : d.groups.slice(0, 4)
 }
 
+/** 页码绕回: 往前翻会变成负数 */
+const wrap = (n: number, size: number) => ((n % size) + size) % size
+
 /** 小组件翻页: 设了常用就只翻常用的, 没设就翻全部; 页码存 Storage, 翻到头回第一页 */
 export function groupPage(d: LoonData, prefs: Prefs, size: number): { list: Group[]; page: number; pages: number } {
   const first = shownGroups(d, prefs)
   const all = prefs.groups.length ? first : d.groups
   const pages = Math.max(1, Math.ceil(all.length / size))
-  const page = (AppStorage.get<number>(PAGE_KEY) ?? 0) % pages
+  const page = wrap(AppStorage.get<number>(PAGE_KEY) ?? 0, pages)
   return { list: all.slice(page * size, (page + 1) * size), page, pages }
 }
 
-export const nextGroupPage = () => AppStorage.set(PAGE_KEY, (AppStorage.get<number>(PAGE_KEY) ?? 0) + 1)
+export const turnGroupPage = (step: number) => AppStorage.set(PAGE_KEY, (AppStorage.get<number>(PAGE_KEY) ?? 0) + step)
 
 /** 切换器: 在常用策略组里选一个组 (g), 显示它的节点 (p 是节点页码) */
 type Pick = { g: number; p: number }
@@ -172,12 +175,12 @@ export function pickerView(d: LoonData, prefs: Prefs, size: number): { group?: G
   const group = groups[pick.g % groups.length]
   const all = group.subs.filter(n => !/^REJECT/i.test(n))
   const pages = Math.max(1, Math.ceil(all.length / size))
-  const page = pick.p % pages
+  const page = wrap(pick.p, pages)
   return { group, nodes: all.slice(page * size, (page + 1) * size), page, pages, groups: groups.length }
 }
 
 export const nextPickGroup = () => { const x = readPick(); AppStorage.set(PICK_KEY, { g: x.g + 1, p: 0 }) }
-export const nextPickPage = () => { const x = readPick(); AppStorage.set(PICK_KEY, { g: x.g, p: x.p + 1 }) }
+export const turnPickPage = (step: number) => { const x = readPick(); AppStorage.set(PICK_KEY, { g: x.g, p: x.p + step }) }
 
 /** 点策略组那一行切到哪: 体检过且能用的里最快的 (不含当前), 都没测过就切到下一个; 不切到 DIRECT / REJECT
  *  选项可能是另一个策略组, 看它正在用的节点; 和当前同一个节点的不算, 切过去没有变化 */

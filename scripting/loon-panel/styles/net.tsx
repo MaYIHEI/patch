@@ -10,7 +10,7 @@ import {
   type Deep, type Group, type Isp,
 } from '../loon'
 import { fmtBytes, md, type SubView } from '../subs'
-import { ModeIntent, SwitchIntent, CheckIntent, FastestIntent, NextGroupsIntent, NextPickGroupIntent, NextPickPageIntent, readNote, readPending } from '../app_intents'
+import { ModeIntent, SwitchIntent, CheckIntent, FastestIntent, TurnGroupsIntent, NextPickGroupIntent, TurnPickPageIntent, readNote, readPending } from '../app_intents'
 import { mainGroupLeaf, checkText } from './node'
 import {
   Root, Header, Num, Empty, Cell, Dot, Pill, Spark, Uptime, RefreshButton, Bar, usageColor, latencyColor, latencyInk, latencyText, nodeLabel, asnText, flag, ago, hhmm,
@@ -31,18 +31,27 @@ export function Tap(props: { ctx: Ctx; intent: any; children?: any }) {
   return <Button intent={props.intent} buttonStyle="plain">{props.children}</Button>
 }
 
-/** 翻页: 1/3 ›, 只有一页时不显示 */
-export function PageButton(props: { ctx: Ctx; page: number; pages: number }) {
-  const { th } = props.ctx
-  if (props.pages < 2) return null
-  return (
-    <Tap ctx={props.ctx} intent={NextGroupsIntent(undefined)}>
-      <HStack spacing={2}>
-        <Text font={11} monospacedDigit foregroundStyle={th.accent}>{`${props.page + 1}/${props.pages}`}</Text>
-        <Image systemName="chevron.right" font={10} fontWeight="semibold" foregroundStyle={th.accent} />
-      </HStack>
+/** 翻页: ‹ 1/3 ›, 只有一页时不显示 */
+function Pager(props: { ctx: Ctx; page: number; pages: number; turn: (step: number) => any }) {
+  const { ctx, page, pages, turn } = props
+  const { th } = ctx
+  if (pages < 2) return null
+  const arrow = (icon: string, step: number) => (
+    <Tap ctx={ctx} intent={turn(step)}>
+      <Image systemName={icon} font={11} fontWeight="semibold" foregroundStyle={th.accent} padding={{ horizontal: 5, vertical: 2 }} />
     </Tap>
   )
+  return (
+    <HStack spacing={0}>
+      {arrow('chevron.left', -1)}
+      <Text font={11} monospacedDigit foregroundStyle={th.accent}>{`${page + 1}/${pages}`}</Text>
+      {arrow('chevron.right', 1)}
+    </HStack>
+  )
+}
+
+export function PageButton(props: { ctx: Ctx; page: number; pages: number }) {
+  return <Pager {...props} turn={step => TurnGroupsIntent({ step })} />
 }
 
 /** 宽度等分的块状按钮 */
@@ -315,7 +324,7 @@ export function PickerStyle(props: { ctx: Ctx }) {
         trailing={(
           <HStack spacing={8}>
             {groups > 1 ? <Tap ctx={ctx} intent={NextPickGroupIntent(undefined)}><Text font={11} foregroundStyle={th.accent} lineLimit={1}>换组</Text></Tap> : null}
-            {pages > 1 ? <Tap ctx={ctx} intent={NextPickPageIntent(undefined)}><Text font={11} monospacedDigit foregroundStyle={th.accent}>{`${page + 1}/${pages} ›`}</Text></Tap> : null}
+            <Pager ctx={ctx} page={page} pages={pages} turn={step => TurnPickPageIntent({ step })} />
           </HStack>
         )}
       />
