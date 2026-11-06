@@ -1,7 +1,7 @@
 // loon-panel / styles/board.tsx
 // E 全景看板 (大): 模式切换 · 多机场对比 · 策略组当前节点和延迟 (点行切到最快) · 出口信息
 
-import { VStack, HStack, Text, Spacer, Image, Button, Capsule, Rectangle } from 'scripting'
+import { VStack, HStack, Text, Spacer, Image, Button, Capsule, Rectangle, RoundedRectangle } from 'scripting'
 
 import { MODES, groupPage, switchTarget, healthCount, unlockNode, loonStatus, type Group } from '../loon'
 import { fmtBytes } from '../subs'
@@ -9,7 +9,7 @@ import { ModeIntent, SwitchIntent, CheckIntent, readNote } from '../app_intents'
 import { mainGroupLeaf, checkText } from './node'
 import { PageButton } from './net'
 import { pct, fcColor, staleMark } from './usage'
-import { Root, Bar, Dot, RefreshButton, usageColor, mediaColor, latencyColor, latencyText, nodeLabel, asnText, flag, syncText, withAlpha, OK, BAD, WARN, type Ctx } from '../ui'
+import { Root, Bar, RefreshButton, chunk, usageColor, mediaColor, latencyColor, latencyText, nodeLabel, asnText, flag, syncText, withAlpha, OK, BAD, WARN, type Ctx } from '../ui'
 
 function Section(props: { ctx: Ctx; title: string; right?: string; trailing?: any }) {
   const { th } = props.ctx
@@ -53,21 +53,18 @@ function ModeBar(props: { ctx: Ctx }) {
   )
 }
 
-function GroupRow(props: { ctx: Ctx; g: Group }) {
+function GroupCell(props: { ctx: Ctx; g: Group }) {
   const { ctx, g } = props
   const { th } = ctx
   const r = ctx.loon!.nodes[g.leaf]
   const target = ctx.loon!.stale ? undefined : switchTarget(ctx.loon!, g)
   return (
     <Tap ctx={ctx} intent={target ? SwitchIntent({ group: g.name, node: target }) : undefined}>
-      <HStack spacing={6}>
-        <Text font={11} foregroundStyle={th.t2} lineLimit={1} frame={{ width: 56, alignment: 'leading' }}>{g.name}</Text>
-        <Dot color={latencyColor(r)} size={6} />
-        <Text font={12} fontWeight="medium" foregroundStyle={th.t1} lineLimit={1}>{nodeLabel(g.leaf, r)}</Text>
-        <Spacer minLength={4} />
-        <Text font={12} fontWeight="semibold" monospacedDigit foregroundStyle={latencyColor(r)} lineLimit={1}>{latencyText(r)}</Text>
-        {target ? <Image systemName="arrow.triangle.2.circlepath" font={10} foregroundStyle={th.t3} /> : null}
-      </HStack>
+      <VStack alignment="leading" spacing={1} padding={{ horizontal: 10, vertical: 7 }} frame={{ maxWidth: 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={12} style="continuous" fill={th.card} />}>
+        <Text font={10} foregroundStyle={th.t2} lineLimit={1}>{g.name}</Text>
+        <Text font={15} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={r && (!r.ok || r.ms >= 800) ? latencyColor(r) : th.t1} lineLimit={1}>{latencyText(r)}</Text>
+        <Text font={10} foregroundStyle={th.t3} lineLimit={1}>{nodeLabel(g.leaf, r)}</Text>
+      </VStack>
     </Tap>
   )
 }
@@ -75,7 +72,7 @@ function GroupRow(props: { ctx: Ctx; g: Group }) {
 export function BoardStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, loon } = ctx
-  const subs = ctx.subs.slice(0, 3)
+  const subs = ctx.subs.slice(0, 2)
   const { list: groups, page, pages } = loon ? groupPage(loon, ctx.prefs, 4) : { list: [], page: 0, pages: 1 }
   const leaf = mainGroupLeaf(ctx)
   const health = loon ? healthCount(loon) : null
@@ -94,7 +91,7 @@ export function BoardStyle(props: { ctx: Ctx }) {
 
       <ModeBar ctx={ctx} />
 
-      <Section ctx={ctx} title="机场" right={ctx.subs.length > 3 ? `共 ${ctx.subs.length} 个` : undefined} />
+      <Section ctx={ctx} title="机场" right={ctx.subs.length > 2 ? `共 ${ctx.subs.length} 个` : undefined} />
       {subs.length ? (
         <VStack spacing={6}>
           {subs.map(s => (
@@ -121,7 +118,12 @@ export function BoardStyle(props: { ctx: Ctx }) {
       <Section ctx={ctx} title="策略组" right={health && health.total ? `${health.ok}/${health.total} 可用 · ${checkText(ctx)}` : undefined} trailing={<PageButton ctx={ctx} page={page} pages={pages} />} />
       {loon ? (
         <VStack spacing={6}>
-          {groups.map(g => <GroupRow ctx={ctx} g={g} />)}
+          {chunk(groups, 2).map(row => (
+            <HStack spacing={6}>
+              {row.map(g => <GroupCell ctx={ctx} g={g} />)}
+              {row.length < 2 ? <Spacer /> : null}
+            </HStack>
+          ))}
         </VStack>
       ) : (
         <Text font={11} foregroundStyle={th.t3}>读不到 Loon 数据, 打开 App 看排查步骤</Text>

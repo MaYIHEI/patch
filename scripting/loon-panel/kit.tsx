@@ -60,6 +60,67 @@ export function Grid(props: { children?: any }) {
   )
 }
 
+/** 小标题 + 任意内容 + 说明; 内容不套卡片, 网格用 */
+export function Block(props: { title?: string; note?: string; children?: any }) {
+  return (
+    <VStack alignment="leading" spacing={8}>
+      {props.title ? <Text font={13} foregroundStyle="secondaryLabel" padding={{ leading: MARGIN }}>{props.title}</Text> : null}
+      {props.children}
+      {props.note ? <Text font={12} foregroundStyle="secondaryLabel" padding={{ horizontal: MARGIN }}>{props.note}</Text> : null}
+    </VStack>
+  )
+}
+
+/** 小标题 + 一张带内边距的卡片, 放图表和控件 */
+export function Panel(props: { title?: string; note?: string; children?: any }) {
+  return (
+    <Block title={props.title} note={props.note}>
+      <Card inner={14}><VStack alignment="leading" spacing={12} frame={{ maxWidth: 'infinity', alignment: 'leading' }}>{props.children}</VStack></Card>
+    </Block>
+  )
+}
+
+/** 一个数字 */
+export function StatTile(props: { label: string; value: string; sub?: string; color?: Color }) {
+  return (
+    <Card inner={14} tall={84}>
+      <VStack alignment="leading" spacing={3}>
+        <Text font={12} foregroundStyle="secondaryLabel" lineLimit={1}>{props.label}</Text>
+        <Text font={20} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={props.color ?? 'label'} lineLimit={1} minScaleFactor={0.6}>{props.value}</Text>
+        {props.sub ? <Text font={11} foregroundStyle="secondaryLabel" lineLimit={1}>{props.sub}</Text> : null}
+      </VStack>
+    </Card>
+  )
+}
+
+/** 网格里的开关 */
+export function ToggleTile(props: { icon: string; title: string; sub?: string; value: boolean; onChanged: (v: boolean) => void; disabled?: boolean }) {
+  return (
+    <Card inner={14} tall={104}>
+      <VStack alignment="leading" spacing={3}>
+        <HStack padding={{ bottom: 6 }}>
+          <Image systemName={props.icon} font={18} foregroundStyle="secondaryLabel" />
+          <Spacer />
+          <Toggle title={props.title} labelsHidden value={props.value} onChanged={props.onChanged} disabled={props.disabled} />
+        </HStack>
+        <Text font={15} foregroundStyle="label" lineLimit={1}>{props.title}</Text>
+        {props.sub ? <Text font={12} foregroundStyle="secondaryLabel" lineLimit={1}>{props.sub}</Text> : null}
+      </VStack>
+    </Card>
+  )
+}
+
+/** 名字和值 */
+export function KV(props: { k: string; v: string; color?: Color }) {
+  return (
+    <HStack spacing={12} padding={{ horizontal: 14, vertical: 11 }}>
+      <Text font={14} foregroundStyle="label">{props.k}</Text>
+      <Spacer />
+      <Text font={13} foregroundStyle={props.color ?? 'secondaryLabel'} lineLimit={2} multilineTextAlignment="trailing">{props.v}</Text>
+    </HStack>
+  )
+}
+
 /** 网格里进下一页的卡片 */
 export function NavTile(props: { icon: string; title: string; value?: string; destination: any }) {
   return (
