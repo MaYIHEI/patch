@@ -9,7 +9,7 @@ import {
   MODES, groupPage, pickerView, switchTarget, rankedNodes, healthCount, availability, unlockNode, latestDeep, loonStatus, modeName,
   type Deep, type Group, type Isp,
 } from '../loon'
-import { fmtBytes } from '../subs'
+import { fmtBytes, md, type SubView } from '../subs'
 import { ModeIntent, SwitchIntent, CheckIntent, FastestIntent, NextGroupsIntent, NextPickGroupIntent, NextPickPageIntent, readNote, readPending } from '../app_intents'
 import { mainGroupLeaf, checkText } from './node'
 import {
@@ -352,6 +352,57 @@ export function GroupCell(props: { ctx: Ctx; g: Group }) {
   )
 }
 
+/** 今天用了多少和到期 / 重置日 */
+const subLine = (s: SubView) => [`今天 ${fmtBytes(s.today)}`, s.deadline ? `${md(s.deadline)} ${s.deadlineWord}` : ''].filter(Boolean).join(' · ')
+
+/** 右上角: 点一下换模式 */
+function ModeTap(props: { ctx: Ctx }) {
+  const { ctx } = props
+  const loon = ctx.loon!
+  return (
+    <Tap ctx={ctx} intent={!loon.stale && loon.mode >= 0 ? ModeIntent({ mode: (loon.mode + 1) % 3 }) : undefined}>
+      <Text font={11} fontWeight="medium" foregroundStyle={ctx.th.accent} lineLimit={1}>{modeName(loon.mode)}</Text>
+    </Tap>
+  )
+}
+
+/** 小号总览: 剩余、用量、今天、到期、当前节点和延迟 */
+export function OverviewSmall(props: { ctx: Ctx }) {
+  const { ctx } = props
+  const { th, loon } = ctx
+  if (!loon) return <NoLoon ctx={ctx} title="总览" />
+  const s = ctx.subs[0]
+  const u = s?.usage
+  const leaf = mainGroupLeaf(ctx)
+  return (
+    <Root ctx={ctx} spacing={4}>
+      <Header ctx={ctx} title={s?.name ?? 'Loon'} font={12} trailing={<ModeTap ctx={ctx} />} />
+      <Spacer minLength={0} />
+      {u ? (
+        <VStack alignment="leading" spacing={3}>
+          <HStack alignment="lastTextBaseline" spacing={4}>
+            <Num value={fmtBytes(u.total > 0 ? s.remain : s.used)} size={26} />
+            <Text font={11} foregroundStyle={th.t2} lineLimit={1}>{u.total > 0 ? `剩余 / ${fmtBytes(u.total)}` : '已用'}</Text>
+          </HStack>
+          {u.total > 0 ? <Bar ctx={ctx} value={s.ratio} color={usageColor(s.ratio)} height={4} /> : null}
+          <Text font={11} foregroundStyle={th.t2} lineLimit={1} minScaleFactor={0.8}>{subLine(s)}</Text>
+        </VStack>
+      ) : (
+        <VStack alignment="leading" spacing={1}>
+          <Text font={11} foregroundStyle={th.t2} lineLimit={1}>{leaf?.group ?? '当前节点'}</Text>
+          <Num value={latencyText(leaf?.r)} size={26} color={latencyInk(ctx, leaf?.r)} />
+        </VStack>
+      )}
+      <Spacer minLength={0} />
+      <HStack spacing={4}>
+        <Text font={11} foregroundStyle={th.t1} lineLimit={1} minScaleFactor={0.8}>{leaf ? nodeLabel(leaf.name, leaf.r) : '-'}</Text>
+        <Spacer minLength={2} />
+        {u ? <Text font={11} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={latencyInk(ctx, leaf?.r)} lineLimit={1}>{latencyText(leaf?.r)}</Text> : null}
+      </HStack>
+    </Root>
+  )
+}
+
 /** 总览: 左边主订阅和出口, 右边常用策略组; 右上角点一下换模式 */
 export function OverviewStyle(props: { ctx: Ctx }) {
   const { ctx } = props
@@ -369,18 +420,17 @@ export function OverviewStyle(props: { ctx: Ctx }) {
         trailing={(
           <HStack spacing={6}>
             <PageButton ctx={ctx} page={page} pages={pages} />
-            <Tap ctx={ctx} intent={!loon.stale && loon.mode >= 0 ? ModeIntent({ mode: (loon.mode + 1) % 3 }) : undefined}>
-              <Text font={11} fontWeight="medium" foregroundStyle={th.accent} lineLimit={1}>{modeName(loon.mode)}</Text>
-            </Tap>
+            <ModeTap ctx={ctx} />
           </HStack>
         )}
       />
       <HStack spacing={10} alignment="top">
-        <VStack alignment="leading" spacing={3} frame={{ width: 100, alignment: 'leading' }}>
+        <VStack alignment="leading" spacing={3} frame={{ width: 108, alignment: 'leading' }}>
           <Text font={11} foregroundStyle={th.t2} lineLimit={1}>{u ? (u.total > 0 ? `${s.name} 剩余` : `${s.name} 已用`) : leaf?.group ?? '当前节点'}</Text>
           <Num value={u ? fmtBytes(u.total > 0 ? s.remain : s.used) : latencyText(leaf?.r)} size={24} color={u ? th.t1 : latencyInk(ctx, leaf?.r)} />
           {u && u.total > 0 ? <Bar ctx={ctx} value={s.ratio} color={usageColor(s.ratio)} height={4} /> : null}
-          {u ? <Text font={12} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={latencyInk(ctx, leaf?.r)} lineLimit={1} padding={{ top: 5 }}>{latencyText(leaf?.r)}</Text> : null}
+          {u ? <Text font={10} foregroundStyle={th.t2} lineLimit={1} minScaleFactor={0.8}>{subLine(s)}</Text> : null}
+          {u ? <Text font={12} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={latencyInk(ctx, leaf?.r)} lineLimit={1} padding={{ top: 3 }}>{latencyText(leaf?.r)}</Text> : null}
           <Text font={10} foregroundStyle={th.t3} lineLimit={1}>{leaf ? nodeLabel(leaf.name, leaf.r) : ''}</Text>
         </VStack>
         <VStack spacing={6} frame={{ maxWidth: 'infinity' }}>
