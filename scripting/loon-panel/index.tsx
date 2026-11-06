@@ -266,6 +266,11 @@ function NodesTab(props: { shared: Shared; act: (q: Act, label: string) => Promi
         </HStack>
       ) : null}
       {main ? link(main, <HeroCard group={main} loon={loon} />) : null}
+      {main ? (
+        <KitGroup>
+          <PickerRow icon="house" title="主策略组" value={main.name} options={loon.groups.map(g => [g.name, g.name])} onChanged={v => { setPrefs({ ...getPrefs(), main: v }); Widget.reloadAll(); reload() }} />
+        </KitGroup>
+      ) : null}
       <Picker title="模式" value={loon.mode} onChanged={(v: any) => { if (Number(v) !== loon.mode) act({ mode: Number(v) }, '切换模式') }} pickerStyle="segmented" disabled={!!busy || !live}>
         {MODES.map(m => <Text tag={m.id}>{m.name}</Text>)}
       </Picker>
