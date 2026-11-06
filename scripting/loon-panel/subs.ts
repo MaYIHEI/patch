@@ -31,8 +31,8 @@ const COOLDOWN = 30 * 60_000
 const UA = 'Loon/3.2.4 CFNetwork/3826.500.111 Darwin/24.4.0'
 const DAYS = 62
 
-/** resetDay: 每月几号重置流量, 0 = 不重置; price: 每期多少钱, 0 = 没填; every: 几小时读一次, 0 = 手动填写, 从不请求订阅 */
-export type Sub = { id: string; name: string; resetDay?: number; price?: number; every?: number }
+/** resetDay: 每月几号重置流量, 0 = 不重置; price: 每期多少钱, 0 = 没填; every: 几小时读一次, 0 = 手动填写, 不定时请求订阅; site: 机场官网; ua: 读用量时的客户端标识, 没填用 Loon */
+export type Sub = { id: string; name: string; resetDay?: number; price?: number; every?: number; site?: string; ua?: string }
 /** upload / download / total 单位字节, expire 秒 (0 = 没有到期日), t 读取时间 */
 export type Usage = { up: number; down: number; total: number; expire: number; t: number; plan?: string; site?: string }
 type UsageEntry = { usage?: Usage; err?: string; at: number }
@@ -108,13 +108,45 @@ export function importSubs(found: { name: string; url: string }[], every: number
   return { added: fresh.map(x => x.name), same: found.filter(x => have.has(x.name)).map(x => x.name) }
 }
 
-/** 手动填写用量, 单位字节; expire 秒, 0 = 没有到期日 */
-export function setUsage(id: string, used: number, total: number, expire: number): void {
-  const usage: Usage = { up: 0, down: used, total, expire, t: Date.now() }
+function saveUsage(id: string, usage: Usage): void {
   const all = readJSON<Record<string, UsageEntry>>(USAGE_KEY, {})
   all[id] = { usage, at: usage.t }
   AppStorage.set(USAGE_KEY, JSON.stringify(all))
   record(id, usage)
+}
+
+/** 手动填写用量, 单位字节; expire 秒, 0 = 没有到期日 */
+export function setUsage(id: string, used: number, total: number, expire: number): void {
+  saveUsage(id, { up: 0, down: used, total, expire, t: Date.now() })
+}
+
+/** 打开官网后马上读一次, 这是用户点的, 不受读取间隔和冷却限制 */
+export async function readNow(s: { id: string; ua?: string }): Promise<void> {
+  saveUsage(s.id, await fetchUsage(subURL(s.id), s.ua))
+}
+
+const SIZE = '([0-9][0-9.,]*)\\s*([KMGT])i?B?\\b'
+const UNIT: Record<string, number> = { K: 1024, M: 1024 ** 2, G: 1024 ** 3, T: 1024 ** 4 }
+const bytesOf = (n: string, unit: string) => parseFloat(n.replace(/,/g, '')) * UNIT[unit.toUpperCase()]
+
+/** 从官网页面文字里找用量: 已用、剩余、总量有两个就够; 找不到返回 null */
+export function parsePage(text: string): { used: number; total: number; expire: number } | null {
+  const near = (words: string) => {
+    const m = text.match(new RegExp(`(?:${words})[^0-9]{0,12}${SIZE}`, 'i'))
+    return m ? bytesOf(m[1], m[2]) : NaN
+  }
+  let used = near('已用|已使用|used')
+  let total = near('总流量|总量|套餐流量|total')
+  const left = near('剩余|可用|remaining')
+  const pair = text.match(new RegExp(`${SIZE}\\s*/\\s*${SIZE}`, 'i'))   // 「12 GB / 100 GB」
+  if (Number.isNaN(total) && pair) total = bytesOf(pair[3], pair[4])
+  if (Number.isNaN(used) && pair) used = bytesOf(pair[1], pair[2])
+  if (Number.isNaN(used)) used = total - left
+  if (Number.isNaN(total)) total = used + left
+  if (Number.isNaN(used) || Number.isNaN(total)) return null
+  const d = text.match(/(?:到期|过期|expire)[^0-9]{0,12}(\d{4})[-/.年](\d{1,2})[-/.月](\d{1,2})/i)
+  const expire = d ? Date.parse(`${d[1]}-${d[2].padStart(2, '0')}-${d[3].padStart(2, '0')}T23:59:59+08:00`) / 1000 : 0
+  return { used, total, expire }
 }
 
 /** "upload=1; download=2; total=3; expire=4" → 用量; 没有 total 和 download 时返回 null */
@@ -136,7 +168,7 @@ export function parseUserinfo(text: string, t = Date.now()): Usage | null {
  * 链接末尾可以带 #headers=<URL 编码的 JSON>, 作为请求头一起发 (比如 Authorization)
  * 出错信息不带链接, 免得订阅地址出现在界面或日志里
  */
-export async function fetchUsage(url: string): Promise<Usage> {
+export async function fetchUsage(url: string, ua = UA): Promise<Usage> {
   const hash = url.indexOf('#')
   const base = hash < 0 ? url : url.slice(0, hash)
   const frag = hash < 0 ? '' : url.slice(hash + 1)
@@ -147,7 +179,7 @@ export async function fetchUsage(url: string): Promise<Usage> {
   if (!/^https?:\/\//i.test(base)) throw new Error('订阅链接要以 http:// 或 https:// 开头')
   let res
   try {
-    res = await fetch(base, { timeout: 12, allowInsecureRequest: /^http:/i.test(base), headers: { 'User-Agent': UA, Range: 'bytes=0-0', ...extra } })
+    res = await fetch(base, { timeout: 12, allowInsecureRequest: /^http:/i.test(base), headers: { 'User-Agent': ua, Range: 'bytes=0-0', ...extra } })
   } catch {
     throw new Error('连不上订阅地址')
   }
@@ -172,6 +204,8 @@ export type SubView = {
   resetDay: number
   price: number
   every: number      // 几小时读一次, 0 = 手动填写
+  site?: string
+  ua?: string
   usage?: Usage
   err?: string       // 最近一次读取失败的原因 (有旧数据时照常显示旧数据)
   stale: boolean     // 显示的是旧数据
@@ -200,7 +234,7 @@ export async function loadSubs(force = false): Promise<SubView[]> {
     const url = subURL(s.id)
     try {
       if (!url) throw new Error('钥匙串里没有订阅链接, 请重新填写')
-      cache[s.id] = { usage: await fetchUsage(url), at: now }
+      cache[s.id] = { usage: await fetchUsage(url, s.ua), at: now }
     } catch (e) {
       cache[s.id] = { usage: old?.usage, err: (e as Error).message, at: now }
     }
@@ -232,7 +266,7 @@ function viewOf(s: Sub, entry: UsageEntry | undefined, points: Record<string, nu
   const deadline = reset && (!exp || reset < exp) ? reset : exp
   const deadlineWord = deadline && deadline === reset ? '重置' : '到期'
   return {
-    id: s.id, name: s.name, resetDay, price: s.price ?? 0, every: s.every ?? DEFAULT_EVERY,
+    id: s.id, name: s.name, resetDay, price: s.price ?? 0, every: s.every ?? DEFAULT_EVERY, site: s.site, ua: s.ua,
     usage, err: entry?.err, stale: !!entry?.err && !!usage,
     used, remain, ratio: usage && usage.total > 0 ? Math.min(1, used / usage.total) : 0,
     daily, today, hourly: hourlySeries(samples), recent: recentRate(samples), interval: updateInterval(samples),

@@ -42,7 +42,7 @@ import {
   type Deep, type LoonData, type Group, type NodeResult, type OptsPatch,
 } from './loon'
 import {
-  loadSubs, cachedSubs, sampleSubs, listSubs, saveSubs, addSub, updateSub, removeSub, setUsage, subURL, bjDate, DEFAULT_EVERY, clearHistory, recordedDays, localEvents, overview, parseSubs, importSubs,
+  loadSubs, cachedSubs, sampleSubs, listSubs, saveSubs, addSub, updateSub, removeSub, setUsage, readNow, parsePage, subURL, bjDate, DEFAULT_EVERY, clearHistory, recordedDays, localEvents, overview, parseSubs, importSubs,
   fmtBytes, expireText, md, shiftDay, todayStr, type SubView, type Usage,
 } from './subs'
 import { checkNat, lastNat, type Nat } from './net'
@@ -861,6 +861,62 @@ function SubDetail(props: { sub: SubView; onChanged: () => Promise<void> }) {
     await props.onChanged()
   }
 
+  async function changeSite(): Promise<string | null> {
+    const site = (await Dialog.prompt({ title: '机场官网', message: '填用量所在的页面; 登录状态由网页窗口保存, 面板不碰账号密码', defaultValue: s.site ?? u?.site ?? '', keyboardType: 'URL' }))?.trim()
+    if (!site) return null
+    if (!/^https:\/\//i.test(site)) {
+      await Dialog.alert({ title: '地址不对', message: '官网地址要以 https:// 开头' })
+      return null
+    }
+    updateSub(s.id, { site })
+    setS({ ...s, site })
+    return site
+  }
+
+  /** 打开官网: 有的机场要打开页面才开放订阅, 关掉窗口后读一次订阅; 读不到就看页面文字 */
+  async function syncSite() {
+    const site = s.site ?? await changeSite()
+    if (!site) return
+    const web = new WebViewController({ settings: { inactiveSchedulingPolicy: 'none' } })
+    let text = ''
+    try {
+      await web.loadURL(site)
+      await web.present({ navigationTitle: s.name })
+      text = String(await web.evaluateJavaScript('return document.body ? document.body.innerText : ""') ?? '')
+    } catch (e) {
+      setNote(`网页出错: ${(e as Error).message}`)
+    } finally {
+      web.dispose()
+    }
+    let result = ''
+    if (subURL(s.id)) {
+      setNote('读取中...')
+      try {
+        await readNow(s)
+        result = '已从订阅读到用量'
+      } catch (e) {
+        result = `订阅没读到: ${(e as Error).message}`
+      }
+    }
+    if (!result.startsWith('已')) {
+      const p = parsePage(text)
+      const ok = p && await Dialog.confirm({ title: '从官网读到用量', message: `已用 ${fmtBytes(p.used)} / 总量 ${fmtBytes(p.total)}${p.expire ? `, ${bjDate(p.expire * 1000)} 到期` : ''}。数字对吗?`, cancelLabel: '不对', confirmLabel: '保存' })
+      if (p && ok) {
+        setUsage(s.id, p.used, p.total, p.expire)
+        result = '已从官网读到用量'
+      } else result = [result, p ? '官网数字没有保存' : '官网页面上没找到用量'].filter(Boolean).join('; ')
+    }
+    setNote(result)
+    setS(cachedSubs().find(x => x.id === s.id) ?? s)
+    await props.onChanged()
+  }
+
+  async function changeUA(ua: string) {
+    updateSub(s.id, { ua: ua || undefined })
+    setS({ ...s, ua: ua || undefined })
+    await props.onChanged()
+  }
+
   async function fill() {
     if (!(await askUsage(s, u))) return
     setS(cachedSubs().find(x => x.id === s.id) ?? s)
@@ -927,12 +983,14 @@ function SubDetail(props: { sub: SubView; onChanged: () => Promise<void> }) {
 
       <KitGroup note={note || (u ? `${s.every ? '读取' : '填写'}于 ${new Date(u.t).getMonth() + 1}月${new Date(u.t).getDate()}日 ${hhmm(u.t)}` : undefined)}>
         <PickerRow icon="clock" title="读取方式" value={s.every} options={[[1, '1 小时一次'], [3, '3 小时一次'], [6, '6 小时一次'], [12, '12 小时一次'], [24, '24 小时一次'], [0, '手动填写']]} onChanged={v => { changeEvery(v) }} />
+        <ActionRow icon="safari" title="打开官网并同步" sub="第一次在窗口里登录, 看到用量后关掉窗口" action={() => { syncSite() }} />
         {s.every ? null : <ActionRow icon="square.and.pencil" title="填写用量" action={fill} />}
         <ActionRow icon="calendar" title="每月重置日" value={s.resetDay ? `${s.resetDay} 号` : '未设置'} action={() => { editNumber('每月几号重置流量', '填 1 到 31; 填了之后预测和每天额度按重置日算', s.resetDay, 'resetDay', 31) }} />
         <ActionRow icon="yensign.circle" title="每期价格" value={s.price ? `¥${s.price}` : '未设置'} action={() => { editNumber('每期多少钱', '用来算每 G 多少钱和性价比', s.price, 'price', 100000) }} />
-        {u?.site ? <ActionRow icon="safari" title="打开机场官网" action={() => { Safari.openURL(u.site!) }} /> : null}
+        <ActionRow icon="globe" title="官网地址" value={s.site ? s.site.replace(/^https:\/\//i, '').split('/')[0] : '未设置'} action={() => { changeSite() }} />
         <ActionRow icon="pencil" title="改名" action={rename} />
-        {s.every ? <ActionRow icon="link" title="更换订阅链接" action={changeURL} /> : null}
+        <ActionRow icon="link" title={subURL(s.id) ? '更换订阅链接' : '添加订阅链接'} sub={s.every ? undefined : '手动填写时只在同步官网后读一次'} action={changeURL} />
+        {subURL(s.id) ? <PickerRow icon="person.crop.circle" title="请求身份" sub="Loon 格式没有用量时, 用 Mihomo 链接并选 Clash" value={s.ua ?? ''} options={[['', 'Loon'], ['clash.meta', 'Clash']]} onChanged={v => { changeUA(v) }} /> : null}
         <ActionRow icon="trash" color="systemRed" title="删除这个订阅" action={remove} />
       </KitGroup>
     </Page>
