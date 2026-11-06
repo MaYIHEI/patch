@@ -11,10 +11,8 @@ import {
   ColorPicker,
   EditButton,
   ForEach,
-  Form,
   HStack,
   Image,
-  LabeledContent,
   List,
   Navigation,
   NavigationLink,
@@ -22,7 +20,6 @@ import {
   Picker,
   Circle,
   Script,
-  ScrollView,
   Section,
   Slider,
   Spacer,
@@ -30,7 +27,6 @@ import {
   Toggle,
   VStack,
   ZStack,
-  Rectangle,
   Menu,
   Widget,
   Path,
@@ -49,7 +45,7 @@ import {
   fmtBytes, expireText, md, shiftDay, todayStr, type SubView,
 } from './subs'
 import { checkNat, lastNat, type Nat } from './net'
-import { Page, Card, Stage, Grid, NavTile, RoundButton, RoundLink, Group as KitGroup, Chip, SmallButton, NavRow, ActionRow, InfoRow, ToggleRow, PickerRow } from './kit'
+import { Page, Card, Stage, Grid, Block, Panel, StatTile, ToggleTile, KV, NavTile, RoundButton, RoundLink, Group as KitGroup, Chip, SmallButton, NavRow, ActionRow, InfoRow, PickerRow } from './kit'
 import {
   getPrefs, setPrefs, getLook, setLook, getDefaults, setDefault, getRemoteTargets, setRemoteTargets,
   DEFAULT_LOOK, RECOMMENDED_BG, RECOMMENDED_ACCENT, type Look, type Family, type Prefs,
@@ -318,47 +314,48 @@ function HeroCard(props: { group: Group; loon: LoonData }) {
   )
 }
 
-function GroupLine(props: { group: Group; loon: LoonData }) {
-  const { group: g, loon } = props
-  const r = loon.nodes[g.leaf]
-  return (
-    <HStack spacing={10} padding={{ horizontal: 16, vertical: 11 }}>
-      <VStack alignment="leading" spacing={1}>
-        <Text font={15} foregroundStyle="label" lineLimit={1}>{g.name}</Text>
-        <Text font={12} foregroundStyle="secondaryLabel" lineLimit={1}>{nodeLabel(g.leaf, r)}</Text>
-      </VStack>
-      <Spacer />
-      <Latency r={r} />
-    </HStack>
-  )
-}
-
 function AllGroupsPage(props: { loon: LoonData; act: (q: Act, label: string) => Promise<void>; reload: (force?: boolean) => Promise<void> }) {
   const { loon, act, reload } = props
   const [common, setCommon] = useState<Group[]>(shownGroups(loon, getPrefs()))
   const rest = loon.groups.filter(g => !common.some(x => x.name === g.name))
-  const row = (g: Group) => (
-    <NavigationLink key={g.name} destination={<GroupPage group={g} loon={loon} act={act} reload={reload} />}>
-      <GroupLine group={g} loon={loon} />
+  const tile = (g: Group) => (
+    <NavigationLink key={g.name} destination={<GroupPage group={g} loon={loon} act={act} reload={reload} />} buttonStyle="plain">
+      <GroupTile group={g} loon={loon} />
     </NavigationLink>
   )
+  return (
+    <Page title="全部策略组">
+      <Block title="常用" note="节点页、切换器、策略组卡片和全景看板都围绕这些; 进策略组里可以加入或移出常用。">
+        <Grid>{common.map(tile)}</Grid>
+      </Block>
+      {common.length > 1 ? (
+        <KitGroup>
+          <NavRow icon="arrow.up.arrow.down" title="调整常用顺序" destination={<GroupOrderPage list={common} onChanged={next => { setCommon(next); reload() }} />} />
+        </KitGroup>
+      ) : null}
+      {rest.length ? <Block title="其他"><Grid>{rest.map(tile)}</Grid></Block> : null}
+    </Page>
+  )
+}
+
+function GroupOrderPage(props: { list: Group[]; onChanged: (next: Group[]) => void }) {
+  const [list, setList] = useState(props.list)
 
   function onMove(indices: number[], newOffset: number) {
-    const moving = indices.map(i => common[i])
-    const next = common.filter((_, i) => !indices.includes(i))
+    const moving = indices.map(i => list[i])
+    const next = list.filter((_, i) => !indices.includes(i))
     next.splice(newOffset, 0, ...moving)
-    setCommon(next)
+    setList(next)
     setPrefs({ ...getPrefs(), groups: next.map(g => g.name) })
     Widget.reloadAll()
-    reload()
+    props.onChanged(next)
   }
 
   return (
-    <List navigationTitle="全部策略组" navigationBarTitleDisplayMode="inline" toolbar={{ topBarTrailing: <EditButton /> }}>
-      <Section header={<Text>常用</Text>} footer={<Text>节点页、切换器、策略组卡片和全景看板都围绕这些。点右上角「编辑」拖动排序; 进策略组里可以加入或移出常用。</Text>}>
-        <ForEach count={common.length} itemBuilder={(i: number) => row(common[i])} onMove={onMove} />
+    <List navigationTitle="调整常用顺序" navigationBarTitleDisplayMode="inline" toolbar={{ topBarTrailing: <EditButton /> }}>
+      <Section footer={<Text>点右上角「编辑」拖动。</Text>}>
+        <ForEach count={list.length} itemBuilder={(i: number) => <Text key={list[i].name}>{list[i].name}</Text>} onMove={onMove} />
       </Section>
-      {rest.length ? <Section header={<Text>其他</Text>}>{rest.map(row)}</Section> : null}
     </List>
   )
 }
@@ -452,27 +449,22 @@ function GroupPage(props: { group: Group; loon: LoonData; act: (q: Act, label: s
     setBusy('')
   }
 
+  const out = loon.nodes[g.leaf]
   return (
-    <List navigationTitle={g.name} navigationBarTitleDisplayMode="inline">
-      <Section footer={<Text>{note || (locked ? `Loon 把选择还原时, 插件会改回 ${locked} 并发通知。` : '「全量体检」每次体检都测这个组的全部节点, 节点多时耗时更长。')}</Text>}>
-        <Toggle title="常用 (小组件上切换)" value={common.includes(g.name)} onChanged={toggleCommon} />
-        <Toggle title="主策略组 (小号和锁屏)" value={isMain} onChanged={(v: boolean) => update({ main: v ? g.name : '' })} />
-        <Toggle title="解锁样式看这个组" value={isUnlock} onChanged={(v: boolean) => update({ unlock: v ? g.name : '' })} />
-        <Toggle title="全量体检" value={full.includes(g.name)} onChanged={(v: boolean) => { toggleFull(v) }} />
-        <Toggle title="锁定当前选择" value={!!locked} onChanged={(v: boolean) => { after(v ? { group: g.name, node: g.now, lock: 1 } : { group: g.name, lock: 0 }, v ? '锁定' : '解锁') }} />
-      </Section>
+    <Page title={g.name}>
+      <HeroCard group={g} loon={loon} />
 
-      <Section header={<Text>{loon.check ? `按延迟排序 · ${ago(loon.check.t)} 体检` : '节点'}</Text>} footer={<Text>点一行切换。没测过的显示「未测」, 打开上面的「全量体检」就会测全部节点。</Text>}>
+      <KitGroup title={loon.check ? `按延迟排序 · ${ago(loon.check.t)} 体检` : '节点'} note="点一行切换。没测过的显示「未测」, 打开下面的「全量体检」就会测全部节点。" inset={44}>
         {list.map(name => {
           const r = loon.nodes[name]
           const a = availability(r)
           const isGroup = groupNames.has(name)
           return (
             <Button action={() => { pick(name) }} buttonStyle="plain">
-              <HStack spacing={10}>
+              <HStack spacing={10} padding={{ horizontal: 14, vertical: 10 }} frame={{ maxWidth: 'infinity' }}>
                 <Image systemName={name === g.now ? 'checkmark.circle.fill' : isGroup ? 'folder' : 'circle'} foregroundStyle={name === g.now ? 'label' : 'tertiaryLabel'} />
                 <VStack alignment="leading" spacing={1}>
-                  <Text foregroundStyle="label" lineLimit={1}>{fullLabel(name, r)}</Text>
+                  <Text font={15} foregroundStyle="label" lineLimit={1}>{fullLabel(name, r)}</Text>
                   {r ? <Text font={11} foregroundStyle={r.ok ? 'secondaryLabel' : BAD} lineLimit={1}>{r.ok ? [a === null ? '' : `可用 ${Math.round(a * 100)}%`, asnText(r)].filter(Boolean).join(' · ') : `连续 ${r.fail ?? 1} 次超时`}</Text> : null}
                 </VStack>
                 <Spacer />
@@ -484,12 +476,22 @@ function GroupPage(props: { group: Group; loon: LoonData; act: (q: Act, label: s
             </Button>
           )
         })}
-      </Section>
+      </KitGroup>
 
-      <Section header={<Text>{`当前节点 · ${g.leaf}`}</Text>}>
-        {loon.nodes[g.leaf]?.ip ? <LabeledContent label={<Text>出口</Text>} value={`${loon.nodes[g.leaf].cc ?? ''} ${loon.nodes[g.leaf].ip}`} /> : null}
+      <Block title="这个策略组" note={note || (locked ? `Loon 把选择还原时, 插件会改回 ${locked} 并发通知。` : undefined)}>
+        <Grid>
+          <ToggleTile icon="star" title="常用" sub="小组件上切换" value={common.includes(g.name)} onChanged={toggleCommon} />
+          <ToggleTile icon="house" title="主策略组" sub="小号和锁屏显示" value={isMain} onChanged={(v: boolean) => update({ main: v ? g.name : '' })} />
+          <ToggleTile icon="play.tv" title="解锁样式" sub="看这个组的结果" value={isUnlock} onChanged={(v: boolean) => update({ unlock: v ? g.name : '' })} />
+          <ToggleTile icon="waveform.path.ecg" title="全量体检" sub="每次测全部节点" value={full.includes(g.name)} onChanged={(v: boolean) => { toggleFull(v) }} />
+          <ToggleTile icon="lock" title="锁定" sub="被还原就改回来" value={!!locked} onChanged={(v: boolean) => { after(v ? { group: g.name, node: g.now, lock: 1 } : { group: g.name, lock: 0 }, v ? '锁定' : '解锁') }} />
+        </Grid>
+      </Block>
+
+      <KitGroup title={`当前节点 · ${nodeLabel(g.leaf, out)}`} inset={14}>
+        {out?.ip ? <KV k="出口" v={`${out.cc ?? ''} ${out.ip}`} /> : null}
         {media.length ? (
-          <VStack alignment="leading" spacing={6}>
+          <VStack alignment="leading" spacing={6} padding={{ horizontal: 14, vertical: 11 }}>
             <Text font={13} foregroundStyle="secondaryLabel">解锁</Text>
             {chunk(media, 3).map(row => (
               <HStack spacing={8}>
@@ -498,9 +500,9 @@ function GroupPage(props: { group: Group; loon: LoonData; act: (q: Act, label: s
             ))}
           </VStack>
         ) : null}
-        <NavigationLink destination={<DeepPage node={g.leaf} loon={loon} reload={props.reload} />}><Text>深度检测</Text></NavigationLink>
-      </Section>
-    </List>
+        <NavRow icon="magnifyingglass" title="深度检测" destination={<DeepPage node={g.leaf} loon={loon} reload={props.reload} />} />
+      </KitGroup>
+    </Page>
   )
 }
 
@@ -537,19 +539,26 @@ function DeepPage(props: { node: string; loon: LoonData; reload: (force?: boolea
   }
 
   const rows = (title: string, list: { k: string; v: string; color?: Color }[]) => (list.length ? (
-    <Section header={<Text>{title}</Text>}>
-      {list.map(x => <HStack><Text font={14}>{x.k}</Text><Spacer /><Text font={13} foregroundStyle={x.color ?? 'secondaryLabel'} lineLimit={2}>{x.v}</Text></HStack>)}
-    </Section>
+    <KitGroup title={title} inset={14}>{list.map(x => <KV k={x.k} v={x.v} color={x.color} />)}</KitGroup>
   ) : null)
   const yes = (b?: boolean) => (b ? '是' : '否')
 
   return (
-    <List navigationTitle="深度检测" navigationBarTitleDisplayMode="inline">
-      <Section header={<Text>{props.node}</Text>} footer={<Text>{note || '检测会把这个节点的出口 IP 提交给第三方查询服务。结果会显示在 IP 质量、三网延迟、网络安全、线路体检报告这些样式上。'}</Text>}>
-        <Button title="开始检测" action={() => { run(false) }} />
-        <Button title="检测并测速 (用十几 MB 流量)" action={() => { run(true) }} />
-        <Button title={nat ? `NAT 类型 · ${nat.text}` : '检测 NAT 类型'} action={nat2} />
-      </Section>
+    <Page title="深度检测">
+      <Card inner={18}>
+        <VStack alignment="leading" spacing={6}>
+          <Text font={13} foregroundStyle="secondaryLabel" lineLimit={1}>{props.node}</Text>
+          <Text font={30} fontWeight="semibold" fontDesign="rounded" foregroundStyle="label" lineLimit={1} minScaleFactor={0.5}>{d?.basic?.ip ?? '还没检测'}</Text>
+          {d?.basic?.org ? <Text font={13} foregroundStyle="secondaryLabel" lineLimit={1}>{`${d.basic.cc ?? ''} ${d.basic.org}`}</Text> : null}
+        </VStack>
+      </Card>
+      <Block note={note || '检测会把这个节点的出口 IP 提交给第三方查询服务。结果会显示在 IP 质量、三网延迟、网络安全、线路体检报告这些样式上。测速用十几 MB 流量。'}>
+        <HStack>
+          <RoundButton icon="magnifyingglass" title="开始检测" action={() => { run(false) }} />
+          <RoundButton icon="speedometer" title="检测并测速" action={() => { run(true) }} />
+          <RoundButton icon="network" title={nat ? `NAT ${nat.text}` : 'NAT 类型'} action={nat2} />
+        </HStack>
+      </Block>
       {d ? rows('基础', [
         ...(d.basic?.ip ? [{ k: '出口', v: `${d.basic.cc ?? ''} ${d.basic.ip}` }] : []),
         ...(d.basic?.org ? [{ k: '运营商', v: `${d.basic.asn ? `AS${d.basic.asn} ` : ''}${d.basic.org}` }] : []),
@@ -577,20 +586,25 @@ function DeepPage(props: { node: string; loon: LoonData; reload: (force?: boolea
         ...(d.stability ?? []).map(x => ({ k: `HTTPS ${x.target}`, v: `成功 ${x.ok}/${x.total}${x.median ? ` · ${x.median}ms` : ''}` })),
       ]) : null}
       {d?.errors && Object.keys(d.errors).length ? rows('没拿到的项目', Object.entries(d.errors).map(([k, v]) => ({ k, v: String(v) }))) : null}
-    </List>
+    </Page>
   )
 }
 
 function EventsPage(props: { events: { t: number; k: string; msg: string }[] }) {
+  const days = [...new Set(props.events.map(e => md(e.t)))]
   return (
-    <List navigationTitle="发生了什么" navigationBarTitleDisplayMode="inline">
-      {props.events.map(e => (
-        <VStack alignment="leading" spacing={2}>
-          <Text font={14}>{e.msg}</Text>
-          <Text font={12} foregroundStyle="secondaryLabel">{`${md(e.t)} ${hhmm(e.t)}`}</Text>
-        </VStack>
+    <Page title="发生了什么">
+      {days.map(day => (
+        <KitGroup title={day} inset={66}>
+          {props.events.filter(e => md(e.t) === day).map(e => (
+            <HStack spacing={12} alignment="firstTextBaseline" padding={{ horizontal: 14, vertical: 11 }} frame={{ maxWidth: 'infinity', alignment: 'leading' }}>
+              <Text font={12} monospacedDigit foregroundStyle="secondaryLabel" frame={{ width: 40, alignment: 'leading' }}>{hhmm(e.t)}</Text>
+              <Text font={14} foregroundStyle="label">{e.msg}</Text>
+            </HStack>
+          ))}
+        </KitGroup>
       ))}
-    </List>
+    </Page>
   )
 }
 
@@ -805,57 +819,54 @@ function SubDetail(props: { sub: SubView; onChanged: () => Promise<void> }) {
   }
 
   return (
-    <Form navigationTitle={s.name} navigationBarTitleDisplayMode="inline">
-      <Section>
-        <HStack spacing={16} padding={{ vertical: 6 }}>
-          <UsageRing ctx={appCtx(null, [])} ratio={s.ratio} size={64} line={9} color={usageColor(s.ratio)}>
-            <Text font={15} fontWeight="bold" fontDesign="rounded" monospacedDigit>{u && u.total > 0 ? `${Math.round(s.ratio * 100)}%` : '∞'}</Text>
+    <Page title={s.name}>
+      <Card inner={18}>
+        <HStack spacing={16}>
+          <UsageRing ctx={appCtx(null, [])} ratio={s.ratio} size={72} line={9} color={usageColor(s.ratio)}>
+            <Text font={16} fontWeight="bold" fontDesign="rounded" monospacedDigit>{u && u.total > 0 ? `${Math.round(s.ratio * 100)}%` : '∞'}</Text>
           </UsageRing>
           <VStack alignment="leading" spacing={3}>
-            <Text font={17} fontWeight="semibold">{u ? (u.total > 0 ? `剩 ${fmtBytes(Math.max(0, u.total - s.used))}` : '不限流量') : '还没读到用量'}</Text>
+            <Text font={26} fontWeight="semibold" fontDesign="rounded" foregroundStyle="label" lineLimit={1} minScaleFactor={0.6}>{u ? (u.total > 0 ? `剩 ${fmtBytes(Math.max(0, u.total - s.used))}` : '不限流量') : '还没读到用量'}</Text>
             <Text font={13} foregroundStyle={s.fc.kind === 'runout' ? WARN : s.fc.kind === 'out' ? BAD : 'secondaryLabel'}>{s.fc.text}</Text>
             {s.err ? <Text font={12} foregroundStyle={u ? WARN : BAD}>{`最近一次读取失败: ${s.err}`}</Text> : null}
           </VStack>
         </HStack>
-        {u?.plan ? <LabeledContent label={<Text>套餐</Text>} value={u.plan} /> : null}
-        {u ? <LabeledContent label={<Text>已用</Text>} value={`${fmtBytes(s.used)} (上传 ${fmtBytes(u.up)} · 下载 ${fmtBytes(u.down)})`} /> : null}
-        {u && u.total > 0 ? <LabeledContent label={<Text>总量</Text>} value={fmtBytes(u.total)} /> : null}
-        {u?.expire ? <LabeledContent label={<Text>到期</Text>} value={expireText(u)} /> : null}
-        {s.fc.avg ? <LabeledContent label={<Text>近 7 天日均</Text>} value={fmtBytes(s.fc.avg)} /> : null}
-        {s.budget ? <LabeledContent label={<Text>{`到${s.deadlineWord}前每天`}</Text>} value={fmtBytes(s.budget.today)} /> : null}
-        {s.price > 0 && u && u.total > 0 ? <LabeledContent label={<Text>每 G</Text>} value={`¥${(s.price / (u.total / 1024 ** 3)).toFixed(2)} · 剩余价值 ¥${(s.price * (1 - s.ratio)).toFixed(1)}`} /> : null}
-        {u ? <LabeledContent label={<Text>读取时间</Text>} value={`${new Date(u.t).getMonth() + 1}月${new Date(u.t).getDate()}日 ${hhmm(u.t)}`} /> : null}
-      </Section>
+      </Card>
 
-      <Section header={<Text>今天每小时</Text>} footer={<Text>{`${rateText(s.recent)}${s.interval ? ` · 这个机场约 ${s.interval} 分钟更新一次用量` : ''}。精度取决于机场多久更新一次。`}</Text>}>
-        <VStack spacing={6} padding={{ vertical: 6 }}>
-          <HourBars ctx={appCtx(null, [])} values={s.hourly} height={64} />
-          <HStack><Text font={11} foregroundStyle="secondaryLabel">0 点</Text><Spacer /><Text font={11} foregroundStyle="secondaryLabel">{`今天 ${fmtBytes(s.today)}`}</Text></HStack>
-        </VStack>
-      </Section>
+      <Grid>
+        {u ? <StatTile label="已用" value={fmtBytes(s.used)} sub={`↑${fmtBytes(u.up)} ↓${fmtBytes(u.down)}`} /> : null}
+        {u && u.total > 0 ? <StatTile label="总量" value={fmtBytes(u.total)} sub={u.plan} /> : null}
+        {u?.expire ? <StatTile label="到期" value={expireText(u)} /> : null}
+        {s.fc.avg ? <StatTile label="近 7 天日均" value={fmtBytes(s.fc.avg)} /> : null}
+        {s.budget ? <StatTile label={`到${s.deadlineWord}前每天`} value={fmtBytes(s.budget.today)} /> : null}
+        {s.price > 0 && u && u.total > 0 ? <StatTile label="每 G" value={`¥${(s.price / (u.total / 1024 ** 3)).toFixed(2)}`} sub={`剩余价值 ¥${(s.price * (1 - s.ratio)).toFixed(1)}`} /> : null}
+      </Grid>
 
-      <Section header={<Text>近 30 天每天用量</Text>} footer={<Text>{known.length ? `已记录 ${recordedDays(s)} 天。每次读到用量按北京时间记一笔, 前后两天相减得到日用量; 中间几天没记录会平均摊开。` : '每次读到用量都会记一笔, 明天起这里显示每天用了多少。'}</Text>}>
-        <VStack spacing={6} padding={{ vertical: 6 }}>
-          <DailyBars ctx={appCtx(null, [])} values={days30} height={90} spacing={2} />
-          <HStack>
-            <Text font={11} foregroundStyle="secondaryLabel">{first.slice(5).replace('-', '/')}</Text>
-            <Spacer />
-            <Text font={11} foregroundStyle="secondaryLabel">{known.length ? `最多 ${fmtBytes(Math.max(...known))}` : ''}</Text>
-            <Spacer />
-            <Text font={11} foregroundStyle="secondaryLabel">今天</Text>
-          </HStack>
-        </VStack>
-      </Section>
+      <Panel title="今天每小时" note={`${rateText(s.recent)}${s.interval ? ` · 这个机场约 ${s.interval} 分钟更新一次用量` : ''}。精度取决于机场多久更新一次。`}>
+        <HourBars ctx={appCtx(null, [])} values={s.hourly} height={64} />
+        <HStack><Text font={11} foregroundStyle="secondaryLabel">0 点</Text><Spacer /><Text font={11} foregroundStyle="secondaryLabel">{`今天 ${fmtBytes(s.today)}`}</Text></HStack>
+      </Panel>
 
-      <Section footer={note ? <Text>{note}</Text> : undefined}>
-        <Button title={s.resetDay ? `每月重置日 · ${s.resetDay} 号` : '设置每月重置日'} action={() => { editNumber('每月几号重置流量', '填 1 到 31; 填了之后预测和每天额度按重置日算', s.resetDay, 'resetDay', 31) }} />
-        <Button title={s.price ? `每期价格 · ¥${s.price}` : '设置每期价格'} action={() => { editNumber('每期多少钱', '用来算每 G 多少钱和性价比', s.price, 'price', 100000) }} />
-        {u?.site ? <Button title="打开机场官网" action={() => { Safari.openURL(u.site!) }} /> : null}
-        <Button title="改名" action={rename} />
-        <Button title="更换订阅链接" action={changeURL} />
-        <Button title="删除这个订阅" role="destructive" action={remove} />
-      </Section>
-    </Form>
+      <Panel title="近 30 天每天用量" note={known.length ? `已记录 ${recordedDays(s)} 天。每次读到用量按北京时间记一笔, 前后两天相减得到日用量; 中间几天没记录会平均摊开。` : '每次读到用量都会记一笔, 明天起这里显示每天用了多少。'}>
+        <DailyBars ctx={appCtx(null, [])} values={days30} height={90} spacing={2} />
+        <HStack>
+          <Text font={11} foregroundStyle="secondaryLabel">{first.slice(5).replace('-', '/')}</Text>
+          <Spacer />
+          <Text font={11} foregroundStyle="secondaryLabel">{known.length ? `最多 ${fmtBytes(Math.max(...known))}` : ''}</Text>
+          <Spacer />
+          <Text font={11} foregroundStyle="secondaryLabel">今天</Text>
+        </HStack>
+      </Panel>
+
+      <KitGroup note={note || (u ? `读取于 ${new Date(u.t).getMonth() + 1}月${new Date(u.t).getDate()}日 ${hhmm(u.t)}` : undefined)}>
+        <ActionRow icon="calendar" title="每月重置日" value={s.resetDay ? `${s.resetDay} 号` : '未设置'} action={() => { editNumber('每月几号重置流量', '填 1 到 31; 填了之后预测和每天额度按重置日算', s.resetDay, 'resetDay', 31) }} />
+        <ActionRow icon="yensign.circle" title="每期价格" value={s.price ? `¥${s.price}` : '未设置'} action={() => { editNumber('每期多少钱', '用来算每 G 多少钱和性价比', s.price, 'price', 100000) }} />
+        {u?.site ? <ActionRow icon="safari" title="打开机场官网" action={() => { Safari.openURL(u.site!) }} /> : null}
+        <ActionRow icon="pencil" title="改名" action={rename} />
+        <ActionRow icon="link" title="更换订阅链接" action={changeURL} />
+        <ActionRow icon="trash" color="systemRed" title="删除这个订阅" action={remove} />
+      </KitGroup>
+    </Page>
   )
 }
 
@@ -902,8 +913,8 @@ function StyleLibrary(props: Shared & { start: SizeTab; onChanged: () => void })
   }
 
   return (
-    <ScrollView navigationTitle="样式库" navigationBarTitleDisplayMode="inline" background={<Rectangle fill="systemGroupedBackground" ignoresSafeArea />}>
-      <VStack alignment="leading" spacing={18} padding={16}>
+    <Page title="样式库">
+      <VStack alignment="leading" spacing={18}>
         <Picker title="尺寸" value={tab} onChanged={(v: any) => setTab(v as SizeTab)} pickerStyle="segmented">
           <Text tag="systemSmall">小</Text>
           <Text tag="systemMedium">中</Text>
@@ -919,7 +930,7 @@ function StyleLibrary(props: Shared & { start: SizeTab; onChanged: () => void })
           </VStack>
         ) : grid(tab)}
       </VStack>
-    </ScrollView>
+    </Page>
   )
 }
 
@@ -939,25 +950,19 @@ function StyleDetail(props: { style: StyleDef; family: Family; loon: LoonData | 
   }
 
   return (
-    <List navigationTitle={style.name} navigationBarTitleDisplayMode="inline">
-      <Section footer={<Text>{`${style.desc}。支持: ${sizes}`}</Text>}>
-        <HStack padding={{ vertical: 8 }}>
-          <Spacer />
-          <Preview style={style} family={family} loon={props.loon} subs={props.subs} scale={family === 'systemLarge' ? 0.92 : 1} />
-          <Spacer />
-        </HStack>
-      </Section>
-      <Section
-        footer={<Text>{lock
-          ? `锁屏: 长按锁屏 → 自定 → 添加小组件 → Scripting → Loon 面板, 点小组件在参数里填「${param}」。不填参数用默认样式。`
-          : `桌面: 长按小组件 → 编辑小组件 → 参数里粘贴「${param}」。不填参数就用这个尺寸的默认样式。`}</Text>}
-      >
+    <Page title={style.name}>
+      <Stage>
+        <Preview style={style} family={family} loon={props.loon} subs={props.subs} scale={family === 'systemLarge' ? 0.92 : 1} />
+      </Stage>
+      <Block note={`${style.desc}。支持: ${sizes}`}>
         <Button action={use} buttonStyle="borderedProminent" controlSize="large" frame={{ maxWidth: 'infinity' }}>
           <Text font={16} fontWeight="semibold" frame={{ maxWidth: 'infinity' }}>用这个样式</Text>
         </Button>
-        {note ? <Text font={13} foregroundStyle="systemGreen">{note}</Text> : null}
-      </Section>
-    </List>
+      </Block>
+      <Block note={note || (lock
+        ? `锁屏: 长按锁屏 → 自定 → 添加小组件 → Scripting → Loon 面板, 点小组件在参数里填「${param}」。不填参数用默认样式。`
+        : `桌面: 长按小组件 → 编辑小组件 → 参数里粘贴「${param}」。不填参数就用这个尺寸的默认样式。`)} />
+    </Page>
   )
 }
 
@@ -1007,27 +1012,26 @@ function AppearancePage(props: Shared & { onChanged: () => void }) {
   }
 
   return (
-    <List navigationTitle="外观" navigationBarTitleDisplayMode="inline">
-      <Section footer={<Text>{`预览的是${FAMILY_NAME[fam]}默认样式「${style.name}」${props.loon && props.subs.length ? '' : ' (示例数据)'}`}</Text>}>
-        <VStack spacing={12} frame={{ maxWidth: 'infinity' }} padding={{ vertical: 8 }}>
-          <Preview style={style} family={fam} loon={data.loon} subs={data.subs} look={look} scale={fam === 'systemLarge' ? 0.8 : 1} />
-          <Picker title="尺寸" value={fam} onChanged={(v: any) => setFam(v as Family)} pickerStyle="segmented">
-            <Text tag="systemSmall">小</Text>
-            <Text tag="systemMedium">中</Text>
-            <Text tag="systemLarge">大</Text>
-          </Picker>
-        </VStack>
-      </Section>
+    <Page title="外观">
+      <Stage>
+        <Preview style={style} family={fam} loon={data.loon} subs={data.subs} look={look} scale={fam === 'systemLarge' ? 0.8 : 1} />
+        <Text font={12} foregroundStyle="secondaryLabel">{`${style.name} · ${FAMILY_NAME[fam]}${props.loon && props.subs.length ? '' : ' · 示例数据'}`}</Text>
+      </Stage>
+      <Picker title="尺寸" value={fam} onChanged={(v: any) => setFam(v as Family)} pickerStyle="segmented">
+        <Text tag="systemSmall">小</Text>
+        <Text tag="systemMedium">中</Text>
+        <Text tag="systemLarge">大</Text>
+      </Picker>
 
-      <Section footer={<Text>{look.mode === 'plain' ? '扁平卡片, 跟随系统深浅色。' : '背景可选纯色或相册图片, 文字颜色可自动或手动选; 用图片时可调暗化保证文字清楚。'}</Text>}>
+      <Panel title="外观" note={look.mode === 'plain' ? '扁平卡片, 跟随系统深浅色。' : '背景可选纯色或相册图片, 文字颜色可自动或手动选; 用图片时可调暗化保证文字清楚。'}>
         <Picker title="外观" value={look.mode} onChanged={(v: any) => update({ mode: v })} pickerStyle="segmented">
           <Text tag="plain">素净</Text>
           <Text tag="custom">自定义</Text>
         </Picker>
-      </Section>
+      </Panel>
 
       {look.mode === 'custom' ? (
-        <Section header={<Text>背景</Text>} footer={note ? <Text>{note}</Text> : undefined}>
+        <Panel title="背景" note={note || undefined}>
           <Picker title="背景" value={look.bgType} onChanged={(v: any) => update({ bgType: v })} pickerStyle="segmented">
             <Text tag="color">纯色</Text>
             <Text tag="image">图片</Text>
@@ -1050,11 +1054,11 @@ function AppearancePage(props: Shared & { onChanged: () => void }) {
               ) : null}
             </VStack>
           )}
-        </Section>
+        </Panel>
       ) : null}
 
       {look.mode === 'custom' ? (
-        <Section header={<Text>文字颜色</Text>} footer={<Text>自动: 纯色背景按亮度在黑白之间选, 图片背景用白色。灰字由文字色调淡得到, 红绿橙状态色不变。</Text>}>
+        <Panel title="文字颜色" note="自动: 纯色背景按亮度在黑白之间选, 图片背景用白色。灰字由文字色调淡得到, 红绿橙状态色不变。">
           <Picker title="文字颜色" value={look.text} onChanged={(v: any) => update({ text: v })} pickerStyle="segmented">
             <Text tag="auto">自动</Text>
             <Text tag="white">白色</Text>
@@ -1064,16 +1068,16 @@ function AppearancePage(props: Shared & { onChanged: () => void }) {
           {look.text === 'custom' ? (
             <ColorPicker title="自选文字颜色" value={look.textColor} onChanged={(c: Color) => update({ textColor: c })} supportsOpacity={false} />
           ) : null}
-        </Section>
+        </Panel>
       ) : null}
 
       {look.mode === 'custom' ? (
-        <Section header={<Text>强调色</Text>} footer={<Text>用在图标、柱状图、选中的模式按钮; 用量和延迟的红绿橙固定。</Text>}>
+        <Panel title="强调色" note="用在图标、柱状图、选中的模式按钮; 用量和延迟的红绿橙固定。">
           <Swatches colors={RECOMMENDED_ACCENT} value={look.accent} onPick={c => update({ accent: c })} />
           <ColorPicker title="自选强调色" value={look.accent} onChanged={(c: Color) => update({ accent: c })} supportsOpacity={false} />
-        </Section>
+        </Panel>
       ) : null}
-    </List>
+    </Page>
   )
 }
 
@@ -1126,31 +1130,32 @@ function SettingsPage(props: Shared & { close: any; onChanged: () => void }) {
 
   return (
     <Page title="设置" large bar={{ cancellationAction: props.close }}>
-      <KitGroup title="Loon">
-        <ActionRow
-          icon={st.level === 'ok' && !oldPlugin ? 'checkmark.circle' : 'exclamationmark.circle'}
-          color={oldPlugin ? WARN : st.level === 'ok' ? OK : st.level === 'warn' ? WARN : BAD}
-          title={oldPlugin ? '插件版本太旧' : st.text}
-          sub={testText || '点一下测试连接'}
-          action={test}
-        />
-        <ActionRow icon="square.and.arrow.down" title="导入 / 更新 Loon 插件" action={() => { Safari.openURL(LOON_IMPORT) }} />
-      </KitGroup>
+      <Card inner={18}>
+        <VStack alignment="leading" spacing={4}>
+          <HStack spacing={8}>
+            <Circle fill={oldPlugin ? WARN : st.level === 'ok' ? OK : st.level === 'warn' ? WARN : BAD} frame={{ width: 8, height: 8 }} />
+            <Text font={13} foregroundStyle="secondaryLabel">{`版本 ${version}${loon?.version ? ` · 插件 ${loon.version}` : ''}`}</Text>
+          </HStack>
+          <Text font={26} fontWeight="semibold" fontDesign="rounded" foregroundStyle="label" lineLimit={1} minScaleFactor={0.6}>{oldPlugin ? '插件版本太旧' : st.text}</Text>
+          {testText || updateText ? <Text font={12} foregroundStyle="secondaryLabel">{testText || updateText}</Text> : null}
+        </VStack>
+      </Card>
 
-      <KitGroup title="检测和提醒">
-        <NavRow icon="stethoscope" title="节点检测" sub={o?.timeout ? `超时 ${o.timeout / 1000} 秒 · 通知${onOff(o.notify)} · 自动切换${onOff(o.auto)}` : '开着 Loon 才能修改'} destination={<CheckPage loon={loon} reload={props.reload} />} />
-        <NavRow icon="bell.badge" title="用量提醒" sub={alerts || '已关闭'} destination={<AlertsPage />} />
-      </KitGroup>
+      <HStack>
+        <RoundButton icon="bolt.horizontal" title="测试连接" action={test} />
+        <RoundButton icon="square.and.arrow.down" title="更新插件" action={() => { Safari.openURL(LOON_IMPORT) }} />
+        <RoundButton icon="arrow.down.circle" title="检查更新" action={checkUpdate} />
+      </HStack>
 
-      <KitGroup title="小组件">
-        <PickerRow icon="clock" title="刷新间隔" value={prefs.refresh} options={[[15, '15 分钟'], [30, '30 分钟'], [60, '60 分钟']]} onChanged={v => update({ refresh: v })} />
-        <NavRow icon="arrow.triangle.2.circlepath" title="体检完自动刷新" sub={o?.push ? '已设置' : '不用等系统定时刷新'} destination={<AutoRefreshPage />} />
-      </KitGroup>
+      <Grid>
+        <NavTile icon="stethoscope" title="节点检测" value={o?.timeout ? `超时 ${o.timeout / 1000} 秒 · 通知${onOff(o.notify)}` : '开着 Loon 才能修改'} destination={<CheckPage loon={loon} reload={props.reload} />} />
+        <NavTile icon="bell.badge" title="用量提醒" value={alerts || '已关闭'} destination={<AlertsPage />} />
+        <NavTile icon="arrow.triangle.2.circlepath" title="自动刷新" value={o?.push ? '已设置' : '体检完刷新小组件'} destination={<AutoRefreshPage />} />
+        <NavTile icon="externaldrive" title="数据和缓存" value="用量历史、缓存" destination={<DataPage reload={props.reload} />} />
+      </Grid>
 
-      <KitGroup title="更多" note="策略组的常用、主策略组、解锁、全量体检和锁定, 在节点页点进策略组设置。">
-        <NavRow icon="externaldrive" title="数据和缓存" destination={<DataPage reload={props.reload} />} />
-        <ActionRow icon="arrow.down.circle" title="检查更新" value={updateText} action={checkUpdate} />
-        <InfoRow icon="info.circle" title="版本" value={`${version}${loon?.version ? ` · 插件 ${loon.version}` : ''}`} />
+      <KitGroup note="策略组的常用、主策略组、解锁、全量体检和锁定, 在节点页点进策略组设置。">
+        <PickerRow icon="clock" title="小组件刷新间隔" value={prefs.refresh} options={[[15, '15 分钟'], [30, '30 分钟'], [60, '60 分钟']]} onChanged={v => update({ refresh: v })} />
       </KitGroup>
     </Page>
   )
@@ -1180,10 +1185,14 @@ function CheckPage(props: { loon: LoonData | null; reload: () => Promise<void> }
 
   return (
     <Page title="节点检测">
-      <KitGroup note={note || (live ? '这些由 Loon 在后台执行。体检频率是 Loon 插件里唯一的参数, 默认 30 分钟一次。' : '要开着 Loon 并更新到最新插件才能修改。')}>
-        <ToggleRow icon="wifi" title="网络切换后复测" value={o?.net ?? true} disabled={!live} onChanged={v => { save({ net: v }) }} />
-        <ToggleRow icon="bell" title="节点异常发通知" sub="连续 3 次超时, 或锁定被改回时" value={o?.notify ?? true} disabled={!live} onChanged={v => { save({ notify: v }) }} />
-        <ToggleRow icon="bolt" title="挂了自动切到最快" sub="锁定的策略组不会切" value={o?.auto ?? false} disabled={!live} onChanged={v => { save({ auto: v }) }} />
+      <Block note={note || (live ? '这些由 Loon 在后台执行。体检频率是 Loon 插件里唯一的参数, 默认 30 分钟一次。' : '要开着 Loon 并更新到最新插件才能修改。')}>
+        <Grid>
+          <ToggleTile icon="wifi" title="切网复测" sub="网络切换后测一次" value={o?.net ?? true} disabled={!live} onChanged={v => { save({ net: v }) }} />
+          <ToggleTile icon="bell" title="异常通知" sub="连续 3 次超时" value={o?.notify ?? true} disabled={!live} onChanged={v => { save({ notify: v }) }} />
+          <ToggleTile icon="bolt" title="自动切换" sub="挂了切到最快" value={o?.auto ?? false} disabled={!live} onChanged={v => { save({ auto: v }) }} />
+        </Grid>
+      </Block>
+      <KitGroup>
         <PickerRow icon="timer" title="单次超时" value={o?.timeout ?? 5000} disabled={!live} options={[[3000, '3 秒'], [5000, '5 秒'], [8000, '8 秒']]} onChanged={v => { save({ timeout: v }) }} />
       </KitGroup>
       <KitGroup title="检测地址">
@@ -1203,11 +1212,13 @@ function AlertsPage() {
   }
   return (
     <Page title="用量提醒">
-      <KitGroup note="小组件刷新时检查, 条件成立时发一次通知。">
-        <ToggleRow icon="chart.pie" title="用到 80% 和 90%" value={prefs.alerts.usage} onChanged={v => set({ ...prefs.alerts, usage: v })} />
-        <ToggleRow icon="hourglass" title="预计 3 天内用完" value={prefs.alerts.runout} onChanged={v => set({ ...prefs.alerts, runout: v })} />
-        <ToggleRow icon="calendar" title="到期前 3 天" value={prefs.alerts.expire} onChanged={v => set({ ...prefs.alerts, expire: v })} />
-      </KitGroup>
+      <Block note="小组件刷新时检查, 条件成立时发一次通知。">
+        <Grid>
+          <ToggleTile icon="chart.pie" title="用量" sub="用到 80% 和 90%" value={prefs.alerts.usage} onChanged={v => set({ ...prefs.alerts, usage: v })} />
+          <ToggleTile icon="hourglass" title="快用完" sub="预计 3 天内用完" value={prefs.alerts.runout} onChanged={v => set({ ...prefs.alerts, runout: v })} />
+          <ToggleTile icon="calendar" title="快到期" sub="到期前 3 天" value={prefs.alerts.expire} onChanged={v => set({ ...prefs.alerts, expire: v })} />
+        </Grid>
+      </Block>
     </Page>
   )
 }
@@ -1216,16 +1227,18 @@ function DataPage(props: { reload: () => Promise<void> }) {
   const [note, setNote] = useState('')
   return (
     <Page title="数据和缓存">
-      <KitGroup note={note || `小组件从 ${DATA_URL} 读 Loon 的数据。用量历史只存数字, 约 60 天, 不存订阅链接。`}>
-        <ActionRow icon="safari" title="用 Safari 打开数据地址" action={() => { Safari.openURL(DATA_URL) }} />
-        <ActionRow icon="arrow.clockwise" title="清除 Loon 数据缓存" action={() => { clearLoonCache(); setNote('缓存已清除') }} />
-        <ActionRow icon="trash" color="systemRed" title="清除用量历史" action={async () => {
-          if (!(await Dialog.confirm({ title: '清除全部用量历史?', message: '趋势图和预测会从头记录', cancelLabel: '取消', confirmLabel: '清除' }))) return
-          clearHistory()
-          setNote('历史已清除')
-          await props.reload()
-        }} />
-      </KitGroup>
+      <Block note={note || `小组件从 ${DATA_URL} 读 Loon 的数据。用量历史只存数字, 约 60 天, 不存订阅链接。`}>
+        <HStack>
+          <RoundButton icon="safari" title="打开数据地址" action={() => { Safari.openURL(DATA_URL) }} />
+          <RoundButton icon="arrow.clockwise" title="清除缓存" action={() => { clearLoonCache(); setNote('缓存已清除') }} />
+          <RoundButton icon="trash" title="清除历史" action={async () => {
+            if (!(await Dialog.confirm({ title: '清除全部用量历史?', message: '趋势图和预测会从头记录', cancelLabel: '取消', confirmLabel: '清除' }))) return
+            clearHistory()
+            setNote('历史已清除')
+            await props.reload()
+          }} />
+        </HStack>
+      </Block>
     </Page>
   )
 }
