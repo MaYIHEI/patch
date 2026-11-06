@@ -1,4 +1,4 @@
-// kit.tsx — patch 的页面骨架: 系统底色 + 分组卡片 + 行. 黑白灰为主, 彩色只表示状态; 液态玻璃交给系统底栏、工具栏和按钮
+// kit.tsx — patch 的页面骨架: 系统底色 + 分组卡片 + 行. 蓝色强调, 只有状态大卡用大面积颜色; 液态玻璃交给系统底栏、工具栏和按钮
 // 只给 App 页面用, 不进小组件. 新组件把这个文件复制过去就能用, 不依赖组件里的其他文件
 
 import {
@@ -29,14 +29,14 @@ export function Page(props: { title: string; large?: boolean; bar?: any; childre
 }
 
 /** 卡片 */
-export function Card(props: { radius?: number; inner?: number; tall?: number; children?: any }) {
+export function Card(props: { radius?: number; inner?: number; tall?: number; fill?: Color; children?: any }) {
   return (
     <VStack
       alignment="leading"
       spacing={0}
       padding={props.inner ?? 0}
       frame={{ maxWidth: 'infinity', minHeight: props.tall, alignment: 'topLeading' }}
-      background={<RoundedRectangle cornerRadius={props.radius ?? RADIUS} style="continuous" fill={CARD} />}
+      background={<RoundedRectangle cornerRadius={props.radius ?? RADIUS} style="continuous" fill={props.fill ?? CARD} />}
     >
       {props.children}
     </VStack>

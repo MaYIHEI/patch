@@ -163,7 +163,7 @@ function Home() {
   const onChanged = () => setTick(tick + 1)
 
   return (
-    <TabView selection={tab} tint="label">
+    <TabView selection={tab}>
       <Tab title="小组件" systemImage="square.grid.2x2.fill" value={0}>
         <NavigationStack><WidgetTab shared={shared} act={act} busy={busy} close={close} onChanged={onChanged} toSubs={() => tab.setValue(1)} /></NavigationStack>
       </Tab>
@@ -313,25 +313,29 @@ function GroupTile(props: { group: Group; loon: LoonData }) {
   )
 }
 
+/** 大卡底色跟着节点状态走, 深色配白字 */
+const heroFill = (r?: NodeResult): Color => (!r ? '#48484A' : !r.ok || r.ms >= 1500 ? '#A32D2D' : r.ms >= 800 ? '#9A6200' : '#0F6E56')
+const HERO_SUB: Color = 'rgba(255,255,255,0.75)'
+
 /** 节点页顶部: 主策略组现在好不好 */
 function HeroCard(props: { group: Group; loon: LoonData }) {
   const { group: g, loon } = props
   const r = loon.nodes[g.leaf]
   const c = healthCount(loon)
   return (
-    <Card inner={18}>
+    <Card inner={18} fill={heroFill(r)}>
       <VStack alignment="leading" spacing={6}>
-        <Text font={13} foregroundStyle="secondaryLabel" lineLimit={1}>{g.name}</Text>
+        <Text font={13} foregroundStyle={HERO_SUB} lineLimit={1}>{g.name}</Text>
         <HStack alignment="lastTextBaseline" spacing={4}>
-          <Text font={44} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={r && !r.ok ? BAD : 'label'}>{r ? (r.ok ? String(r.ms) : '超时') : '未测'}</Text>
-          {r?.ok ? <Text font={15} foregroundStyle="secondaryLabel">ms</Text> : null}
+          <Text font={44} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle="#FFFFFF">{r ? (r.ok ? String(r.ms) : '超时') : '未测'}</Text>
+          {r?.ok ? <Text font={15} foregroundStyle={HERO_SUB}>ms</Text> : null}
         </HStack>
-        <Text font={15} foregroundStyle="label" lineLimit={1}>{nodeLabel(g.leaf, r)}</Text>
-        {r?.h?.length ? <Spark ctx={appCtx(null, [])} h={r.h} height={30} count={24} tone="tertiaryLabel" /> : null}
+        <Text font={15} foregroundStyle="#FFFFFF" lineLimit={1}>{nodeLabel(g.leaf, r)}</Text>
+        {r?.h?.length ? <Spark ctx={appCtx(null, [])} h={r.h} height={30} count={24} tone="rgba(255,255,255,0.45)" /> : null}
         <HStack>
-          {c.total ? <Text font={12} foregroundStyle="secondaryLabel">{`${c.ok}/${c.total} 个节点可用`}</Text> : null}
+          {c.total ? <Text font={12} foregroundStyle={HERO_SUB}>{`${c.ok}/${c.total} 个节点可用`}</Text> : null}
           <Spacer />
-          {loon.check ? <Text font={12} foregroundStyle="secondaryLabel">{`${ago(loon.check.t)} 体检`}</Text> : null}
+          {loon.check ? <Text font={12} foregroundStyle={HERO_SUB}>{`${ago(loon.check.t)} 体检`}</Text> : null}
         </HStack>
       </VStack>
     </Card>
@@ -486,7 +490,7 @@ function GroupPage(props: { group: Group; loon: LoonData; act: (q: Act, label: s
           return (
             <Button action={() => { pick(name) }} buttonStyle="plain">
               <HStack spacing={10} padding={{ horizontal: 14, vertical: 10 }} frame={{ maxWidth: 'infinity' }}>
-                <Image systemName={name === g.now ? 'checkmark.circle.fill' : isGroup ? 'folder' : 'circle'} foregroundStyle={name === g.now ? 'label' : 'tertiaryLabel'} />
+                <Image systemName={name === g.now ? 'checkmark.circle.fill' : isGroup ? 'folder' : 'circle'} foregroundStyle={name === g.now ? 'systemBlue' : 'tertiaryLabel'} />
                 <VStack alignment="leading" spacing={1}>
                   <Text font={15} foregroundStyle="label" lineLimit={1}>{fullLabel(name, r)}</Text>
                   {r ? <Text font={11} foregroundStyle={r.ok ? 'secondaryLabel' : BAD} lineLimit={1}>{r.ok ? [a === null ? '' : `可用 ${Math.round(a * 100)}%`, asnText(r)].filter(Boolean).join(' · ') : `连续 ${r.fail ?? 1} 次超时`}</Text> : null}
