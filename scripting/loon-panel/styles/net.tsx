@@ -13,7 +13,7 @@ import { fmtBytes } from '../subs'
 import { ModeIntent, SwitchIntent, CheckIntent, FastestIntent, NextGroupsIntent, NextPickGroupIntent, NextPickPageIntent, readNote } from '../app_intents'
 import { mainGroupLeaf, checkText } from './node'
 import {
-  Root, Header, Empty, Dot, Pill, Uptime, RefreshButton, latencyColor, latencyText, nodeLabel, asnText, flag, ago, hhmm,
+  Root, Header, Num, Empty, Cell, Dot, Pill, Uptime, RefreshButton, latencyColor, latencyInk, latencyText, nodeLabel, asnText, flag, ago, hhmm,
   mediaColor, mediaWord, chunk, withAlpha, OK, BAD, WARN, type Ctx,
 } from '../ui'
 
@@ -213,7 +213,7 @@ export function RankStyle(props: { ctx: Ctx }) {
               <Text font={12} fontWeight={x.current ? 'semibold' : 'regular'} foregroundStyle={th.t1} lineLimit={1}>{nodeLabel(x.name, x.r)}</Text>
               <Spacer minLength={4} />
               <Capsule fill={latencyColor(x.r)} frame={{ width: Math.max(4, (x.r.ms / max) * 70), height: 4 }} />
-              <Text font={12} fontWeight="semibold" monospacedDigit foregroundStyle={latencyColor(x.r)} frame={{ width: 46, alignment: 'trailing' }}>{latencyText(x.r)}</Text>
+              <Text font={12} fontWeight="semibold" monospacedDigit foregroundStyle={latencyInk(ctx, x.r)} frame={{ width: 46, alignment: 'trailing' }}>{latencyText(x.r)}</Text>
             </HStack>
           </Tap>
         )
@@ -276,7 +276,7 @@ export function PickerStyle(props: { ctx: Ctx }) {
         <HStack spacing={3} padding={{ horizontal: 8, vertical: 6 }} frame={{ maxWidth: 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={9} fill={on ? th.accent : th.card} />}>
           <Text font={11} fontWeight="medium" foregroundStyle={on ? '#FFFFFF' : th.t1} lineLimit={1} minScaleFactor={0.7}>{nodeLabel(name, r)}</Text>
           <Spacer minLength={2} />
-          {r ? <Text font={10} monospacedDigit foregroundStyle={on ? '#FFFFFF' : latencyColor(r)} lineLimit={1}>{r.ok ? String(r.ms) : '超时'}</Text> : null}
+          {r ? <Text font={10} monospacedDigit foregroundStyle={on ? '#FFFFFF' : latencyInk(ctx, r)} lineLimit={1}>{r.ok ? String(r.ms) : '超时'}</Text> : null}
         </HStack>
       </Tap>
     )
@@ -305,36 +305,38 @@ export function PickerStyle(props: { ctx: Ctx }) {
   )
 }
 
+/** 一个策略组: 组名、延迟、当前节点; 点一下切到最快 */
+export function GroupCell(props: { ctx: Ctx; g: Group }) {
+  const { ctx, g } = props
+  const { th } = ctx
+  const loon = ctx.loon!
+  const r = loon.nodes[g.leaf]
+  const target = loon.stale ? undefined : switchTarget(loon, g)
+  return (
+    <Tap ctx={ctx} intent={target ? SwitchIntent({ group: g.name, node: target }) : undefined}>
+      <Cell ctx={ctx}>
+        <HStack spacing={3}>
+          <Text font={10} foregroundStyle={th.t2} lineLimit={1}>{g.name}</Text>
+          {loon.locks?.[g.name] ? <Image systemName="lock.fill" font={8} foregroundStyle={th.t3} /> : null}
+        </HStack>
+        <Text font={15} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={latencyInk(ctx, r)} lineLimit={1}>{latencyText(r)}</Text>
+        <Text font={10} foregroundStyle={th.t3} lineLimit={1}>{nodeLabel(g.leaf, r)}</Text>
+      </Cell>
+    </Tap>
+  )
+}
+
 export function GroupsStyle(props: { ctx: Ctx }) {
   const { ctx } = props
-  const { th, loon } = ctx
+  const { loon } = ctx
   if (!loon) return <NoLoon ctx={ctx} title="策略组" icon="square.grid.2x2.fill" />
   const { list: groups, page, pages } = groupPage(loon, ctx.prefs, 4)
-  const card = (g: Group) => {
-    const r = loon.nodes[g.leaf]
-    const target = loon.stale ? undefined : switchTarget(loon, g)
-    return (
-      <Tap ctx={ctx} intent={target ? SwitchIntent({ group: g.name, node: target }) : undefined}>
-        <VStack alignment="leading" spacing={1} padding={{ horizontal: 8, vertical: 6 }} frame={{ maxWidth: 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={10} fill={th.card} />}>
-          <HStack spacing={3}>
-            <Text font={10} foregroundStyle={th.t3} lineLimit={1}>{g.name}</Text>
-            {loon.locks?.[g.name] ? <Image systemName="lock.fill" font={8} foregroundStyle={th.t3} /> : null}
-          </HStack>
-          <HStack spacing={4}>
-            <Text font={12} fontWeight="medium" foregroundStyle={th.t1} lineLimit={1} minScaleFactor={0.7}>{nodeLabel(g.leaf, r)}</Text>
-            <Spacer minLength={2} />
-            <Text font={11} fontWeight="semibold" monospacedDigit foregroundStyle={latencyColor(r)} lineLimit={1}>{r?.ok ? String(r.ms) : latencyText(r)}</Text>
-          </HStack>
-        </VStack>
-      </Tap>
-    )
-  }
   return (
     <Root ctx={ctx} spacing={6}>
-      <Header ctx={ctx} title="策略组" icon="square.grid.2x2.fill" right={`${modeName(loon.mode)} · 点卡片切到最快`} trailing={<PageButton ctx={ctx} page={page} pages={pages} />} />
+      <Header ctx={ctx} title="策略组" icon="square.grid.2x2.fill" right={modeName(loon.mode)} trailing={<PageButton ctx={ctx} page={page} pages={pages} />} />
       {chunk(groups, 2).map(row => (
         <HStack spacing={6}>
-          {row.map(card)}
+          {row.map(g => <GroupCell ctx={ctx} g={g} />)}
           {row.length < 2 ? <VStack frame={{ maxWidth: 'infinity' }} /> : null}
         </HStack>
       ))}
@@ -370,25 +372,24 @@ export function EventsStyle(props: { ctx: Ctx }) {
 // ─────────────────────────────────────────────────────────────
 const pingColor = (avg?: number, loss?: number) => (avg === undefined ? '#8E8E93' : (loss ?? 0) >= 5 || avg >= 200 ? BAD : avg >= 100 ? WARN : OK)
 
-function PingRows(props: { ctx: Ctx; d: Deep }) {
+function PingCards(props: { ctx: Ctx; d: Deep }) {
   const { ctx, d } = props
   const { th } = ctx
   return (
-    <VStack spacing={5}>
+    <HStack spacing={6}>
       {(['ct', 'cu', 'cm'] as Isp[]).map(isp => {
         const p = d.ping?.find(x => x.isp === isp)
         const way = d.inbound?.find(x => x.isp === isp)
         return (
-          <HStack spacing={6}>
-            <Text font={12} foregroundStyle={th.t1} frame={{ width: 30, alignment: 'leading' }}>{ISP[isp]}</Text>
-            <Text font={13} fontWeight="semibold" monospacedDigit foregroundStyle={pingColor(p?.avg, p?.loss)} frame={{ width: 52, alignment: 'leading' }}>{p?.avg !== undefined ? `${Math.round(p.avg)}ms` : '-'}</Text>
-            <Text font={10} monospacedDigit foregroundStyle={th.t2} lineLimit={1} frame={{ width: 62, alignment: 'leading' }}>{p ? `丢包 ${p.loss ?? 0}%` : ''}</Text>
-            <Text font={10} foregroundStyle={th.t3} lineLimit={1}>{way ? [way.hops ? `${way.hops} 跳` : '', way.summary ?? ''].filter(Boolean).join(' · ') : ''}</Text>
-            <Spacer minLength={0} />
-          </HStack>
+          <Cell ctx={ctx}>
+            <Text font={11} foregroundStyle={th.t2}>{ISP[isp]}</Text>
+            <Num value={p?.avg !== undefined ? `${Math.round(p.avg)}ms` : '-'} size={17} color={pingColor(p?.avg, p?.loss) === OK ? th.t1 : pingColor(p?.avg, p?.loss)} />
+            <Text font={10} monospacedDigit foregroundStyle={th.t3} lineLimit={1}>{p ? `丢包 ${p.loss ?? 0}%` : ' '}</Text>
+            {way?.summary ? <Text font={10} foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.7}>{way.summary}</Text> : null}
+          </Cell>
         )
       })}
-    </VStack>
+    </HStack>
   )
 }
 
@@ -401,7 +402,7 @@ export function PingStyle(props: { ctx: Ctx }) {
   return (
     <Root ctx={ctx} spacing={7}>
       <Header ctx={ctx} title="三网延迟" icon="point.3.connected.trianglepath.dotted" right={`${ago(hit.data.t)} 检测`} />
-      <PingRows ctx={ctx} d={hit.data} />
+      <PingCards ctx={ctx} d={hit.data} />
       <Spacer minLength={0} />
       <Text font={10} foregroundStyle={th.t3} lineLimit={1}>{`外部探针到 ${nodeLabel(hit.node, ctx.loon.nodes[hit.node])} 出口`}</Text>
     </Root>
@@ -427,7 +428,7 @@ export function NodesStyle(props: { ctx: Ctx }) {
             <Text font={11} fontWeight={x.current ? 'semibold' : 'regular'} foregroundStyle={th.t1} lineLimit={1} frame={{ width: 104, alignment: 'leading' }}>{nodeLabel(x.name, x.r)}</Text>
             <Uptime h={x.r.h} />
             <Text font={10} monospacedDigit foregroundStyle={th.t3} frame={{ width: 30, alignment: 'trailing' }}>{a === null ? '' : `${Math.round(a * 100)}%`}</Text>
-            <Text font={11} fontWeight="semibold" monospacedDigit foregroundStyle={latencyColor(x.r)} frame={{ width: 38, alignment: 'trailing' }}>{x.r.ok ? String(x.r.ms) : '超时'}</Text>
+            <Text font={11} fontWeight="semibold" monospacedDigit foregroundStyle={latencyInk(ctx, x.r)} frame={{ width: 38, alignment: 'trailing' }}>{x.r.ok ? String(x.r.ms) : '超时'}</Text>
           </HStack>
         )
       }) : <Empty ctx={ctx} icon="stethoscope" text="还没有体检结果" />}
@@ -437,7 +438,7 @@ export function NodesStyle(props: { ctx: Ctx }) {
           {u.list.slice(0, 6).map(m => <Text font={10} fontWeight="medium" foregroundStyle={mediaColor(m)} lineLimit={1} minScaleFactor={0.7}>{m.name}</Text>)}
         </HStack>
       ) : null}
-      <Text font={10} foregroundStyle={th.accent} lineLimit={1} padding={{ horizontal: 8, vertical: 4 }} frame={{ maxWidth: 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={8} fill={withAlpha(th.accent, 0.12)} />}>
+      <Text font={10} foregroundStyle={th.t2} lineLimit={1} padding={{ horizontal: 10, vertical: 5 }} frame={{ maxWidth: 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={10} style="continuous" fill={th.card} />}>
         {[leaf?.r?.cc ? `出口 ${flag(leaf.r.cc)} ${leaf.r.org ?? ''}` : '', loon.direct?.org ? `直连 ${loon.direct.org}` : '', deep?.data.speed?.down ? `带宽 ${Math.round(deep.data.speed.down)}Mbps` : ''].filter(Boolean).join(' · ')}
       </Text>
     </Root>
@@ -472,7 +473,7 @@ export function ReportStyle(props: { ctx: Ctx }) {
       <Text font={10} foregroundStyle={th.t2} lineLimit={1}>{[d.basic?.ip, d.basic?.asn ? `AS${d.basic.asn}` : '', d.basic?.org].filter(Boolean).join(' · ')}</Text>
       <HStack spacing={4}>{ipTags(d).slice(0, 3).map(t => <Pill text={t.text} fg={t.color} bg={withAlpha(t.color, 0.16)} font={10} />)}</HStack>
       <Rectangle fill={th.border} frame={{ maxWidth: 'infinity', height: 0.5 }} />
-      {d.ping ? <PingRows ctx={ctx} d={d} /> : <Text font={11} foregroundStyle={th.t3}>三网探针没有结果</Text>}
+      {d.ping ? <PingCards ctx={ctx} d={d} /> : <Text font={11} foregroundStyle={th.t3}>三网探针没有结果</Text>}
       <Rectangle fill={th.border} frame={{ maxWidth: 'infinity', height: 0.5 }} />
       {way ? <Line ctx={ctx} label="回程" text={`${way} (同网络探针)`} /> : null}
       {media.length ? <Line ctx={ctx} label="解锁" text={media.join(' ')} color={OK} /> : null}
