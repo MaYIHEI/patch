@@ -266,18 +266,21 @@ export function PickerStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, loon } = ctx
   if (!loon) return <NoLoon ctx={ctx} title="切换器" icon="arrow.triangle.swap" />
-  const { group: g, nodes, page, pages, groups } = pickerView(loon, ctx.prefs, ctx.size === 'l' ? 12 : 6)
+  const { group: g, nodes, page, pages, groups } = pickerView(loon, ctx.prefs, ctx.size === 'l' ? 15 : 6)
   if (!g) return <NoLoon ctx={ctx} title="切换器" icon="arrow.triangle.swap" />
-  // 节点少时两列, 卡片撑满整个小组件, 不留空
-  const cols = nodes.length <= 4 ? 2 : 3
-  const big = ctx.size === 'l' && nodes.length <= cols * 2
+  // 节点少时两列大卡片; 多时三列, 翻页时卡片大小不变
+  const cols = g.subs.length <= 4 ? 2 : 3
+  const big = ctx.size === 'l' && g.subs.length <= 4
+  const rows = chunk(nodes, cols)
+  const blank = pages > 1 ? (ctx.size === 'l' ? 5 : 2) - rows.length : 0
   const cell = (name: string) => {
-    const r = loon.nodes[name]
+    const sub = loon.groups.find(x => x.name === name)   // 选项可能是另一个策略组, 看它正在用的节点
+    const r = loon.nodes[sub?.leaf ?? name]
     const on = name === g.now
     return (
       <Tap ctx={ctx} intent={!on && !loon.stale ? SwitchIntent({ group: g.name, node: name }) : undefined}>
         <VStack alignment="leading" spacing={2} padding={{ horizontal: 10, vertical: 6 }} frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={12} style="continuous" fill={on ? th.accent : th.card} />}>
-          <Text font={big ? 13 : 11} foregroundStyle={on ? '#FFFFFF' : th.t2} lineLimit={1} minScaleFactor={0.7}>{nodeLabel(name, r)}</Text>
+          <Text font={big ? 13 : 11} foregroundStyle={on ? '#FFFFFF' : th.t2} lineLimit={1} minScaleFactor={0.7}>{sub ? name : nodeLabel(name, r)}</Text>
           <Text font={big ? 24 : 14} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={on ? '#FFFFFF' : r ? latencyInk(ctx, r) : th.t3} lineLimit={1} minScaleFactor={0.7}>{latencyText(r)}</Text>
         </VStack>
       </Tap>
@@ -296,12 +299,13 @@ export function PickerStyle(props: { ctx: Ctx }) {
           </HStack>
         )}
       />
-      {chunk(nodes, cols).map(row => (
+      {rows.map(row => (
         <HStack spacing={5} frame={{ maxHeight: 'infinity' }}>
           {row.map(cell)}
           {Array.from({ length: cols - row.length }, () => <VStack frame={{ maxWidth: 'infinity' }} />)}
         </HStack>
       ))}
+      {Array.from({ length: Math.max(0, blank) }, () => <VStack frame={{ maxHeight: 'infinity' }} />)}
     </Root>
   )
 }
