@@ -6,15 +6,15 @@ import { VStack, HStack, ZStack, Text, Spacer, Image, Button, Link, Capsule, Rec
 import type { Color } from 'scripting'
 
 import {
-  MODES, groupPage, pickerView, focusOf, pathTo, isAuto, mainGroup, rankedNodes, healthCount, availability, unlockNode, latestDeep, loonStatus, modeName,
+  MODES, groupPage, shownGroups, pickerView, focusOf, pathTo, isAuto, mainGroup, rankedNodes, healthCount, availability, unlockNode, latestDeep, loonStatus,
   type Deep, type Group, type Isp,
 } from '../loon'
 import { fmtBytes, md, type SubView } from '../subs'
 import { ModeIntent, SwitchIntent, CheckIntent, FastestIntent, TurnGroupsIntent, NextPickGroupIntent, TurnPickPageIntent, EnterPickIntent, LeavePickIntent, OpenPickIntent, ClosePickIntent, readNote, readPending } from '../app_intents'
 import { mainGroupLeaf, checkText } from './node'
 import {
-  Root, Header, Num, Empty, Cell, Dot, Pill, Spark, Uptime, RefreshButton, Bar, usageColor, latencyColor, latencyInk, latencyText, nodeLabel, asnText, flag, ago, hhmm,
-  mediaColor, mediaWord, chunk, withAlpha, OK, BAD, WARN, type Ctx, type Paint,
+  Root, Header, Num, Empty, Cell, Dot, Pill, Spark, Uptime, RefreshButton, ModeTap, Bar, usageColor, latencyColor, latencyInk, latencyText, nodeLabel, asnText, flag, ago, hhmm,
+  mediaColor, mediaWord, chunk, withAlpha, OK, BAD, WARN, type Ctx,
 } from '../ui'
 
 const NO_LOON = '读不到 Loon 数据\n打开 App 看排查步骤'
@@ -323,7 +323,7 @@ export function PickerStyle(props: { ctx: Ctx }) {
       <Tap ctx={ctx} intent={sub && !isAuto(name) ? EnterPickIntent({ name }) : !on && !loon.stale ? SwitchIntent({ group: end.group, node: end.node, via: JSON.stringify(route.slice(0, -1)) }) : undefined}>
         <VStack alignment="leading" spacing={2} padding={{ horizontal: 10, vertical: 4 }} frame={few ? { maxWidth: 'infinity', minHeight: 50, maxHeight: 50, alignment: 'leading' } : { maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'leading' }} background={<RoundedRectangle cornerRadius={12} style="continuous" fill={on ? th.accent : th.card} />}>
           <Text font={11} foregroundStyle={on ? '#FFFFFF' : th.t2} lineLimit={1} minScaleFactor={0.7}>{sub ? (isAuto(name) ? name : `${name} ›`) : nodeLabel(name, r)}</Text>
-          <Text font={14} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={on ? '#FFFFFF' : r ? latencyInk(ctx, r) : th.t3} lineLimit={1} minScaleFactor={0.7}>{going ? '切换中' : name === 'DIRECT' ? '直连' : latencyText(r)}</Text>
+          <Text font={14} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={on ? '#FFFFFF' : name === 'DIRECT' ? OK : r ? latencyInk(ctx, r) : th.t3} lineLimit={1} minScaleFactor={0.7}>{going ? '切换中' : name === 'DIRECT' ? '直连' : latencyText(r)}</Text>
         </VStack>
       </Tap>
     )
@@ -359,7 +359,8 @@ export function GroupCell(props: { ctx: Ctx; g: Group }) {
   const { ctx, g } = props
   const { th } = ctx
   const loon = ctx.loon!
-  const r = g.gone ? undefined : loon.nodes[g.leaf]
+  const direct = g.leaf === 'DIRECT'   // 不走节点, 没有延迟可看
+  const r = g.gone || direct ? undefined : loon.nodes[g.leaf]
   const going = ctx.inApp ? null : readPending()
   return (
     <Tap ctx={ctx} intent={g.subs.length && !isAuto(g.name) && !loon.stale ? OpenPickIntent({ group: g.name, owner: ctx.size }) : undefined}>
@@ -368,8 +369,8 @@ export function GroupCell(props: { ctx: Ctx; g: Group }) {
           <Text font={10} foregroundStyle={th.t2} lineLimit={1}>{g.name}</Text>
           {loon.locks?.[g.name] ? <Image systemName="lock.fill" font={8} foregroundStyle={th.t3} /> : null}
         </HStack>
-        <Text font={15} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={latencyInk(ctx, r)} lineLimit={1}>{g.leaf === 'DIRECT' ? '直连' : latencyText(r)}</Text>
-        <Text font={10} foregroundStyle={going?.group === g.name ? th.accent : g.gone ? WARN : th.t3} lineLimit={1} minScaleFactor={0.85}>{going?.group === g.name ? `切换到 ${going.node}` : g.gone ? '节点已失效' : g.leaf === 'DIRECT' ? '不走代理' : nodeLabel(g.leaf, r)}</Text>
+        <Text font={15} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={direct ? OK : latencyInk(ctx, r)} lineLimit={1}>{direct ? '直连' : latencyText(r)}</Text>
+        <Text font={10} foregroundStyle={going?.group === g.name ? th.accent : g.gone ? WARN : th.t3} lineLimit={1} minScaleFactor={0.85}>{going?.group === g.name ? `切换到 ${going.node}` : g.gone ? '节点已失效' : direct ? '不走代理' : nodeLabel(g.leaf, r)}</Text>
       </Cell>
     </Tap>
   )
@@ -385,31 +386,6 @@ function healthText(ctx: Ctx): string {
 /** 今天用了多少和到期 / 重置日 */
 const subLine = (s: SubView) => [`今天 ${fmtBytes(s.today)}`, s.deadline ? `${md(s.deadline)} ${s.deadlineWord}` : ''].filter(Boolean).join(' · ')
 
-/** 右上角的模式按钮: 点一下换到下一个模式 */
-function ModeTap(props: { ctx: Ctx }) {
-  const { ctx } = props
-  const loon = ctx.loon!
-  const mode = MODES.find(m => m.id === loon.mode)
-  return (
-    <Tap ctx={ctx} intent={!loon.stale && loon.mode >= 0 ? ModeIntent({ mode: (loon.mode + 1) % 3 }) : undefined}>
-      <HStack spacing={3} padding={{ horizontal: 7, vertical: 3 }} background={<Capsule fill={withAlpha(ctx.th.accent, 0.16)} />}>
-        {mode ? <Image systemName={mode.icon} font={9} fontWeight="semibold" foregroundStyle={ctx.th.accent} /> : null}
-        <Text font={10} fontWeight="semibold" foregroundStyle={ctx.th.accent} lineLimit={1}>{mode?.short ?? modeName(loon.mode)}</Text>
-      </HStack>
-    </Tap>
-  )
-}
-
-function Metric(props: { ctx: Ctx; value: string; label: string; color?: Paint }) {
-  const { th } = props.ctx
-  return (
-    <VStack alignment="leading" spacing={0} frame={{ maxWidth: 'infinity', alignment: 'leading' }}>
-      <Num value={props.value} size={15} color={props.color ?? th.t1} />
-      <Text font={10} foregroundStyle={th.t3} lineLimit={1}>{props.label}</Text>
-    </VStack>
-  )
-}
-
 /** 小号总览: 有机场时剩余流量是主角, 没有时当前节点是主角 */
 export function OverviewSmall(props: { ctx: Ctx }) {
   const { ctx } = props
@@ -418,8 +394,7 @@ export function OverviewSmall(props: { ctx: Ctx }) {
   const s = ctx.subs[0]
   const u = s?.usage
   const leaf = mainGroupLeaf(ctx)
-  const a = availability(leaf?.r)
-  const c = healthCount(loon)
+  const others = shownGroups(loon, ctx.prefs).filter(g => g.leaf !== leaf?.name).slice(0, 3)
   return (
     <Root ctx={ctx} spacing={4}>
       <Header ctx={ctx} title={s?.name ?? leaf?.group ?? 'Loon'} font={12} trailing={<ModeTap ctx={ctx} />} />
@@ -433,10 +408,13 @@ export function OverviewSmall(props: { ctx: Ctx }) {
           <Text font={11} foregroundStyle={th.t2} lineLimit={1} minScaleFactor={0.8}>{subLine(s)}</Text>
         </VStack>
       ) : (
-        <VStack alignment="leading" spacing={2} padding={{ top: 8 }}>
-          <Text font={17} fontWeight="semibold" foregroundStyle={th.t1} lineLimit={1} minScaleFactor={0.6}>{leaf ? nodeLabel(leaf.name, leaf.r) : '-'}</Text>
-          <Text font={10} foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.8}>{leaf?.r?.org ?? ''}</Text>
-          <Text font={10} monospacedDigit foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.8}>{leaf?.r?.ip ?? ''}</Text>
+        <VStack spacing={5} padding={{ top: 4 }}>
+          <HStack alignment="lastTextBaseline" spacing={4}>
+            <Text font={14} fontWeight="semibold" foregroundStyle={th.t1} lineLimit={1} minScaleFactor={0.7}>{leaf ? nodeLabel(leaf.name, leaf.r) : '-'}</Text>
+            <Spacer minLength={2} />
+            <Text font={14} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={latencyInk(ctx, leaf?.r)} lineLimit={1}>{leaf?.r?.ok ? String(leaf.r.ms) : latencyText(leaf?.r)}</Text>
+          </HStack>
+          <Uptime h={leaf?.r?.h} height={4} />
         </VStack>
       )}
       <Spacer minLength={0} />
@@ -447,13 +425,17 @@ export function OverviewSmall(props: { ctx: Ctx }) {
           <Text font={11} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={latencyInk(ctx, leaf?.r)} lineLimit={1}>{latencyText(leaf?.r)}</Text>
         </HStack>
       ) : (
-        <VStack spacing={6}>
-        <Uptime h={leaf?.r?.h} height={5} />
-        <HStack spacing={4}>
-          <Metric ctx={ctx} value={leaf?.r?.ok ? String(leaf.r.ms) : latencyText(leaf?.r)} label="延迟" color={latencyInk(ctx, leaf?.r)} />
-          <Metric ctx={ctx} value={a === null ? '-' : `${Math.round(a * 100)}%`} label="可用" />
-          <Metric ctx={ctx} value={`${c.ok}`} label="节点" />
-        </HStack>
+        <VStack spacing={5}>
+          {others.map(g => {
+            const r = loon.nodes[g.leaf]
+            return (
+              <HStack spacing={4}>
+                <Text font={11} foregroundStyle={th.t2} lineLimit={1} minScaleFactor={0.8}>{g.name}</Text>
+                <Spacer minLength={2} />
+                <Text font={11} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={g.leaf === 'DIRECT' ? OK : latencyInk(ctx, r)} lineLimit={1}>{g.leaf === 'DIRECT' ? '直连' : r?.ok ? String(r.ms) : latencyText(r)}</Text>
+              </HStack>
+            )
+          })}
         </VStack>
       )}
     </Root>

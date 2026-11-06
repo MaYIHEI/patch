@@ -8,7 +8,8 @@ import type { Color, DynamicShapeStyle } from 'scripting'
 import type { Look, Prefs } from './settings'
 import type { LoonData, Media, NodeResult } from './loon'
 import type { Overview, SubView } from './subs'
-import { RefreshIntent } from './app_intents'
+import { MODES, modeName } from './loon'
+import { ModeIntent, RefreshIntent } from './app_intents'
 import type { Nat } from './net'
 
 // ─────────────────────────────────────────────────────────────
@@ -232,6 +233,21 @@ export function Header(props: { ctx: Ctx; title: string; right?: string; rightCo
       <RefreshButton ctx={props.ctx} />
     </HStack>
   )
+}
+
+/** 右上角的模式按钮: 点一下换到下一个模式 */
+export function ModeTap(props: { ctx: Ctx }) {
+  const { ctx } = props
+  const loon = ctx.loon!
+  const mode = MODES.find(m => m.id === loon.mode)
+  const pill = (
+    <HStack spacing={3} padding={{ horizontal: 7, vertical: 3 }} background={<Capsule fill={withAlpha(ctx.th.accent, 0.16)} />}>
+      {mode ? <Image systemName={mode.icon} font={9} fontWeight="semibold" foregroundStyle={ctx.th.accent} /> : null}
+      <Text font={10} fontWeight="semibold" foregroundStyle={ctx.th.accent} lineLimit={1}>{mode?.short ?? modeName(loon.mode)}</Text>
+    </HStack>
+  )
+  if (ctx.inApp || loon.stale || loon.mode < 0) return pill
+  return <Button intent={ModeIntent({ mode: (loon.mode + 1) % 3 })} buttonStyle="plain">{pill}</Button>
 }
 
 /** 右上角刷新: 后台重读数据, 不打开 App */
