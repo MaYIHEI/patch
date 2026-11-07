@@ -38,7 +38,7 @@ import {
 import type { Color } from 'scripting'
 
 import {
-  loadLoon, cachedLoon, setLoon, deepCheck, leafNodes, pathTo, isAuto, sampleLoon, mainGroup, shownGroups, setOpts, healthCount, availability, loonStatus, clearLoonCache, MODES, DATA_URL,
+  loadLoon, cachedLoon, setLoon, deepCheck, dnsServers, leafNodes, pathTo, isAuto, sampleLoon, mainGroup, shownGroups, setOpts, healthCount, availability, loonStatus, clearLoonCache, MODES, DATA_URL,
   type Deep, type LoonData, type Group, type NodeResult, type OptsPatch,
 } from './loon'
 import {
@@ -610,9 +610,10 @@ function DeepPage(props: { node: string; loon: LoonData; reload: (force?: boolea
           <RoundButton icon="magnifyingglass" title="开始检测" action={() => { run('basic') }} />
           <RoundButton icon="speedometer" title="检测并测速" action={() => { run('speed') }} />
           <RoundButton icon="list.bullet.clipboard" title="完整检测" action={() => { run('full') }} />
-          <RoundButton icon="network" title={nat ? `NAT ${nat.text}` : 'NAT 类型'} action={nat2} />
+          <RoundButton icon="network" title="NAT 类型" action={nat2} />
         </HStack>
       </Block>
+      {nat ? rows('NAT', [{ k: '类型', v: nat.text }]) : null}
       {d ? rows('基础', [
         ...(d.basic?.ip ? [{ k: '出口', v: `${d.basic.cc ?? ''} ${d.basic.ip}` }] : []),
         ...(d.basic?.org ? [{ k: '运营商', v: `${d.basic.asn ? `AS${d.basic.asn} ` : ''}${d.basic.org}` }] : []),
@@ -633,7 +634,7 @@ function DeepPage(props: { node: string; loon: LoonData; reload: (force?: boolea
         const w = d.inbound?.find(x => x.isp === p.isp)
         return { k: ISP_NAME[p.isp], v: `${p.avg !== undefined ? `${Math.round(p.avg)}ms` : '-'} · 丢包 ${p.loss ?? 0}%${w?.summary ? ` · ${w.summary}` : ''}` }
       })) : null}
-      {d ? rows('回程 (同网络探针, 不是节点本机)', (d.backhaul ?? []).map(b => ({ k: ISP_NAME[b.isp], v: `${b.summary ?? ''}${b.hops ? ` · ${b.hops} 跳` : ''}${b.probe ? ` · ${b.probe}` : ''}` }))) : null}
+      {d ? rows('回程 (同网络探针, 不是节点本机)', (d.backhaul ?? []).map(b => ({ k: ISP_NAME[b.isp], v: [b.summary ?? '未识别线路', b.hops ? `${b.hops} 跳` : '', b.probe ?? ''].filter(Boolean).join(' · ') }))) : null}
       {d ? rows('MTR (外部探针到出口, 单跳丢包不等于业务丢包)', (d.mtr ?? []).map(m => ({
         k: ISP_NAME[m.isp],
         v: [m.reached ? '到达出口' : '未确认到达', m.hops ? `${m.hops} 跳` : '', m.avg !== undefined ? `末跳 ${Math.round(m.avg)}ms` : '', m.loss !== undefined ? `丢包 ${m.loss}%` : '', m.jitter !== undefined ? `抖动 ${m.jitter}ms` : ''].filter(Boolean).join(' · '),
@@ -646,9 +647,10 @@ function DeepPage(props: { node: string; loon: LoonData; reload: (force?: boolea
         ...(d.bgppath.samples ?? []).map((x, i) => ({ k: `样本 ${i + 1}${x.collector ? ` ${x.collector}` : ''}`, v: x.path.map(a => `AS${a}`).join(' → ') })),
       ]) : null}
       {d ? rows('DNS 和黑名单', [
-        ...(d.dnsleak?.servers ?? []).map(x => ({ k: 'DNS 服务器', v: `${x.cc ?? ''} ${x.org ?? x.ip}` })),
+        ...dnsServers(d).map(v => ({ k: 'DNS 服务器', v })),
         ...(d.dnsleak?.ecs ? [{ k: 'ECS 网段', v: `${d.dnsleak.ecs.ip}${d.dnsleak.ecs.geo ? ` · ${d.dnsleak.ecs.geo}` : ''}` }] : []),
-        ...(d.dns ? [{ k: '本地 DNS', v: d.dns.polluted.length ? `疑似污染 ${d.dns.polluted.join('、')}` : `${d.dns.checked} 个域名未见污染`, color: d.dns.polluted.length ? WARN : OK }] : []),
+        ...(d.dns ? [{ k: '本地 DNS', v: d.dns.polluted.length ? `${d.dns.polluted.length}/${d.dns.checked} 疑似污染, 和节点无关` : `${d.dns.checked} 个域名未见污染`, color: d.dns.polluted.length ? WARN : OK }] : []),
+        ...(d.dns?.hits ?? []).map(x => ({ k: x.domain, v: `${x.ip} · ${x.owner}` })),
         ...(d.dnsbl ? [{ k: 'IP 黑名单', v: d.dnsbl.listed.length ? d.dnsbl.listed.map(x => x.list).join('、') : `${d.dnsbl.checked} 家未命中`, color: d.dnsbl.listed.length ? WARN : OK }] : []),
       ]) : null}
       {d ? rows('速度', [
@@ -659,6 +661,7 @@ function DeepPage(props: { node: string; loon: LoonData; reload: (force?: boolea
       {d?.status ? rows('数据状态', [
         { k: '数据来源', v: `${d.status.ok}/${d.status.total} 成功`, color: d.status.failed?.length ? WARN : OK },
         ...(d.status.failed?.length ? [{ k: '未成功', v: d.status.failed.join('、') }] : []),
+        ...Object.entries(d.status.reasons ?? {}).map(([k, v]) => ({ k, v })),
         ...(d.status.skipped?.length ? [{ k: '已跳过', v: d.status.skipped.join('、') }] : []),
         ...(d.status.split ? [{ k: 'IPPure', v: `分流出口 ${d.status.split}, 不计入风险` }] : []),
         { k: '请求', v: `${d.status.requests}/${d.status.sent} 成功` },

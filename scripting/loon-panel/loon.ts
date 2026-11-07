@@ -41,13 +41,13 @@ export type Deep = {
   backhaul?: { isp: Isp; probe?: string; hops?: number; asPath?: string[]; summary?: string }[]
   dnsbl?: { checked: number; listed: { list: string; hit?: string }[] }
   dnsleak?: { servers: { ip: string; cc?: string; org?: string }[]; ecs?: { ip: string; geo?: string } }
-  dns?: { checked: number; polluted: string[] }
+  dns?: { checked: number; polluted: string[]; hits?: { domain: string; ip: string; owner: string }[] }
   speed?: { down?: number; up?: number; bytes?: number; conns?: number }
   bgp?: { prefix?: string; rpki?: string; holder?: string }
   /** 完整检测才有 */
   mtr?: { isp: Isp; hops?: number; reached?: boolean; avg?: number; loss?: number; jitter?: number }[]
   bgppath?: { count: number; collectors?: number; seen?: number; peers?: number; samples?: { collector?: string; path: string[] }[]; clues?: { asn: string; count: number }[]; origin?: string }
-  status?: { ok: number; total: number; failed?: string[]; skipped?: string[]; split?: string; requests: number; sent: number; ms: number }
+  status?: { ok: number; total: number; failed?: string[]; skipped?: string[]; split?: string; reasons?: Record<string, string>; requests: number; sent: number; ms: number }
   errors?: Record<string, string>
 }
 export type LoonEvent = { t: number; k: string; msg: string }
@@ -118,6 +118,16 @@ export async function setLoon(q: { mode?: number; group?: string; node?: string;
   AppStorage.set(CACHE_KEY, JSON.stringify(data))
   if (data.result && !data.result.ok) throw new Error(data.result.error || '操作失败')
   return data
+}
+
+/** DNS 服务器按归属合并: 同一家常有好几个 IP */
+export function dnsServers(d: Deep): string[] {
+  const count = new Map<string, number>()
+  for (const s of d.dnsleak?.servers ?? []) {
+    const name = `${s.cc ?? ''} ${s.org ?? s.ip}`.trim()
+    count.set(name, (count.get(name) ?? 0) + 1)
+  }
+  return [...count].map(([name, n]) => (n > 1 ? `${name} ${n} 个` : name))
 }
 
 /** 深度检测: 脚本最多跑 90 秒; speed 同时测速 (耗流量), full 是测速再加 MTR 和 BGP 路径 */
