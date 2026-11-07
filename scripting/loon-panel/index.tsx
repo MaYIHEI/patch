@@ -632,10 +632,12 @@ function DeepPage(props: { node: string; loon: LoonData; reload: (force?: boolea
       {d ? rows('回程 (同网络探针, 不是节点本机)', (d.backhaul ?? []).map(b => ({ k: ISP_NAME[b.isp], v: `${b.summary ?? ''}${b.hops ? ` · ${b.hops} 跳` : ''}${b.probe ? ` · ${b.probe}` : ''}` }))) : null}
       {d ? rows('DNS 和黑名单', [
         ...(d.dnsleak?.servers ?? []).map(x => ({ k: 'DNS 服务器', v: `${x.cc ?? ''} ${x.org ?? x.ip}` })),
+        ...(d.dns ? [{ k: '本地 DNS', v: d.dns.polluted.length ? `疑似污染 ${d.dns.polluted.join('、')}` : `${d.dns.checked} 个域名未见污染`, color: d.dns.polluted.length ? WARN : OK }] : []),
         ...(d.dnsbl ? [{ k: 'IP 黑名单', v: d.dnsbl.listed.length ? d.dnsbl.listed.map(x => x.list).join('、') : `${d.dnsbl.checked} 家未命中`, color: d.dnsbl.listed.length ? WARN : OK }] : []),
       ]) : null}
       {d ? rows('速度', [
         ...(d.speed?.down ? [{ k: '下载', v: `${Math.round(d.speed.down)}Mbps${d.speed.conns ? ` · ${d.speed.conns} 连接` : ''}` }] : []),
+        ...(d.speed?.up ? [{ k: '上传', v: `${Math.round(d.speed.up)}Mbps` }] : []),
         ...(d.stability ?? []).map(x => ({ k: `HTTPS ${x.target}`, v: `成功 ${x.ok}/${x.total}${x.median ? ` · ${x.median}ms` : ''}` })),
       ]) : null}
       {d?.errors && Object.keys(d.errors).length ? rows('没拿到的项目', Object.entries(d.errors).map(([k, v]) => ({ k, v: String(v) }))) : null}

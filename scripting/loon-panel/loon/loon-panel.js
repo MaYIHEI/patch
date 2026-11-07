@@ -6,7 +6,7 @@
 // 请求 http://1.1.1.1/loon-panel/deep?node=…: 对节点跑一次深度检测 (加 &speed=1 同时测速)
 // POST http://1.1.1.1/loon-panel/opts: 保存 App 里的设置, 正文是要改的项 (JSON); 空字符串 = 恢复默认
 
-const VERSION = '0.3.27'
+const VERSION = '0.3.28'
 const STORE_KEY = 'loon_panel'
 
 // 设置都在 Scripting 的 App 里改, 存在 store.opts; 插件参数只留体检频率 (cron 只能写在规则里)
@@ -322,6 +322,7 @@ function pushReload() {
 // ─────────────────────────────────────────────────────────────
 const CHECK_BUDGET = 45000       // 一次检测的请求时限, 到点后的请求直接失败, 已拿到的结果照常显示
 const SPEED_BUDGET = 14000       // 测速放在其他检测之后单独计时, 免得互相抢带宽
+const UPLOAD_BUDGET = 10000
 const REQUEST_TIMEOUT = 7000
 const MAX_REQUESTS = 8
 const CHECK_PLACE = 'https://ipinfo.check.place'
@@ -334,6 +335,14 @@ const DISNEY_TOKEN = 'ZGlzbmV5JmJyb3dzZXImMS4wLjA.Cu56AgSfBTDag5NiRA81oLHkDZfu5L
 const DNSBL_ZONES = ['bl.spamcop.net', 'psbl.surriel.com', 'dnsbl.dronebl.org', 'bl.mailspike.net', 'dnsbl-1.uceprotect.net', 'bl.blocklist.de']
 const SPEED_CONNECTIONS = 4
 const SPEED_BYTES = 4000000
+const UPLOAD_SMALL = 131072
+const UPLOAD_LARGE = 524288
+// 这些域名的 A 记录应该属于对应 ASN, 不是就算疑似污染
+const DNS_TARGETS = [
+  { domain: 'www.google.com', asn: '15169' },
+  { domain: 'www.youtube.com', asn: '15169' },
+  { domain: 'www.wikipedia.org', asn: '14907' },
+]
 // 上海三网地址, 取自 zhanghanyun/backtrace
 const BACKHAUL_TARGETS = [
   { isp: 'ct', carrier: '电信', ip: '202.96.209.133' },
@@ -1149,9 +1158,9 @@ async function collectBGP(ip) {
   })
 }
 
-function loonARecords(domain) {
+function loonARecords(domain, options) {
   return new Promise((resolve, reject) => {
-    $dns.query({ domain, timeout: 3000 }, (error, result) => {
+    $dns.query(Object.assign({ domain, timeout: 3000 }, options), (error, result) => {
       if (error) {
         if (error.code === 'NO_ANSWER') return resolve([])   // NXDOMAIN 或空应答: 没有列入
         return reject(new Error(`${error.code || 'DNS'} ${error.message || ''}`.trim()))
@@ -1160,6 +1169,8 @@ function loonARecords(domain) {
     })
   })
 }
+
+const hasLoonDNS = () => typeof $dns !== 'undefined' && typeof $dns.query === 'function'
 
 async function dohARecords(domain) {
   const r = await requestJson(`https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=A`, { timeout: 5000, headers: { Accept: 'application/dns-json' } })
@@ -1171,7 +1182,7 @@ async function dohARecords(domain) {
 async function collectDNSBL(ip) {
   const reversed = ip.split('.').reverse().join('.')
   // $dns 要 Build 988, 旧版本经节点查 DoH
-  const lookup = typeof $dns !== 'undefined' && typeof $dns.query === 'function' ? loonARecords : dohARecords
+  const lookup = hasLoonDNS() ? loonARecords : dohARecords
   const rows = await Promise.all(DNSBL_ZONES.map(async list => {
     const r = await capture(lookup(`${reversed}.${list}`))
     if (!r.ok) return { list, error: r.error }
@@ -1210,6 +1221,31 @@ async function collectDNSLeak() {
   if (servers.length) return { servers }
   const failed = settled.find(x => !x.ok)
   return { error: `泄漏检测服务未返回解析器：${failed ? failed.error : '响应缺少解析器信息'}` }
+}
+
+/** 手机本地的系统 DNS 有没有被污染, 和节点无关; IP 归属经节点查, 本地查可能也被干扰 */
+async function collectDNSPollution() {
+  if (!hasLoonDNS()) return { error: '需要 Loon 3.5.1(988) 或更高版本' }
+  const answers = await Promise.all(DNS_TARGETS.map(t => capture(loonARecords(t.domain, { server: 'system' }))))
+  const ips = [...new Set(answers.flatMap(x => (x.ok ? x.value : [])))]
+  if (!ips.length) return { error: '系统 DNS 没有返回结果' }
+  const lookup = await requestJson('http://ip-api.com/batch?fields=status,query,as', {
+    method: 'POST',
+    timeout: 6000,
+    body: JSON.stringify(ips),
+    headers: { Accept: 'application/json', 'Cache-Control': 'no-cache', 'Content-Type': 'application/json' },
+  })
+  const owners = {}
+  for (const x of Array.isArray(lookup) ? lookup : []) if (x && x.status === 'success') owners[x.query] = cleanASN(x.as)
+  let checked = 0
+  const polluted = []
+  DNS_TARGETS.forEach((t, i) => {
+    const known = (answers[i].ok ? answers[i].value : []).filter(ip => owners[ip])
+    if (!known.length) return
+    checked++
+    if (known.some(ip => owners[ip] !== t.asn)) polluted.push(t.domain)
+  })
+  return checked ? { checked, polluted } : { error: '查不到解析结果的 IP 归属' }
 }
 
 async function collectStability() {
@@ -1252,13 +1288,30 @@ async function collectSpeed() {
   return { down: round((done * 8) / (ms * 1000), 2), bytes, conns }
 }
 
+async function uploadSample(bytes) {
+  const r = await sendRequest('POST', `https://speed.cloudflare.com/__up?bytes=${bytes}&r=${Date.now()}`, {
+    timeout: 4500,
+    body: '0123456789abcdef'.repeat(bytes / 16),
+    headers: { Accept: '*/*', 'Content-Type': 'application/octet-stream', 'User-Agent': MOBILE_UA },
+  })
+  return { ms: r.elapsedMs, up: round((bytes * 8) / (r.elapsedMs * 1000), 2) }
+}
+
+/** 先传小样本, 很快传完再换大样本, 小样本在快线路上测不准 */
+async function collectUpload() {
+  const small = await uploadSample(UPLOAD_SMALL)
+  if (small.ms >= 900) return small
+  const large = await capture(uploadSample(UPLOAD_LARGE))
+  return large.ok ? large.value : small
+}
+
 /** 一次深度检测; 拿不到的项目不写字段, 原因放进 errors */
 async function collectDeep(speed) {
   const discovery = await discoverIP()
   const ip = discovery.ip
   if (!isIPv4(ip)) throw new Error('没查到这个节点的 IPv4 出口')
   const databases = collectDatabases(ip, discovery)
-  const [data, media, bgp, inbound, ping, stability, dnsbl, dnsleak, backhaul] = await Promise.all([
+  const [data, media, bgp, inbound, ping, stability, dnsbl, dnsleak, dns, backhaul] = await Promise.all([
     databases,
     collectMedia(),
     safeTask(collectBGP(ip)),
@@ -1267,6 +1320,7 @@ async function collectDeep(speed) {
     safeTask(collectStability()),
     safeTask(collectDNSBL(ip)),
     safeTask(collectDNSLeak()),
+    safeTask(collectDNSPollution()),
     databases.then(d => safeTask(collectBackhaul(ip, d))),   // 探针要按出口的 ASN 和城市选
   ])
   const result = {}
@@ -1295,11 +1349,14 @@ async function collectDeep(speed) {
   put('backhaul', routes.filter(x => !x.error).map(compact), backhaul.error || (failed.length ? `${failed.map(x => x.carrier).join('、')}：${failed[0].error}` : ''))
   put('dnsbl', dnsbl.error ? null : { checked: dnsbl.checked, listed: dnsbl.listed }, dnsbl.error || (dnsbl.failed.length ? `未查询成功：${dnsbl.failed.join('、')}` : ''))
   put('dnsleak', dnsleak.error ? null : dnsleak, dnsleak.error)
+  put('dns', dns.error ? null : dns, dns.error)
   put('bgp', bgp.error ? null : bgp, bgp.error)
   if (speed) {
     startCheck(checkNode, SPEED_BUDGET)
-    const s = await safeTask(collectSpeed())
-    put('speed', s.error ? null : s, s.error)
+    const down = await safeTask(collectSpeed())
+    startCheck(checkNode, UPLOAD_BUDGET)
+    const up = await safeTask(collectUpload())
+    put('speed', compact({ down: down.down, up: up.up, bytes: down.bytes, conns: down.conns }), [down.error, up.error].filter(Boolean).join('；'))
   }
   if (Object.keys(errors).length) result.errors = errors
   return result
