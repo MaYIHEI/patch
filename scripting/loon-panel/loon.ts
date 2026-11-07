@@ -52,7 +52,7 @@ export type Deep = {
 }
 export type LoonEvent = { t: number; k: string; msg: string }
 /** 插件设置: 存在插件里, 在 App 里改. push 只表示配好了没有, 密钥不返回 */
-export type Opts = { notify: boolean; auto: boolean; net: boolean; timeout: number; test_url: string; ip_url: string; push: boolean; full: string[] }
+export type Opts = { notify: boolean; auto: boolean; net: boolean; lookup_direct?: boolean; timeout: number; test_url: string; ip_url: string; push: boolean; full: string[] }
 export type OptsPatch = Partial<Omit<Opts, 'push' | 'full' | 'test_url' | 'ip_url'>> & { test_url?: string; ip_url?: string; groups?: string[]; push_key?: string; targets?: string[] }
 
 export type LoonData = {
