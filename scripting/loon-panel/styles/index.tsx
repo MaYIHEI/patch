@@ -10,7 +10,7 @@ import { RingStyle, TrendStyle, LockCircular, LockRect, LockInline } from './usa
 import { NodeStyle, HealthStyle } from './node'
 import { BoardStyle } from './board'
 import { TodayStyle, BudgetStyle, MultiSmall, MultiMedium, CountdownStyle, CompareStyle, HoursStyle, ValueStyle, MonthStyle } from './flow'
-import { UnlockSmall, UnlockMedium, PickerStyle, ModeStyle, IpStyle, SafetyStyle, RankStyle, ConsoleStyle, GroupsStyle, EventsStyle, OverviewStyle, OverviewSmall, PingStyle, NodesStyle, ReportStyle, LockLatency, LockToday, LockPing } from './net'
+import { UnlockSmall, UnlockMedium, PickerStyle, ModeStyle, IpStyle, SafetyStyle, RankStyle, ConsoleStyle, GroupsStyle, EventsStyle, OverviewStyle, OverviewSmall, TrafficStyle, TrafficSmall, PingStyle, NodesStyle, ReportStyle, LockLatency, LockToday, LockPing } from './net'
 
 type View = (props: { ctx: Ctx }) => any
 
@@ -23,7 +23,8 @@ export type StyleDef = {
 }
 
 export const STYLES: StyleDef[] = [
-  { id: 'AF', name: '总览', icon: 'rectangle.split.2x1.fill', desc: '有机场时看流量, 没有时看网络状况; 中号还有常用策略组, 点右上角换模式', views: { systemSmall: OverviewSmall, systemMedium: OverviewStyle } },
+  { id: 'AF', name: '网络总览', icon: 'rectangle.split.2x1.fill', desc: '延迟、可用率、节点和出口; 中号还有常用策略组, 点右上角换模式', views: { systemSmall: OverviewSmall, systemMedium: OverviewStyle } },
+  { id: 'AG', name: '流量总览', icon: 'chart.bar.xaxis', desc: '剩余流量、今天用量、到期和延迟; 中号还有常用策略组, 点右上角换模式', views: { systemSmall: TrafficSmall, systemMedium: TrafficStyle } },
   { id: 'A', name: '用量环', icon: 'chart.pie.fill', desc: '主订阅已用比例、剩余流量、每天可用额度和预测', views: { systemSmall: RingStyle } },
   { id: 'B', name: '当前节点', icon: 'antenna.radiowaves.left.and.right', desc: '主策略组正在用的节点、延迟折线、可用率和解锁', views: { systemSmall: NodeStyle } },
   { id: 'G', name: '今日流量', icon: 'arrow.up.arrow.down', desc: '全部机场今天合计、近 1 小时速度和每小时用量', views: { systemSmall: TodayStyle } },
@@ -77,9 +78,9 @@ export function resolveStyle(param: string | undefined, family: Family): StyleDe
 }
 
 /** 用到机场用量的样式 */
-export const TRAFFIC_STYLES = ['A', 'G', 'H', 'I', 'J', 'O', 'C', 'Q', 'X', 'E', 'Y', 'F', 'AC', 'AF']
-/** 没有机场就没内容的样式, 样式库里排到后面并标注; 总览和看板会按有没有机场变化 */
-export const NEEDS_SUBS = TRAFFIC_STYLES.filter(id => !['E', 'F', 'AF'].includes(id))
+export const TRAFFIC_STYLES = ['A', 'G', 'H', 'I', 'J', 'O', 'C', 'Q', 'X', 'E', 'Y', 'F', 'AC', 'AG']
+/** 没有机场就没内容的样式, 样式库里排到后面并标注; 全景看板会按有没有机场变化 */
+export const NEEDS_SUBS = TRAFFIC_STYLES.filter(id => !['E', 'F'].includes(id))
 export function renderStyle(
   style: StyleDef, family: Family,
   opts: { inApp: boolean; loon: LoonData | null; loonErr: string; subs: SubView[]; look: Look; prefs: Prefs; nat: Nat | null; local: LocalEvent[] },

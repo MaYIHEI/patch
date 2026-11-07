@@ -109,7 +109,7 @@ export function BoardStyle(props: { ctx: Ctx }) {
       <Spacer minLength={0} />
       {leaf ? (
         <VStack spacing={3} padding={{ horizontal: 10, vertical: 6 }} background={<RoundedRectangle cornerRadius={12} style="continuous" fill={th.card} />}>
-          {subs.length ? null : (
+          {subs.length > 1 ? null : (
             <HStack spacing={8}>
               <Num value={latencyText(leaf.r)} size={20} color={latencyInk(ctx, leaf.r)} />
               <Text font={10} foregroundStyle={th.t3} lineLimit={1}>{nodeLabel(leaf.name, leaf.r)}</Text>
