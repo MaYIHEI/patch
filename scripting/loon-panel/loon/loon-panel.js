@@ -6,7 +6,7 @@
 // 请求 http://1.1.1.1/loon-panel/deep?node=…: 对节点跑一次深度检测 (加 &speed=1 同时测速, &full=1 再加 MTR 和 BGP 路径)
 // POST http://1.1.1.1/loon-panel/opts: 保存 App 里的设置, 正文是要改的项 (JSON); 空字符串 = 恢复默认
 
-const VERSION = '0.3.31'
+const VERSION = '0.3.32'
 const STORE_KEY = 'loon_panel'
 
 // 设置都在 Scripting 的 App 里改, 存在 store.opts; 插件参数只留体检频率 (cron 只能写在规则里)
@@ -533,18 +533,30 @@ async function requestJson(url, c = {}) {
   }
 }
 
-/** 按 IP 查的数据库先直连, 不行再走节点: 机场节点的 IP 常被这些服务的防火墙拦 (check.place 回 403), 手机直连又可能被限流 (ipinfo 回 429) */
+/** 按 IP 查的数据库先直连, 不行再走节点: 机场节点常被拦, 手机直连又可能被限流 (ipinfo 回 429) */
 async function either(send) {
   try {
     return await send('DIRECT')
-  } catch (e) {
-    return send('')
+  } catch (direct) {
+    try {
+      return await send('')
+    } catch (node) {
+      throw new Error(`直连 ${shorten(errorText(direct), 24)}；节点 ${shorten(errorText(node), 24)}`)
+    }
   }
 }
 
 const lookupJson = (url, c = {}) => either(node => requestJson(url, Object.assign({}, c, { node })))
 const lookupText = (url, c = {}) => either(node => requestText(url, Object.assign({}, c, { node })))
-const requestBackendJson = url => lookupJson(url)
+
+/** check.place 的 Cloudflare 会拦代理 IP, 查得太频繁还会封 IP, 所以只走节点试一次, 不拿手机直连去试 */
+async function requestBackendJson(url) {
+  try {
+    return await requestJson(url)
+  } catch (e) {
+    throw /HTTP 403\b|JSON/.test(errorText(e)) ? new Error('check.place 拦截了这个出口 IP') : e
+  }
+}
 
 // 解锁
 const mediaResult = (name, status, region, note) => compact({ name, status, region, note })
@@ -724,7 +736,7 @@ async function requestIppure() {
     const v = await requestJson(IPPURE_URL, { headers: {}, timeout: 6000 })
     if (!normalizeIP(v && v.ip)) throw new Error('未返回可核验的出口 IP')
     const score = numberOrNull(v.fraudScore)
-    if (score === null || score < 0 || score > 100) throw new Error('风险评分无效')
+    if (score === null || score < 0 || score > 100) delete v.fraudScore   // 现在的接口已经不给风险分了, 位置信息照用
     return v
   }
   return once().catch(once)
