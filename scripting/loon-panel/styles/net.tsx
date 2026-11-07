@@ -10,7 +10,7 @@ import { dnsServers,
   type Deep, type Group, type Isp,
 } from '../loon'
 import { fmtBytes, md, type SubView } from '../subs'
-import { ModeIntent, SwitchIntent, CheckIntent, FastestIntent, TurnGroupsIntent, NextPickGroupIntent, TurnPickPageIntent, EnterPickIntent, LeavePickIntent, OpenPickIntent, ClosePickIntent, readNote, readPending } from '../app_intents'
+import { ModeIntent, SwitchIntent, CheckIntent, FastestIntent, TurnGroupsIntent, TurnPickPageIntent, EnterPickIntent, LeavePickIntent, OpenPickIntent, ClosePickIntent, readNote, readPending } from '../app_intents'
 import { mainGroupLeaf, checkText } from './node'
 import {
   Root, Header, Num, Empty, Cell, Dot, Pill, Spark, Uptime, RefreshButton, ModeTap, Bar, usageColor, latencyColor, latencyInk, latencyText, nodeLabel, asnText, flag, ago, hhmm,
@@ -298,14 +298,35 @@ function PickerNow(props: { ctx: Ctx; group: Group; full: boolean }) {
   )
 }
 
-/** 切换器: 常用策略组里的一个组, 点节点直接切, 点策略组进下一层; 右上角换组、翻页 */
+/** 切换器第一层: 列出策略组 (设了常用就只列常用), 点一个进去选节点 */
+function PickerGroups(props: { ctx: Ctx }) {
+  const { ctx } = props
+  const per = ctx.size === 'l' ? 12 : 6   // 一行 3 个: 中号 2 行, 大号 4 行, 卡片和策略组卡片一样高
+  const { list, page, pages } = groupPage(ctx.loon!, ctx.prefs, per)
+  const rows = chunk(list, 3)
+  return (
+    <Root ctx={ctx} spacing={6}>
+      <Header ctx={ctx} title="策略组" trailing={<HStack spacing={6}><PageButton ctx={ctx} page={page} pages={pages} /><ModeTap ctx={ctx} /></HStack>} />
+      {rows.map(row => (
+        <HStack spacing={6}>
+          {row.map(g => <GroupCell ctx={ctx} g={g} />)}
+          {Array.from({ length: 3 - row.length }, () => <VStack frame={{ maxWidth: 'infinity' }} />)}
+        </HStack>
+      ))}
+      <Spacer minLength={0} />
+    </Root>
+  )
+}
+
+/** 切换器: 先列策略组, 点一个列出它的节点, 点节点直接切, 点下层策略组再进一层; 右上角返回、翻页 */
 export function PickerStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, loon } = ctx
   if (!loon) return <NoLoon ctx={ctx} title="切换器" />
   const open = ctx.inApp ? '' : focusOf(ctx.size)
-  const { group: g, via, nodes, total, page, pages, groups, next } = pickerView(loon, ctx.prefs, ctx.size === 'l' ? 15 : 6, open)
-  if (!g) return <NoLoon ctx={ctx} title="切换器" />
+  const view = pickerView(loon, ctx.size === 'l' ? 15 : 6, open)
+  if (!view) return <PickerGroups ctx={ctx} />
+  const { group: g, via, nodes, total, page, pages } = view
   // 上面是当前节点, 下面是选项; 选项少时卡片定高, 多时撑满, 翻页时卡片大小不变
   const few = total <= (ctx.size === 'l' ? 6 : 3)
   const cols = total === 4 ? 2 : 3
@@ -339,8 +360,7 @@ export function PickerStyle(props: { ctx: Ctx }) {
         trailing={(
           <HStack spacing={8}>
             {last ? <Tap ctx={ctx} intent={LeavePickIntent(undefined)}><Text font={11} foregroundStyle={th.accent} lineLimit={1}>返回</Text></Tap> : null}
-            {!last && open ? <Tap ctx={ctx} intent={ClosePickIntent(undefined)}><Text font={11} foregroundStyle={th.accent} lineLimit={1}>返回</Text></Tap> : null}
-            {!last && !open && groups > 1 && next ? <Tap ctx={ctx} intent={NextPickGroupIntent(undefined)}><Text font={11} foregroundStyle={th.accent} lineLimit={1} minScaleFactor={0.8}>{`换到 ${next} ›`}</Text></Tap> : null}
+            {!last ? <Tap ctx={ctx} intent={ClosePickIntent(undefined)}><Text font={11} foregroundStyle={th.accent} lineLimit={1}>返回</Text></Tap> : null}
             <Pager ctx={ctx} page={page} pages={pages} turn={step => TurnPickPageIntent({ step })} />
           </HStack>
         )}

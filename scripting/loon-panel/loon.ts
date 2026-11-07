@@ -186,10 +186,10 @@ export function groupPage(d: LoonData, prefs: Prefs, size: number): { list: Grou
 
 export const turnGroupPage = (step: number) => AppStorage.set(PAGE_KEY, (AppStorage.get<number>(PAGE_KEY) ?? 0) + step)
 
-/** 切换器: 在常用策略组里选一个组 (g), 显示它的节点 (p 是节点页码); path 是点进去的下层策略组
- *  open: 在策略组卡片、看板、总览上点了哪个组, 这个尺寸的小组件临时变成切换器, 5 分钟后失效 */
-type Pick = { g: number; p: number; path?: string[]; open?: string; owner?: string; t?: number }
-const readPick = (): Pick => AppStorage.get<Pick>(PICK_KEY) ?? { g: 0, p: 0 }
+/** 点开的策略组 (open) 和它的节点页码 (p); path 是点进去的下层策略组
+ *  在切换器、策略组卡片、看板、总览上点了哪个组, 这个尺寸的小组件临时列出它的节点, 5 分钟后回到原样 */
+type Pick = { p: number; path?: string[]; open?: string; owner?: string; t?: number }
+const readPick = (): Pick => AppStorage.get<Pick>(PICK_KEY) ?? { p: 0 }
 export type Hop = { group: string; node: string }
 
 export const focusOf = (owner: string) => {
@@ -199,7 +199,7 @@ export const focusOf = (owner: string) => {
 export const openPick = (open: string, owner: string) => AppStorage.set(PICK_KEY, { ...readPick(), p: 0, path: [], open, owner, t: Date.now() })
 export const closePick = () => {
   const x = readPick()
-  if (x.open) AppStorage.set(PICK_KEY, { g: x.g, p: 0 })
+  if (x.open) AppStorage.set(PICK_KEY, { p: 0 })
 }
 
 /** 从 root 一层层走到 node 要切的每一步; 走不到返回 null */
@@ -227,20 +227,11 @@ export function leafNodes(d: LoonData, name: string, seen = new Set<string>()): 
   return [...new Set(out)]
 }
 
-/** 切换器轮换的组: 常用策略组里能手动选的; 没设常用时取前 4 个能手动选的. 自动类的组 Loon 自己选节点, 放进来也选不了 */
-export function pickGroups(d: LoonData, prefs: Prefs): Group[] {
-  const pool = (prefs.groups.length ? shownGroups(d, prefs) : d.groups).filter(g => g.subs.length && !isAuto(g.name))
-  return prefs.groups.length ? pool : pool.slice(0, 4)
-}
-
-export function pickerView(d: LoonData, prefs: Prefs, size: number, open = ''): { group?: Group; via: Hop[]; nodes: string[]; total: number; page: number; pages: number; groups: number; next?: string } {
-  const groups = pickGroups(d, prefs)
-  const opened = d.groups.find(g => g.name === open)
-  if (!groups.length && !opened) return { via: [], nodes: [], total: 0, page: 0, pages: 1, groups: 0 }
+/** 点开的策略组里列哪些节点; 没点开或组已经没了返回 null, 显示策略组列表 */
+export function pickerView(d: LoonData, size: number, open: string): { group: Group; via: Hop[]; nodes: string[]; total: number; page: number; pages: number } | null {
+  const top = d.groups.find(g => g.name === open)
+  if (!top) return null
   const pick = readPick()
-  const index = wrap(pick.g, groups.length || 1)
-  const top = opened ?? groups[index]
-  const next = groups.length > 1 ? groups[(index + 1) % groups.length].name : undefined
   // 只进一层: 点进下层策略组后直接列出它下面所有节点, 不再一层层点
   const inner = d.groups.find(x => x.name === pick.path?.[0] && top.subs.includes(x.name))
   const group = inner ?? top
@@ -249,10 +240,9 @@ export function pickerView(d: LoonData, prefs: Prefs, size: number, open = ''): 
   const all = inner ? leafNodes(d, inner.name) : [...new Set(top.subs.filter(n => !/^REJECT/i.test(n)))]
   const pages = Math.max(1, Math.ceil(all.length / size))
   const page = wrap(pick.p, pages)
-  return { group, via, nodes: all.slice(page * size, (page + 1) * size), total: all.length, page, pages, groups: groups.length, next }
+  return { group, via, nodes: all.slice(page * size, (page + 1) * size), total: all.length, page, pages }
 }
 
-export const nextPickGroup = () => { const x = readPick(); AppStorage.set(PICK_KEY, { g: x.g + 1, p: 0 }) }
 export const enterPick = (name: string) => { const x = readPick(); AppStorage.set(PICK_KEY, { ...x, p: 0, path: [name] }) }
 export const leavePick = () => { const x = readPick(); AppStorage.set(PICK_KEY, { ...x, p: 0, path: [] }) }
 export const turnPickPage = (step: number) => { const x = readPick(); AppStorage.set(PICK_KEY, { ...x, p: x.p + step }) }

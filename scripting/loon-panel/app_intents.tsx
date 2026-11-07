@@ -3,7 +3,7 @@
 
 import { AppIntentManager, AppIntentProtocol, Widget, ControlWidget } from 'scripting'
 
-import { setLoon, loadLoon, mainGroup, ownerGroup, switchTarget, turnGroupPage, nextPickGroup, turnPickPage, enterPick, leavePick, openPick, closePick, type Hop } from './loon'
+import { setLoon, loadLoon, mainGroup, ownerGroup, switchTarget, turnGroupPage, turnPickPage, enterPick, leavePick, openPick, closePick, type Hop } from './loon'
 import { loadSubs } from './subs'
 import { getPrefs } from './settings'
 
@@ -90,16 +90,6 @@ export const TurnGroupsIntent = AppIntentManager.register({
   protocol: AppIntentProtocol.AppIntent,
   perform: async ({ step }: { step: number }) => {
     turnGroupPage(step)
-    Widget.reloadAll()
-  },
-})
-
-/** 切换器: 换策略组 / 翻节点 */
-export const NextPickGroupIntent = AppIntentManager.register({
-  name: 'LoonPanelNextPickGroupIntent',
-  protocol: AppIntentProtocol.AppIntent,
-  perform: async (_: undefined) => {
-    nextPickGroup()
     Widget.reloadAll()
   },
 })
