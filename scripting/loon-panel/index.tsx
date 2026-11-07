@@ -569,10 +569,10 @@ function DeepPage(props: { node: string; loon: LoonData; reload: (force?: boolea
   const [nat, setNat] = useState<Nat | null>(lastNat())
   const [note, setNote] = useState('')
 
-  async function run(speed: boolean) {
-    setNote(speed ? '检测和测速中, 约一分钟, 会用掉十几 MB 流量...' : '检测中, 约一分钟...')
+  async function run(mode: 'basic' | 'speed' | 'full') {
+    setNote(mode === 'basic' ? '检测中, 约一分钟...' : `${mode === 'full' ? '完整检测' : '检测和测速'}中, 约一分钟, 会用掉十几 MB 流量...`)
     try {
-      const data = await deepCheck(props.node, speed)
+      const data = await deepCheck(props.node, mode)
       setD(data.deep?.[props.node] ?? null)
       setNote('')
       await props.reload()
@@ -605,16 +605,20 @@ function DeepPage(props: { node: string; loon: LoonData; reload: (force?: boolea
           {d?.basic?.org ? <Text font={13} foregroundStyle="secondaryLabel" lineLimit={1}>{`${d.basic.cc ?? ''} ${d.basic.org}`}</Text> : null}
         </VStack>
       </Card>
-      <Block note={note || '检测会把这个节点的出口 IP 提交给第三方查询服务。结果会显示在 IP 质量、三网延迟、网络安全、线路体检报告这些样式上。测速用十几 MB 流量。'}>
+      <Block note={note || '检测会把这个节点的出口 IP 提交给第三方查询服务。结果会显示在 IP 质量、三网延迟、网络安全、线路体检报告这些样式上。测速用十几 MB 流量。完整检测包含测速, 再加 MTR 和 BGP 路径, 会用更多外部探针。'}>
         <HStack>
-          <RoundButton icon="magnifyingglass" title="开始检测" action={() => { run(false) }} />
-          <RoundButton icon="speedometer" title="检测并测速" action={() => { run(true) }} />
+          <RoundButton icon="magnifyingglass" title="开始检测" action={() => { run('basic') }} />
+          <RoundButton icon="speedometer" title="检测并测速" action={() => { run('speed') }} />
+          <RoundButton icon="list.bullet.clipboard" title="完整检测" action={() => { run('full') }} />
           <RoundButton icon="network" title={nat ? `NAT ${nat.text}` : 'NAT 类型'} action={nat2} />
         </HStack>
       </Block>
       {d ? rows('基础', [
         ...(d.basic?.ip ? [{ k: '出口', v: `${d.basic.cc ?? ''} ${d.basic.ip}` }] : []),
         ...(d.basic?.org ? [{ k: '运营商', v: `${d.basic.asn ? `AS${d.basic.asn} ` : ''}${d.basic.org}` }] : []),
+        ...(d.basic?.registered ? [{ k: '注册地', v: `${d.basic.registered}${d.basic.cc ? (d.basic.registered === d.basic.cc ? ' · 和使用地一致' : ` · 和使用地 ${d.basic.cc} 不一致`) : ''}`, color: d.basic.cc && d.basic.registered !== d.basic.cc ? WARN : undefined }] : []),
+        ...(d.basic?.timezone ? [{ k: '时区', v: d.basic.timezone }] : []),
+        ...(d.basic?.route && d.basic.route !== d.bgp?.prefix ? [{ k: '路由段', v: d.basic.route }] : []),
         ...(d.bgp?.prefix ? [{ k: 'BGP', v: `${d.bgp.prefix}${d.bgp.rpki ? ` · RPKI ${d.bgp.rpki}` : ''}` }] : []),
         ...ipTags(d).map(t => ({ k: '标记', v: t.text, color: t.color })),
         ...(d.egress && d.egress.length > 1 ? [{ k: '出口分流', v: `${d.egress.length} 个出口`, color: WARN }] : []),
@@ -624,14 +628,26 @@ function DeepPage(props: { node: string; loon: LoonData; reload: (force?: boolea
         ...(d.scores ?? []).map(t => ({ k: t.source, v: `风险 ${t.score ?? '-'}${t.text ? ` · ${t.text}` : ''}` })),
         ...(d.factors ?? []).map(f => ({ k: f.source, v: `代理 ${yes(f.proxy)} · VPN ${yes(f.vpn)} · Tor ${yes(f.tor)} · 机房 ${yes(f.hosting)}` })),
       ]) : null}
-      {d ? rows('解锁', (d.media ?? []).map(m => ({ k: m.name, v: mediaWord(m), color: mediaColor(m) }))) : null}
+      {d ? rows('解锁', (d.media ?? []).map(m => ({ k: m.name, v: `${mediaWord(m)}${m.note ? ` · ${m.note}` : ''}`, color: mediaColor(m) }))) : null}
       {d ? rows('三网 (外部探针到出口)', (d.ping ?? []).map(p => {
         const w = d.inbound?.find(x => x.isp === p.isp)
         return { k: ISP_NAME[p.isp], v: `${p.avg !== undefined ? `${Math.round(p.avg)}ms` : '-'} · 丢包 ${p.loss ?? 0}%${w?.summary ? ` · ${w.summary}` : ''}` }
       })) : null}
       {d ? rows('回程 (同网络探针, 不是节点本机)', (d.backhaul ?? []).map(b => ({ k: ISP_NAME[b.isp], v: `${b.summary ?? ''}${b.hops ? ` · ${b.hops} 跳` : ''}${b.probe ? ` · ${b.probe}` : ''}` }))) : null}
+      {d ? rows('MTR (外部探针到出口, 单跳丢包不等于业务丢包)', (d.mtr ?? []).map(m => ({
+        k: ISP_NAME[m.isp],
+        v: [m.reached ? '到达出口' : '未确认到达', m.hops ? `${m.hops} 跳` : '', m.avg !== undefined ? `末跳 ${Math.round(m.avg)}ms` : '', m.loss !== undefined ? `丢包 ${m.loss}%` : '', m.jitter !== undefined ? `抖动 ${m.jitter}ms` : ''].filter(Boolean).join(' · '),
+      }))) : null}
+      {d?.bgppath ? rows('BGP 路径 (公共采集器的样本, 不是节点的数据路径)', [
+        ...(d.bgppath.peers !== undefined ? [{ k: '可见性', v: `${d.bgppath.seen ?? '-'} / ${d.bgppath.peers} 个邻居` }] : []),
+        { k: '路径样本', v: `${d.bgppath.count} 条${d.bgppath.collectors ? ` · ${d.bgppath.collectors} 个采集器` : ''}` },
+        ...(d.bgppath.clues?.length ? [{ k: '含国内网络', v: d.bgppath.clues.map(x => `AS${x.asn} ${x.count} 条`).join('、') }] : []),
+        ...(d.bgppath.origin ? [{ k: '历史 Origin', v: d.bgppath.origin, color: WARN }] : []),
+        ...(d.bgppath.samples ?? []).map((x, i) => ({ k: `样本 ${i + 1}${x.collector ? ` ${x.collector}` : ''}`, v: x.path.map(a => `AS${a}`).join(' → ') })),
+      ]) : null}
       {d ? rows('DNS 和黑名单', [
         ...(d.dnsleak?.servers ?? []).map(x => ({ k: 'DNS 服务器', v: `${x.cc ?? ''} ${x.org ?? x.ip}` })),
+        ...(d.dnsleak?.ecs ? [{ k: 'ECS 网段', v: `${d.dnsleak.ecs.ip}${d.dnsleak.ecs.geo ? ` · ${d.dnsleak.ecs.geo}` : ''}` }] : []),
         ...(d.dns ? [{ k: '本地 DNS', v: d.dns.polluted.length ? `疑似污染 ${d.dns.polluted.join('、')}` : `${d.dns.checked} 个域名未见污染`, color: d.dns.polluted.length ? WARN : OK }] : []),
         ...(d.dnsbl ? [{ k: 'IP 黑名单', v: d.dnsbl.listed.length ? d.dnsbl.listed.map(x => x.list).join('、') : `${d.dnsbl.checked} 家未命中`, color: d.dnsbl.listed.length ? WARN : OK }] : []),
       ]) : null}
@@ -639,6 +655,14 @@ function DeepPage(props: { node: string; loon: LoonData; reload: (force?: boolea
         ...(d.speed?.down ? [{ k: '下载', v: `${Math.round(d.speed.down)}Mbps${d.speed.conns ? ` · ${d.speed.conns} 连接` : ''}` }] : []),
         ...(d.speed?.up ? [{ k: '上传', v: `${Math.round(d.speed.up)}Mbps` }] : []),
         ...(d.stability ?? []).map(x => ({ k: `HTTPS ${x.target}`, v: `成功 ${x.ok}/${x.total}${x.median ? ` · ${x.median}ms` : ''}` })),
+      ]) : null}
+      {d?.status ? rows('数据状态', [
+        { k: '数据来源', v: `${d.status.ok}/${d.status.total} 成功`, color: d.status.failed?.length ? WARN : OK },
+        ...(d.status.failed?.length ? [{ k: '未成功', v: d.status.failed.join('、') }] : []),
+        ...(d.status.skipped?.length ? [{ k: '已跳过', v: d.status.skipped.join('、') }] : []),
+        ...(d.status.split ? [{ k: 'IPPure', v: `分流出口 ${d.status.split}, 不计入风险` }] : []),
+        { k: '请求', v: `${d.status.requests}/${d.status.sent} 成功` },
+        { k: '耗时', v: `${Math.round(d.status.ms / 1000)} 秒` },
       ]) : null}
       {d?.errors && Object.keys(d.errors).length ? rows('没拿到的项目', Object.entries(d.errors).map(([k, v]) => ({ k, v: String(v) }))) : null}
     </Page>

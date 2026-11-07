@@ -3,10 +3,10 @@
 //   锁定的策略组被还原就改回来、当前节点挂了发通知或自动切换, 结果写进 $persistentStore, 跑完可推送刷新小组件
 // 请求 http://1.1.1.1/loon-panel/data: 返回模式、策略组、体检结果、解锁、事件记录等
 // 请求 http://1.1.1.1/loon-panel/set: ?mode=0|1|2 切模式; ?group=…&node=… 切节点; ?group=…&node=…&lock=1 锁定, ?group=…&lock=0 解锁; 不带参数只复测; 加 quiet=1 切完不复测
-// 请求 http://1.1.1.1/loon-panel/deep?node=…: 对节点跑一次深度检测 (加 &speed=1 同时测速)
+// 请求 http://1.1.1.1/loon-panel/deep?node=…: 对节点跑一次深度检测 (加 &speed=1 同时测速, &full=1 再加 MTR 和 BGP 路径)
 // POST http://1.1.1.1/loon-panel/opts: 保存 App 里的设置, 正文是要改的项 (JSON); 空字符串 = 恢复默认
 
-const VERSION = '0.3.28'
+const VERSION = '0.3.29'
 const STORE_KEY = 'loon_panel'
 
 // 设置都在 Scripting 的 App 里改, 存在 store.opts; 插件参数只留体检频率 (cron 只能写在规则里)
@@ -364,6 +364,7 @@ const STABILITY_TARGETS = [
 let checkNode = ''
 let checkEnd = 0
 let activeRequests = 0
+const requestCount = { ok: 0, total: 0 }
 const requestQueue = []
 
 function startCheck(node, budget) {
@@ -491,8 +492,10 @@ function sendRequest(method, url, c) {
     if (backend) o.alpn = 'h2'
     if (c.body !== undefined) o.body = c.body
     const done = (error, response, body) => {
+      requestCount.total++
       if (error) return reject(new Error(String(error)))
       const status = Number(response && (response.status || response.statusCode))
+      if (status >= 200 && status < 400) requestCount.ok++
       if (!c.allowHttpErrors && !(status >= 200 && status < 300)) return reject(new Error(`HTTP ${status || '?'}`))
       resolve({ status, body: c.binaryMode ? body : String(body || ''), response: response || {}, elapsedMs: Math.max(1, Date.now() - start) })
     }
@@ -917,17 +920,18 @@ function buildBasic(ip, data) {
   const mmRegion = cleanValue(mmCountry.IsoCode) || cleanValue(mmCountry.Name) ? mmCountry : valueAt(mmCity, 'Country') || {}
   const mmParts = uniqueValues((Array.isArray(mmCity.Subdivisions) ? mmCity.Subdivisions.map(x => x && x.Name) : []).concat(mmCity.Name))
   const location = ipapi.location || {}
-  const profile = (cc, country, cityParts, asn, organization) => ({
+  const profile = (cc, country, cityParts, asn, organization, timezone, route, registered) => ({
     cc: cleanValue(cc), country: cleanValue(country), cityParts, asn: cleanASN(asn), organization: cleanValue(organization),
+    timezone: cleanValue(timezone), route: cleanValue(route), registered: cleanValue(registered),
   })
   const profiles = [
-    profile(mmRegion.IsoCode, mmRegion.Name, mmParts, mmASN.AutonomousSystemNumber, mmASN.AutonomousSystemOrganization),
-    profile(ipinfo.country, ipinfo.country_name, uniqueValues([ipinfo.region, ipinfo.city]), valueAt(ipinfo, 'asn.asn'), valueAt(ipinfo, 'asn.name')),
-    profile(location.country_code, location.country, uniqueValues([location.state, location.city]), valueAt(ipapi, 'asn.asn'), valueAt(ipapi, 'asn.org')),
-    profile(ipwhois.country_code, ipwhois.country, uniqueValues([ipwhois.region, ipwhois.city]), valueAt(ipwhois, 'connection.asn'), valueAt(ipwhois, 'connection.org')),
-    profile(ippure.countryCode, ippure.country, uniqueValues([ippure.city]), ippure.asn, ippure.asOrganization),
-    profile(ip2.country_code, ip2.country_name, uniqueValues([ip2.city_name]), ip2.asn, ip2.as),
-    profile(proxycheck.isocode, proxycheck.country, uniqueValues([proxycheck.region, proxycheck.city]), proxycheck.asn, proxycheck.organisation),
+    profile(mmRegion.IsoCode, mmRegion.Name, mmParts, mmASN.AutonomousSystemNumber, mmASN.AutonomousSystemOrganization, valueAt(mmCity, 'Location.TimeZone'), mmASN.Network || maxmind.Network, valueAt(mmCountry, 'RegisteredCountry.IsoCode')),
+    profile(ipinfo.country, ipinfo.country_name, uniqueValues([ipinfo.region, ipinfo.city]), valueAt(ipinfo, 'asn.asn'), valueAt(ipinfo, 'asn.name'), ipinfo.timezone, valueAt(ipinfo, 'asn.route'), valueAt(ipinfo, 'abuse.country')),
+    profile(location.country_code, location.country, uniqueValues([location.state, location.city]), valueAt(ipapi, 'asn.asn'), valueAt(ipapi, 'asn.org'), location.timezone, valueAt(ipapi, 'asn.route')),
+    profile(ipwhois.country_code, ipwhois.country, uniqueValues([ipwhois.region, ipwhois.city]), valueAt(ipwhois, 'connection.asn'), valueAt(ipwhois, 'connection.org'), valueAt(ipwhois, 'timezone.id')),
+    profile(ippure.countryCode, ippure.country, uniqueValues([ippure.city]), ippure.asn, ippure.asOrganization, ippure.timezone),
+    profile(ip2.country_code, ip2.country_name, uniqueValues([ip2.city_name]), ip2.asn, ip2.as, ip2.time_zone),
+    profile(proxycheck.isocode, proxycheck.country, uniqueValues([proxycheck.region, proxycheck.city]), proxycheck.asn, proxycheck.organisation, proxycheck.timezone, proxycheck.range),
   ]
   const place = profiles.find(x => x.cc || x.country) || profiles.find(x => x.asn || x.organization || x.cityParts.length) || { cityParts: [] }
   const loon = networkOf(ip)
@@ -939,7 +943,39 @@ function buildBasic(ip, data) {
     city: place.cityParts.slice(0, 2).join(' · '),
     asn: net.asn,
     org: net.organization || (net.asn && net.asn === loon.asn ? loon.organization : ''),
+    registered: (place.registered || '').toUpperCase(),
+    timezone: place.timezone,
+    route: net.route,
   }
+}
+
+/** 各数据库这次有没有拿到可用结果; IPQS 额度用完是上游的事, 不算失败 */
+function buildSources(data) {
+  const quota = data.ipqs && data.ipqs.success === false && /insufficient\s+credits?/i.test(data.ipqs.message || '')
+  const has = (v, ...paths) => !!v && paths.some(p => cleanValue(valueAt(v, p)))
+  const list = [
+    ['MaxMind', has(data.maxmind, 'Country.IsoCode', 'ASN.AutonomousSystemNumber') || has(data.maxmindBackup, 'Country.IsoCode', 'ASN.AutonomousSystemNumber')],
+    ['ipapi', has(data.ipapi, 'ip')],
+    ['IPinfo', has(data.ipinfo, 'data.ip', 'data.country')],
+    ['IPWhois', has(data.ipwhois, 'ip', 'country_code') && data.ipwhois.success !== false],
+    ['IP2Location', !!ip2locationOf(data)],
+    ['Scamalytics', numberOrNull(valueAt(data, 'scamalytics.scamalytics.scamalytics_score')) !== null],
+    ['AbuseIPDB', has(data.abuseipdb, 'data.usageType') || numberOrNull(valueAt(data, 'abuseipdb.data.abuseConfidenceScore')) !== null],
+    ['ipdata', has(data.ipdata, 'ip', 'country_code')],
+    ['proxycheck', !!proxycheckRecord(data.proxycheck)],
+    ['ipregistry', !!data.ipregistry],
+    ['DB-IP', /Estimated threat level for this IP address is|<th class=['"]text-center['"]>Crawler/i.test(data.dbip || '')],
+  ]
+  if (data.ippure && !data.ippure.split) list.push(['IPPure', true])
+  else if (!data.ippure) list.push(['IPPure', false])
+  if (!quota) list.push(['IPQS', numberOrNull(valueAt(data, 'ipqs.fraud_score')) !== null])
+  return compact({
+    ok: list.filter(x => x[1]).length,
+    total: list.length,
+    failed: list.filter(x => !x[1]).map(x => x[0]),
+    skipped: quota ? ['IPQS 上游额度不足'] : [],
+    split: data.ippure && data.ippure.split ? data.ippure.ip : '',
+  })
 }
 
 function buildTypes(data) {
@@ -1038,10 +1074,10 @@ async function pollGlobalping(id, attempts) {
   return measurement || { error: 'Globalping 测量结果未返回' }
 }
 
-async function measureChina(type, ip, options) {
+async function measureChina(type, ip, options, attempts = 4) {
   const created = await capture(startGlobalping(type, ip, CHINA_PROBES, options))
   if (!created.ok) return { error: `Globalping 创建测量失败：${created.error}` }
-  return pollGlobalping(created.value, 4)
+  return pollGlobalping(created.value, attempts)
 }
 
 function hopASPath(hops) {
@@ -1083,6 +1119,26 @@ async function collectPing(ip) {
       avg: numberOrNull(stats.avg),
       loss: numberOrNull(stats.loss),
       jitter: times.length > 1 ? round(deviation(times), 2) : null,
+    })
+  })
+  return { rows: rows.filter(x => x.isp) }
+}
+
+async function collectMTR(ip) {
+  const m = await measureChina('mtr', ip, { protocol: 'ICMP', packets: 5 }, 6)
+  if (m.error) return m
+  const rows = (Array.isArray(m.results) ? m.results : []).map(item => {
+    const hops = valueAt(item, 'result.hops')
+    const list = Array.isArray(hops) ? hops : []
+    const last = list.slice().reverse().find(x => x && x.resolvedAddress)
+    const stats = (last && last.stats) || {}
+    return compact({
+      isp: ispByASN(cleanASN(valueAt(item, 'probe.asn'))),
+      hops: list.length,
+      reached: !!last && normalizeIP(last.resolvedAddress) === normalizeIP(m.target),
+      avg: numberOrNull(stats.avg),
+      loss: numberOrNull(stats.loss),
+      jitter: numberOrNull(stats.jAvg),
     })
   })
   return { rows: rows.filter(x => x.isp) }
@@ -1139,14 +1195,46 @@ async function ripeStat(endpoint, params) {
   return r.data
 }
 
-async function collectBGP(ip) {
+function asPathOf(v) {
+  const list = (Array.isArray(v) ? v : String(v || '').split(/\s+/)).map(x => String(x || '').trim()).filter(x => /^(?:AS)?\d+$/i.test(x)).map(cleanASN)
+  return list.filter((x, i) => x !== list[i - 1])
+}
+
+/** 公共路由采集器看到的路径, 是控制面的样本, 不是节点发出的数据路径 */
+function buildBGPPath(glass, status) {
+  const collectors = Array.isArray(glass && glass.rrcs) ? glass.rrcs : []
+  const paths = []
+  for (const c of collectors) {
+    for (const peer of Array.isArray(c && c.peers) ? c.peers : []) {
+      const path = asPathOf(peer && peer.as_path)
+      if (path.length) paths.push({ collector: cleanValue(c.location) || cleanValue(c.rrc), path })
+    }
+  }
+  if (!paths.length) return null
+  const seen = new Set()
+  const first = cleanASN(valueAt(status, 'first_seen.origin'))
+  const last = cleanASN(valueAt(status, 'last_seen.origin'))
+  return compact({
+    count: paths.length,
+    collectors: collectors.length,
+    seen: numberOrNull(valueAt(status, 'visibility.v4.ris_peers_seeing')),
+    peers: numberOrNull(valueAt(status, 'visibility.v4.total_ris_peers')),
+    samples: paths.filter(x => { const k = x.path.join(' '); return !seen.has(k) && seen.add(k) }).slice(0, 4),
+    clues: CHINA_ROUTE_ASNS.map(asn => ({ asn, count: paths.filter(x => x.path.includes(asn)).length })).filter(x => x.count),
+    origin: first && last && first !== last ? `AS${first} → AS${last}` : '',
+  })
+}
+
+async function collectBGP(ip, full) {
   const network = await capture(ripeStat('network-info', { resource: ip }))
   if (!network.ok) return { error: `网络信息未返回：${network.error}` }
   const prefix = cleanValue(network.value.prefix)
   if (!prefix) return { error: 'RIPEstat 未返回可路由前缀' }
   const asns = uniqueValues(Array.isArray(network.value.asns) ? network.value.asns.map(cleanASN) : [])
-  const [overview, ...rpki] = await Promise.all([
+  const [overview, glass, routing, ...rpki] = await Promise.all([
     capture(ripeStat('prefix-overview', { resource: prefix })),
+    full ? capture(ripeStat('looking-glass', { resource: prefix })) : null,
+    full ? capture(ripeStat('routing-status', { resource: prefix })) : null,
     ...asns.map(asn => capture(ripeStat('rpki-validation', { resource: asn, prefix }))),
   ])
   const holders = {}
@@ -1155,6 +1243,7 @@ async function collectBGP(ip) {
     prefix,
     rpki: rpki.map(x => (x.ok ? String(x.value.status || '').trim().toLowerCase() : '')).filter(Boolean)[0],
     holder: asns.map(asn => holders[asn]).filter(Boolean)[0],
+    path: full && glass.ok ? buildBGPPath(glass.value, routing.ok ? routing.value : null) : null,
   })
 }
 
@@ -1218,7 +1307,8 @@ async function collectDNSLeak() {
     const n = networkOf(ip)
     servers.push(compact({ ip, cc: n.cc, org: cleanValue(String(dns.geo || '').split(' - ').slice(1).join(' - ')) || n.organization }))
   }
-  if (servers.length) return { servers }
+  const ecs = settled.map(x => x.ok && x.value && x.value.edns).find(x => x && x.ip)
+  if (servers.length) return compact({ servers, ecs: ecs ? compact({ ip: cleanValue(ecs.ip), geo: cleanValue(ecs.geo) }) : null })
   const failed = settled.find(x => !x.ok)
   return { error: `泄漏检测服务未返回解析器：${failed ? failed.error : '响应缺少解析器信息'}` }
 }
@@ -1306,15 +1396,16 @@ async function collectUpload() {
 }
 
 /** 一次深度检测; 拿不到的项目不写字段, 原因放进 errors */
-async function collectDeep(speed) {
+async function collectDeep(speed, full) {
+  const start = Date.now()
   const discovery = await discoverIP()
   const ip = discovery.ip
   if (!isIPv4(ip)) throw new Error('没查到这个节点的 IPv4 出口')
   const databases = collectDatabases(ip, discovery)
-  const [data, media, bgp, inbound, ping, stability, dnsbl, dnsleak, dns, backhaul] = await Promise.all([
+  const [data, media, bgp, inbound, ping, stability, dnsbl, dnsleak, dns, backhaul, mtr] = await Promise.all([
     databases,
     collectMedia(),
-    safeTask(collectBGP(ip)),
+    safeTask(collectBGP(ip, full)),
     safeTask(collectInbound(ip)),
     safeTask(collectPing(ip)),
     safeTask(collectStability()),
@@ -1322,6 +1413,7 @@ async function collectDeep(speed) {
     safeTask(collectDNSLeak()),
     safeTask(collectDNSPollution()),
     databases.then(d => safeTask(collectBackhaul(ip, d))),   // 探针要按出口的 ASN 和城市选
+    full ? safeTask(collectMTR(ip)) : null,
   ])
   const result = {}
   const errors = {}
@@ -1350,7 +1442,12 @@ async function collectDeep(speed) {
   put('dnsbl', dnsbl.error ? null : { checked: dnsbl.checked, listed: dnsbl.listed }, dnsbl.error || (dnsbl.failed.length ? `未查询成功：${dnsbl.failed.join('、')}` : ''))
   put('dnsleak', dnsleak.error ? null : dnsleak, dnsleak.error)
   put('dns', dns.error ? null : dns, dns.error)
-  put('bgp', bgp.error ? null : bgp, bgp.error)
+  const { path: bgpPath, ...bgpInfo } = bgp
+  put('bgp', bgp.error ? null : bgpInfo, bgp.error)
+  if (full) {
+    put('mtr', mtr.rows, mtr.error)
+    put('bgppath', bgpPath, bgp.error)
+  }
   if (speed) {
     startCheck(checkNode, SPEED_BUDGET)
     const down = await safeTask(collectSpeed())
@@ -1359,6 +1456,7 @@ async function collectDeep(speed) {
     put('speed', compact({ down: down.down, up: up.up, bytes: down.bytes, conns: down.conns }), [down.error, up.error].filter(Boolean).join('；'))
   }
   if (Object.keys(errors).length) result.errors = errors
+  result.status = Object.assign(buildSources(data), { requests: requestCount.ok, sent: requestCount.total, ms: Date.now() - start })
   return result
 }
 
@@ -1486,13 +1584,13 @@ async function handleDeep(q) {
   let data = null
   let why = '检测超时'
   try {
-    data = await withBudget(collectDeep(q.speed === '1'), DEEP_BUDGET)
+    data = await withBudget(collectDeep(q.speed === '1', q.full === '1'), DEEP_BUDGET)
   } catch (e) {
     why = errorText(e)
   }
   if (!data) return snapshot(state, store, { ok: false, error: why })
   const old = store.deep[node] || {}
-  store.deep[node] = q.speed === '1' ? data : Object.assign({}, data, { speed: old.speed })   // 没测速时保留上次速度
+  store.deep[node] = Object.assign(data, q.speed === '1' ? {} : { speed: old.speed }, q.full === '1' ? {} : { mtr: old.mtr, bgppath: old.bgppath })   // 这次没测的项保留上次结果
   store.deep[node].t = Date.now()
   if (Array.isArray(data.media)) store.media[node] = { t: Date.now(), list: data.media }
   writeStore(store)

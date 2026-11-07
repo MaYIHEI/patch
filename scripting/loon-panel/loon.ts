@@ -28,7 +28,7 @@ export type Isp = 'ct' | 'cu' | 'cm'
 /** 深度检测结果, 拿不到的字段没有 */
 export type Deep = {
   t: number
-  basic?: { ip?: string; cc?: string; country?: string; city?: string; asn?: string; org?: string }
+  basic?: { ip?: string; cc?: string; country?: string; city?: string; asn?: string; org?: string; registered?: string; timezone?: string; route?: string }
   egress?: { ip: string; main?: boolean; sources?: string[]; asn?: string; cc?: string }[]
   types?: { source: string; type: string }[]
   scores?: { source: string; score?: number; text?: string }[]
@@ -40,10 +40,14 @@ export type Deep = {
   inbound?: { isp: Isp; hops?: number; asPath?: string[]; summary?: string }[]
   backhaul?: { isp: Isp; probe?: string; hops?: number; asPath?: string[]; summary?: string }[]
   dnsbl?: { checked: number; listed: { list: string; hit?: string }[] }
-  dnsleak?: { servers: { ip: string; cc?: string; org?: string }[] }
+  dnsleak?: { servers: { ip: string; cc?: string; org?: string }[]; ecs?: { ip: string; geo?: string } }
   dns?: { checked: number; polluted: string[] }
   speed?: { down?: number; up?: number; bytes?: number; conns?: number }
   bgp?: { prefix?: string; rpki?: string; holder?: string }
+  /** 完整检测才有 */
+  mtr?: { isp: Isp; hops?: number; reached?: boolean; avg?: number; loss?: number; jitter?: number }[]
+  bgppath?: { count: number; collectors?: number; seen?: number; peers?: number; samples?: { collector?: string; path: string[] }[]; clues?: { asn: string; count: number }[]; origin?: string }
+  status?: { ok: number; total: number; failed?: string[]; skipped?: string[]; split?: string; requests: number; sent: number; ms: number }
   errors?: Record<string, string>
 }
 export type LoonEvent = { t: number; k: string; msg: string }
@@ -116,9 +120,9 @@ export async function setLoon(q: { mode?: number; group?: string; node?: string;
   return data
 }
 
-/** 深度检测: 脚本最多跑 90 秒; speed 同时测速 (耗流量) */
-export async function deepCheck(node: string, speed: boolean): Promise<LoonData> {
-  const data = await get(`${DEEP_URL}?node=${encodeURIComponent(node)}${speed ? '&speed=1' : ''}`, 95)
+/** 深度检测: 脚本最多跑 90 秒; speed 同时测速 (耗流量), full 是测速再加 MTR 和 BGP 路径 */
+export async function deepCheck(node: string, mode: 'basic' | 'speed' | 'full'): Promise<LoonData> {
+  const data = await get(`${DEEP_URL}?node=${encodeURIComponent(node)}${mode === 'basic' ? '' : '&speed=1'}${mode === 'full' ? '&full=1' : ''}`, 95)
   AppStorage.set(CACHE_KEY, JSON.stringify(data))
   if (data.result && !data.result.ok) throw new Error(data.result.error || '检测失败')
   return data
@@ -344,6 +348,7 @@ export function sampleLoon(): LoonData {
         dnsbl: { checked: 6, listed: [] },
         dnsleak: { servers: [{ ip: '8.8.8.8', cc: 'US', org: 'Google' }] },
         dns: { checked: 3, polluted: [] },
+        status: { ok: 13, total: 13, requests: 62, sent: 64, ms: 21000 },
         speed: { down: 86.4, up: 24.2, bytes: 16_777_216, conns: 4 },
         bgp: { prefix: '103.151.172.0/24', rpki: 'valid', holder: 'HKT' },
       },
