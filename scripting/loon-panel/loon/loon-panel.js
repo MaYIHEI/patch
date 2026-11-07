@@ -6,7 +6,7 @@
 // 请求 http://1.1.1.1/loon-panel/deep?node=…: 对节点跑一次深度检测 (加 &speed=1 同时测速, &full=1 再加 MTR 和 BGP 路径)
 // POST http://1.1.1.1/loon-panel/opts: 保存 App 里的设置, 正文是要改的项 (JSON); 空字符串 = 恢复默认
 
-const VERSION = '0.3.32'
+const VERSION = '0.3.33'
 const STORE_KEY = 'loon_panel'
 
 // 设置都在 Scripting 的 App 里改, 存在 store.opts; 插件参数只留体检频率 (cron 只能写在规则里)
@@ -827,14 +827,14 @@ const REPORTED_IP = {
   scamalytics: ['ip'], abuseipdb: ['data.ipAddress'], ip2locationFull: ['ip'], ipdata: ['ip'], ipregistry: ['ip'],
 }
 
-/** 返回的是别的 IP 的数据就不能用; 没有报告 IP 的来源算通过 */
+/** 返回的是别的 IP 的数据就不能用; 没有报告 IP 的来源算通过. 只比 IPv4: 双栈节点的 IPPure 可能回 IPv6, 那是同一个节点 */
 function reportsOtherIP(key, value, ip) {
   let reported = key === 'proxycheck' ? Object.keys(value || {}).find(k => normalizeIP(k)) || '' : ''
   for (const path of REPORTED_IP[key] || []) {
     const v = cleanValue(valueAt(value, path))
     if (v) { reported = v; break }
   }
-  return !!reported && normalizeIP(reported) !== ip
+  return isIPv4(normalizeIP(reported)) && normalizeIP(reported) !== ip
 }
 
 async function collectDatabases(ip, discovery) {
