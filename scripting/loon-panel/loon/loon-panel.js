@@ -4,9 +4,10 @@
 // 请求 http://1.1.1.1/loon-panel/data: 返回模式、策略组、体检结果、解锁、事件记录等
 // 请求 http://1.1.1.1/loon-panel/set: ?mode=0|1|2 切模式; ?group=…&node=… 切节点; ?group=…&node=…&lock=1 锁定, ?group=…&lock=0 解锁; 不带参数只复测; 加 quiet=1 切完不复测
 // 请求 http://1.1.1.1/loon-panel/deep?node=…: 对节点跑一次深度检测 (加 &speed=1 同时测速, &full=1 再加 MTR 和 BGP 路径)
+// 请求 http://1.1.1.1/loon-panel/clear?node=…: 清掉这个节点的深度检测结果; ?all=1 清掉全部检测结果、体检历史、解锁和事件, 设置和锁定不动
 // POST http://1.1.1.1/loon-panel/opts: 保存 App 里的设置, 正文是要改的项 (JSON); 空字符串 = 恢复默认
 
-const VERSION = '0.3.33'
+const VERSION = '0.3.34'
 const STORE_KEY = 'loon_panel'
 
 // 设置都在 Scripting 的 App 里改, 存在 store.opts; 插件参数只留体检频率 (cron 只能写在规则里)
@@ -1617,10 +1618,27 @@ async function handleDeep(q) {
   return snapshot(state, store, { ok: true })
 }
 
+async function handleClear(q) {
+  const store = readStore()
+  if (q.all === '1') {
+    store.deep = {}
+    store.nodes = {}
+    store.media = {}
+    store.events = []
+    delete store.check
+    delete store.direct
+  } else if (q.node) {
+    delete store.deep[q.node]
+  }
+  writeStore(store)
+  return snapshot(await readState(), store, { ok: true })
+}
+
 async function handleRequest() {
   const url = $request.url
   const path = url.replace(/^https?:\/\/[^/]+/i, '').split(/[?#]/)[0].replace(/\/+$/, '')
   if (path === '/loon-panel/set') return respond(200, await handleSet(parseQuery(url)))
+  if (path === '/loon-panel/clear') return respond(200, await handleClear(parseQuery(url)))
   if (path === '/loon-panel/deep') return respond(200, await handleDeep(parseQuery(url)))
   if (path === '/loon-panel/opts') return respond(200, await handleOpts())
   if (path === '/loon-panel/data') return respond(200, snapshot(await readState(), readStore()))
