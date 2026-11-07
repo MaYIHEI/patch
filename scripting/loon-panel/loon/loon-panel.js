@@ -6,7 +6,7 @@
 // 请求 http://1.1.1.1/loon-panel/deep?node=…: 对节点跑一次深度检测 (加 &speed=1 同时测速, &full=1 再加 MTR 和 BGP 路径)
 // POST http://1.1.1.1/loon-panel/opts: 保存 App 里的设置, 正文是要改的项 (JSON); 空字符串 = 恢复默认
 
-const VERSION = '0.3.30'
+const VERSION = '0.3.31'
 const STORE_KEY = 'loon_panel'
 
 // 设置都在 Scripting 的 App 里改, 存在 store.opts; 插件参数只留体检频率 (cron 只能写在规则里)
@@ -533,15 +533,18 @@ async function requestJson(url, c = {}) {
   }
 }
 
-/** 聚合接口偶尔回 403, 再试一次 */
-async function requestBackendJson(url) {
+/** 按 IP 查的数据库先直连, 不行再走节点: 机场节点的 IP 常被这些服务的防火墙拦 (check.place 回 403), 手机直连又可能被限流 (ipinfo 回 429) */
+async function either(send) {
   try {
-    return await requestJson(url)
+    return await send('DIRECT')
   } catch (e) {
-    if (!/HTTP 403\b/i.test(errorText(e))) throw e
-    return requestJson(url)
+    return send('')
   }
 }
+
+const lookupJson = (url, c = {}) => either(node => requestJson(url, Object.assign({}, c, { node })))
+const lookupText = (url, c = {}) => either(node => requestText(url, Object.assign({}, c, { node })))
+const requestBackendJson = url => lookupJson(url)
 
 // 解锁
 const mediaResult = (name, status, region, note) => compact({ name, status, region, note })
@@ -799,11 +802,10 @@ function parseScamalyticsHtml(html, ip) {
 }
 
 async function requestIpregistry(ip) {
-  const home = await requestText('https://ipregistry.co', { node: 'DIRECT' })
-  const m = home.match(/apiKey=["']([a-zA-Z0-9]+)["']/i)
-  if (!m) throw new Error('ipregistry 页面未公开演示密钥')
-  return requestJson(`https://api.ipregistry.co/${ip}?hostname=true&key=${m[1]}`, {
-    node: 'DIRECT',
+  const home = await capture(lookupText('https://ipregistry.co'))
+  // 页面不再给演示密钥时, 用上游 IPQuality 脚本里的同一个备用密钥
+  const key = (home.ok && (home.value.match(/apiKey=["']([a-zA-Z0-9]+)["']/i) || [])[1]) || 'sb69ksjcajfs4c'
+  return lookupJson(`https://api.ipregistry.co/${ip}?hostname=true&key=${key}`, {
     headers: { Accept: 'application/json', Origin: 'https://ipregistry.co', Referer: 'https://ipregistry.co/', 'User-Agent': MOBILE_UA },
   })
 }
@@ -828,16 +830,16 @@ async function collectDatabases(ip, discovery) {
     maxmind: requestBackendJson(`${CHECK_PLACE}/${ip}?lang=cn`),
     maxmindBackup: requestBackendJson(`${CHECK_PLACE}/${ip}?lang=en`),
     ippure: discovery.ippure ? Promise.resolve(discovery.ippure) : Promise.reject(new Error(discovery.ippureError || 'IPPure 请求失败')),
-    ipapi: discovery.ipapi ? Promise.resolve(discovery.ipapi) : requestJson(`${IPAPI_URL}?q=${ip}`, { node: 'DIRECT' }),
-    ipinfo: requestJson(`https://ipinfo.io/widget/demo/${ip}`, { node: 'DIRECT' }),
-    ipwhois: requestJson(`https://ipwho.is/${ip}`, { node: 'DIRECT' }),
+    ipapi: discovery.ipapi ? Promise.resolve(discovery.ipapi) : lookupJson(`${IPAPI_URL}?q=${ip}`),
+    ipinfo: lookupJson(`https://ipinfo.io/widget/demo/${ip}`),
+    ipwhois: lookupJson(`https://ipwho.is/${ip}`),
     ip2locationFull: requestBackendJson(`${CHECK_PLACE}/${ip}?db=ip2location`),
-    ip2location: requestText(`https://www.ip2location.io/${ip}`, { node: 'DIRECT' }),
+    ip2location: lookupText(`https://www.ip2location.io/${ip}`),
     abuseipdb: requestBackendJson(`${CHECK_PLACE}/${ip}?db=abuseipdb`),
     scamalytics: requestScamalytics(ip),
     ipqs: requestBackendJson(`${CHECK_PLACE}/${ip}?db=ipqualityscore`),
-    proxycheck: requestJson(`https://proxycheck.io/v2/${ip}?vpn=1&asn=1&risk=1`, { node: 'DIRECT' }),
-    dbip: requestText(`https://db-ip.com/${ip}`, { node: 'DIRECT' }),
+    proxycheck: lookupJson(`https://proxycheck.io/v2/${ip}?vpn=1&asn=1&risk=1`),
+    dbip: lookupText(`https://db-ip.com/${ip}`),
     ipregistry: requestIpregistry(ip),
     ipdata: requestBackendJson(`${CHECK_PLACE}/${ip}?db=ipdata`),
   }
