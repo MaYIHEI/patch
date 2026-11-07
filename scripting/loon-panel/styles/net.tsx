@@ -384,7 +384,7 @@ function healthText(ctx: Ctx): string {
 }
 
 /** 今天用了多少和到期 / 重置日 */
-const subLine = (s: SubView) => [`今天 ${fmtBytes(s.today)}`, s.deadline ? `${md(s.deadline)} ${s.deadlineWord}` : ''].filter(Boolean).join(' · ')
+const subLine = (s: SubView) => [s.today > 0 ? `今天 ${fmtBytes(s.today)}` : '', s.deadline ? `${md(s.deadline)} ${s.deadlineWord}` : ''].filter(Boolean).join(' · ')
 
 /** 出口国家: Loon 查不到 IP 归属时看节点名里的国旗 */
 function exitTag(name: string, cc?: string): string {
@@ -407,35 +407,16 @@ function Tile(props: { ctx: Ctx; icon: string; label: string; value: string; ton
   )
 }
 
-/** 小号总览: 四张小卡片一眼看完; 有机场时看流量, 没有时看网络状况 */
-export function OverviewSmall(props: { ctx: Ctx }) {
+const INDIGO: Color = '#5E5CE6'
+type TileData = { icon: string; label: string; value: string; tone: Color }
+
+/** 小号总览的骨架: 标题和四张小卡片 */
+function TileGrid(props: { ctx: Ctx; title: string; tiles: TileData[] }) {
   const { ctx } = props
-  const { loon } = ctx
-  if (!loon) return <NoLoon ctx={ctx} title="总览" />
-  const s = ctx.subs[0]
-  const u = s?.usage
-  const leaf = mainGroupLeaf(ctx)
-  const r = leaf?.r
-  const a = availability(r)
-  const c = healthCount(loon)
-  const ms = r?.ok ? String(r.ms) : latencyText(r)
-  const speed = r ? latencyColor(r) : ctx.th.accent
-  const INDIGO: Color = '#5E5CE6'
-  const tiles: { icon: string; label: string; value: string; tone: Color }[] = u ? [
-    { icon: 'chart.pie.fill', label: u.total > 0 ? '剩余' : '已用', value: fmtBytes(u.total > 0 ? s.remain : s.used), tone: u.total > 0 ? usageColor(s.ratio) : ctx.th.accent },
-    { icon: 'arrow.up.arrow.down', label: '今天', value: fmtBytes(s.today), tone: ctx.th.accent },
-    { icon: 'calendar', label: s.deadline ? s.deadlineWord : '节点', value: s.deadline ? md(s.deadline) : `${c.ok}/${c.total}`, tone: INDIGO },
-    { icon: 'bolt.fill', label: '延迟', value: ms, tone: speed },
-  ] : [
-    { icon: 'bolt.fill', label: '延迟', value: ms, tone: speed },
-    { icon: 'checkmark.shield.fill', label: '可用', value: a === null ? '-' : `${Math.round(a * 100)}%`, tone: a === null || a >= 0.9 ? OK : WARN },
-    { icon: 'circle.grid.2x2.fill', label: '节点', value: `${c.ok}/${c.total}`, tone: ctx.th.accent },
-    { icon: 'globe.americas.fill', label: '出口', value: leaf ? exitTag(leaf.name, r?.cc) : '-', tone: INDIGO },
-  ]
   return (
     <Root ctx={ctx} spacing={6}>
-      <Header ctx={ctx} title={s?.name ?? leaf?.group ?? 'Loon'} font={12} trailing={<ModeTap ctx={ctx} />} />
-      {chunk(tiles, 2).map(row => (
+      <Header ctx={ctx} title={props.title} font={12} trailing={ctx.loon ? <ModeTap ctx={ctx} /> : undefined} />
+      {chunk(props.tiles, 2).map(row => (
         <HStack spacing={6} frame={{ maxWidth: 'infinity', maxHeight: 'infinity' }}>
           {row.map(t => <Tile ctx={ctx} icon={t.icon} label={t.label} value={t.value} tone={t.tone} />)}
         </HStack>
@@ -444,29 +425,16 @@ export function OverviewSmall(props: { ctx: Ctx }) {
   )
 }
 
-/** 总览: 左边一个主角, 右边常用策略组; 右上角点一下换模式 */
-export function OverviewStyle(props: { ctx: Ctx }) {
+/** 中号总览的骨架: 左边不加底, 右边常用策略组 */
+function OverviewFrame(props: { ctx: Ctx; children?: any }) {
   const { ctx } = props
-  const { th, loon } = ctx
-  if (!loon) return <NoLoon ctx={ctx} title="总览" />
-  if (!ctx.inApp && focusOf(ctx.size)) return <PickerStyle ctx={ctx} />
-  const { list: groups, page, pages } = groupPage(loon, ctx.prefs, 4)
-  const s = ctx.subs[0]
-  const u = s?.usage
-  const leaf = mainGroupLeaf(ctx)
+  const { list: groups, page, pages } = groupPage(ctx.loon!, ctx.prefs, 4)
   return (
     <Root ctx={ctx} spacing={6}>
       <Header ctx={ctx} title="总览" trailing={<HStack spacing={6}><PageButton ctx={ctx} page={page} pages={pages} /><ModeTap ctx={ctx} /></HStack>} />
       <HStack spacing={6} alignment="top" fixedSize={{ horizontal: false, vertical: true }}>
         <VStack alignment="leading" spacing={3} padding={{ trailing: 6, vertical: 2 }} frame={{ minWidth: 112, maxWidth: 112, maxHeight: 'infinity', alignment: 'topLeading' }}>
-          <Text font={11} foregroundStyle={th.t2} lineLimit={1}>{u ? (u.total > 0 ? `${s.name} 剩余` : `${s.name} 已用`) : leaf?.group ?? '当前节点'}</Text>
-          <Num value={u ? fmtBytes(u.total > 0 ? s.remain : s.used) : latencyText(leaf?.r)} size={27} color={u ? th.t1 : latencyInk(ctx, leaf?.r)} />
-          {u ? null : <Text font={11} foregroundStyle={th.t1} lineLimit={1} minScaleFactor={0.75}>{leaf ? nodeLabel(leaf.name, leaf.r) : ''}</Text>}
-          {u ? null : <Text font={10} monospacedDigit foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.75}>{leaf?.r?.ip ?? '没读到出口 IP'}</Text>}
-          {u && u.total > 0 ? <Bar ctx={ctx} value={s.ratio} color={usageColor(s.ratio)} height={4} /> : null}
-          <Spacer minLength={2} />
-          {u ? null : <Uptime h={leaf?.r?.h} height={4} />}
-          <Text font={10} foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.75}>{u ? subLine(s) : healthText(ctx)}</Text>
+          {props.children}
         </VStack>
         <VStack spacing={6} frame={{ maxWidth: 'infinity' }}>
           {chunk(groups, 2).map(row => (
@@ -478,6 +446,101 @@ export function OverviewStyle(props: { ctx: Ctx }) {
         </VStack>
       </HStack>
     </Root>
+  )
+}
+
+/** 网络总览 (小): 延迟、可用率、节点、出口 */
+export function OverviewSmall(props: { ctx: Ctx }) {
+  const { ctx } = props
+  const { loon } = ctx
+  if (!loon) return <NoLoon ctx={ctx} title="总览" />
+  const leaf = mainGroupLeaf(ctx)
+  const r = leaf?.r
+  const a = availability(r)
+  const c = healthCount(loon)
+  return (
+    <TileGrid ctx={ctx} title={leaf?.group ?? 'Loon'} tiles={[
+      { icon: 'bolt.fill', label: '延迟', value: r?.ok ? String(r.ms) : latencyText(r), tone: r ? latencyColor(r) : ctx.th.accent },
+      { icon: 'checkmark.shield.fill', label: '可用', value: a === null ? '-' : `${Math.round(a * 100)}%`, tone: a === null || a >= 0.9 ? OK : WARN },
+      { icon: 'circle.grid.2x2.fill', label: '节点', value: `${c.ok}/${c.total}`, tone: ctx.th.accent },
+      { icon: 'globe.americas.fill', label: '出口', value: leaf ? exitTag(leaf.name, r?.cc) : '-', tone: INDIGO },
+    ]} />
+  )
+}
+
+/** 网络总览 (中): 左边当前节点, 右边常用策略组 */
+export function OverviewStyle(props: { ctx: Ctx }) {
+  const { ctx } = props
+  const { th, loon } = ctx
+  if (!loon) return <NoLoon ctx={ctx} title="总览" />
+  if (!ctx.inApp && focusOf(ctx.size)) return <PickerStyle ctx={ctx} />
+  const leaf = mainGroupLeaf(ctx)
+  return (
+    <OverviewFrame ctx={ctx}>
+      <Text font={11} foregroundStyle={th.t2} lineLimit={1}>{leaf?.group ?? '当前节点'}</Text>
+      <Num value={latencyText(leaf?.r)} size={27} color={latencyInk(ctx, leaf?.r)} />
+      <Text font={11} foregroundStyle={th.t1} lineLimit={1} minScaleFactor={0.75}>{leaf ? nodeLabel(leaf.name, leaf.r) : ''}</Text>
+      <Text font={10} monospacedDigit foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.75}>{leaf?.r?.ip ?? '没读到出口 IP'}</Text>
+      <Spacer minLength={2} />
+      <Uptime h={leaf?.r?.h} height={4} />
+      <Text font={10} foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.75}>{healthText(ctx)}</Text>
+    </OverviewFrame>
+  )
+}
+
+/** 流量总览没有内容时的提示 */
+function NoUsage(props: { ctx: Ctx }) {
+  const s = props.ctx.subs[0]
+  return <Root ctx={props.ctx}><Header ctx={props.ctx} title={s?.name ?? '流量总览'} font={12} /><Empty ctx={props.ctx} icon="plus.circle" text={s ? s.err ?? '还没有用量' : '在 App 里添加机场订阅'} /></Root>
+}
+
+/** 流量总览 (小): 剩余、今天或已用、到期、延迟 */
+export function TrafficSmall(props: { ctx: Ctx }) {
+  const { ctx } = props
+  const s = ctx.subs[0]
+  const u = s?.usage
+  if (!u) return <NoUsage ctx={ctx} />
+  const r = mainGroupLeaf(ctx)?.r
+  const limited = u.total > 0
+  return (
+    <TileGrid ctx={ctx} title={s.name} tiles={[
+      { icon: 'chart.pie.fill', label: limited ? '剩余' : '已用', value: fmtBytes(limited ? s.remain : s.used), tone: limited ? usageColor(s.ratio) : ctx.th.accent },
+      s.today > 0 || !limited
+        ? { icon: 'arrow.up.arrow.down', label: '今天', value: fmtBytes(s.today), tone: ctx.th.accent }
+        : { icon: 'percent', label: '已用', value: `${Math.round(s.ratio * 100)}%`, tone: ctx.th.accent },
+      s.deadline
+        ? { icon: 'calendar', label: s.deadlineWord, value: md(s.deadline), tone: INDIGO }
+        : { icon: 'tray.full.fill', label: '总量', value: limited ? fmtBytes(u.total) : '不限', tone: INDIGO },
+      { icon: 'bolt.fill', label: '延迟', value: r?.ok ? String(r.ms) : latencyText(r), tone: r ? latencyColor(r) : ctx.th.accent },
+    ]} />
+  )
+}
+
+/** 流量总览 (中): 左边主订阅, 右边常用策略组 */
+export function TrafficStyle(props: { ctx: Ctx }) {
+  const { ctx } = props
+  const { th, loon } = ctx
+  const s = ctx.subs[0]
+  const u = s?.usage
+  if (!u) return <NoUsage ctx={ctx} />
+  if (!loon) return <NoLoon ctx={ctx} title="总览" />
+  if (!ctx.inApp && focusOf(ctx.size)) return <PickerStyle ctx={ctx} />
+  const leaf = mainGroupLeaf(ctx)
+  const limited = u.total > 0
+  return (
+    <OverviewFrame ctx={ctx}>
+      <Text font={11} foregroundStyle={th.t2} lineLimit={1}>{`${s.name} ${limited ? '剩余' : '已用'}`}</Text>
+      <Num value={fmtBytes(limited ? s.remain : s.used)} size={27} />
+      {limited ? <Bar ctx={ctx} value={s.ratio} color={usageColor(s.ratio)} height={4} /> : null}
+      {limited ? <Text font={10} foregroundStyle={th.t2} lineLimit={1} minScaleFactor={0.75}>{`已用 ${fmtBytes(s.used)} / ${fmtBytes(u.total)}`}</Text> : null}
+      <Text font={10} foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.75}>{subLine(s)}</Text>
+      <Spacer minLength={2} />
+      <HStack spacing={4}>
+        <Text font={11} foregroundStyle={th.t1} lineLimit={1} minScaleFactor={0.7}>{leaf ? nodeLabel(leaf.name, leaf.r) : ''}</Text>
+        <Spacer minLength={2} />
+        <Text font={11} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={latencyInk(ctx, leaf?.r)} lineLimit={1}>{leaf?.r?.ok ? String(leaf.r.ms) : latencyText(leaf?.r)}</Text>
+      </HStack>
+    </OverviewFrame>
   )
 }
 
