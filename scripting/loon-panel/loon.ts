@@ -41,6 +41,7 @@ export type Deep = {
   backhaul?: { isp: Isp; probe?: string; hops?: number; asPath?: string[]; summary?: string }[]
   dnsbl?: { checked: number; listed: { list: string; hit?: string }[] }
   dnsleak?: { servers: { ip: string; cc?: string; org?: string }[] }
+  dns?: { checked: number; polluted: string[] }
   speed?: { down?: number; up?: number; bytes?: number; conns?: number }
   bgp?: { prefix?: string; rpki?: string; holder?: string }
   errors?: Record<string, string>
@@ -342,7 +343,8 @@ export function sampleLoon(): LoonData {
         backhaul: [{ isp: 'ct', probe: 'AS4760 Hong Kong', hops: 12, asPath: ['4760', '4809', '4134'], summary: '经 AS4809' }],
         dnsbl: { checked: 6, listed: [] },
         dnsleak: { servers: [{ ip: '8.8.8.8', cc: 'US', org: 'Google' }] },
-        speed: { down: 86.4, bytes: 16_777_216, conns: 4 },
+        dns: { checked: 3, polluted: [] },
+        speed: { down: 86.4, up: 24.2, bytes: 16_777_216, conns: 4 },
         bgp: { prefix: '103.151.172.0/24', rpki: 'valid', holder: 'HKT' },
       },
     },

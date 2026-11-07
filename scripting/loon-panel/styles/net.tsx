@@ -183,6 +183,7 @@ export function SafetyStyle(props: { ctx: Ctx }) {
   const rows: { name: string; text: string; color: Color }[] = [
     { name: 'NAT', text: nat ? nat.text : '未测', color: !nat ? '#8E8E93' : nat.type === 'blocked' ? BAD : nat.type === 'symmetric' ? WARN : OK },
     { name: 'DNS', text: !d?.dnsleak ? '未测' : leakCC.includes('CN') && exit !== 'CN' ? '疑似泄漏' : '未见泄漏', color: !d?.dnsleak ? '#8E8E93' : leakCC.includes('CN') && exit !== 'CN' ? BAD : OK },
+    { name: '本地 DNS', text: !d?.dns ? '未测' : d.dns.polluted.length ? '疑似污染' : '未见污染', color: !d?.dns ? '#8E8E93' : d.dns.polluted.length ? WARN : OK },
     { name: '黑名单', text: !d?.dnsbl ? '未测' : d.dnsbl.listed.length ? `命中 ${d.dnsbl.listed.length}/${d.dnsbl.checked}` : `${d.dnsbl.checked} 家未命中`, color: !d?.dnsbl ? '#8E8E93' : d.dnsbl.listed.length ? WARN : OK },
   ]
   return (
@@ -700,9 +701,9 @@ export function ReportStyle(props: { ctx: Ctx }) {
       {media.length ? <Line ctx={ctx} label="解锁" text={media.join(' ')} color={OK} /> : null}
       {stab ? <Line ctx={ctx} label="HTTPS" text={`成功 ${stab.ok}/${stab.total}`} color={stab.ok === stab.total ? OK : WARN} /> : null}
       {d.dnsbl ? <Line ctx={ctx} label="黑名单" text={d.dnsbl.listed.length ? `命中 ${d.dnsbl.listed.length}/${d.dnsbl.checked}` : `${d.dnsbl.checked} 家未命中`} color={d.dnsbl.listed.length ? WARN : OK} /> : null}
-      {d.dnsleak ? <Line ctx={ctx} label="DNS" text={d.dnsleak.servers.slice(0, 2).map(s => `${s.cc ?? ''} ${s.org ?? s.ip}`.trim()).join(' · ') || '无结果'} /> : null}
+      {d.dnsleak ? <Line ctx={ctx} label="DNS" text={[...d.dnsleak.servers.slice(0, 2).map(s => `${s.cc ?? ''} ${s.org ?? s.ip}`.trim()), d.dns ? (d.dns.polluted.length ? '本地疑似污染' : '本地未见污染') : ''].filter(Boolean).join(' · ') || '无结果'} color={d.dns?.polluted.length ? WARN : undefined} /> : null}
       {ctx.nat ? <Line ctx={ctx} label="NAT" text={ctx.nat.text} color={ctx.nat.type === 'blocked' ? BAD : undefined} /> : null}
-      {d.speed?.down ? <Line ctx={ctx} label="带宽" text={`下载 ${Math.round(d.speed.down)}Mbps${d.speed.conns ? ` · ${d.speed.conns} 连接` : ''}`} /> : null}
+      {d.speed?.down ? <Line ctx={ctx} label="带宽" text={`下载 ${Math.round(d.speed.down)}Mbps${d.speed.up ? ` · 上传 ${Math.round(d.speed.up)}Mbps` : ''}${d.speed.conns ? ` · ${d.speed.conns} 连接` : ''}`} /> : null}
       <Spacer minLength={0} />
     </Root>
   )
