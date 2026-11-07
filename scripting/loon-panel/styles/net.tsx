@@ -298,7 +298,7 @@ function PickerNow(props: { ctx: Ctx; group: Group; full: boolean }) {
   )
 }
 
-/** 切换器第一层: 列出策略组 (设了常用就只列常用), 点一个进去选节点 */
+/** 策略组卡片第一层: 列出策略组 (设了常用就只列常用), 点一个进去选节点 */
 function PickerGroups(props: { ctx: Ctx }) {
   const { ctx } = props
   const per = ctx.size === 'l' ? 12 : 6   // 一行 3 个: 中号 2 行, 大号 4 行, 卡片和策略组卡片一样高
@@ -318,11 +318,11 @@ function PickerGroups(props: { ctx: Ctx }) {
   )
 }
 
-/** 切换器: 先列策略组, 点一个列出它的节点, 点节点直接切, 点下层策略组再进一层; 右上角返回、翻页 */
+/** 策略组卡片: 先列策略组, 点一个列出它的节点, 点节点直接切, 点下层策略组再进一层; 右上角返回、翻页. 看板和总览点了组也进这里 */
 export function PickerStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const { th, loon } = ctx
-  if (!loon) return <NoLoon ctx={ctx} title="切换器" />
+  if (!loon) return <NoLoon ctx={ctx} title="策略组" />
   const open = ctx.inApp ? '' : focusOf(ctx.size)
   const view = pickerView(loon, ctx.size === 'l' ? 15 : 6, open)
   if (!view) return <PickerGroups ctx={ctx} />
@@ -563,25 +563,6 @@ export function TrafficStyle(props: { ctx: Ctx }) {
         <Text font={12} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={latencyInk(ctx, leaf?.r)} lineLimit={1}>{latencyText(leaf?.r)}</Text>
       </HStack>
     </OverviewFrame>
-  )
-}
-
-export function GroupsStyle(props: { ctx: Ctx }) {
-  const { ctx } = props
-  const { loon } = ctx
-  if (!loon) return <NoLoon ctx={ctx} title="策略组" />
-  if (!ctx.inApp && focusOf(ctx.size)) return <PickerStyle ctx={ctx} />
-  const { list: groups, page, pages } = groupPage(loon, ctx.prefs, 4)
-  return (
-    <Root ctx={ctx} spacing={6}>
-      <Header ctx={ctx} title="策略组" trailing={<HStack spacing={6}><PageButton ctx={ctx} page={page} pages={pages} /><ModeTap ctx={ctx} /></HStack>} />
-      {chunk(groups, 2).map(row => (
-        <HStack spacing={6}>
-          {row.map(g => <GroupCell ctx={ctx} g={g} />)}
-          {row.length < 2 ? <VStack frame={{ maxWidth: 'infinity' }} /> : null}
-        </HStack>
-      ))}
-    </Root>
   )
 }
 

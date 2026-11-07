@@ -359,7 +359,7 @@ function AllGroupsPage(props: { loon: LoonData; act: (q: Act, label: string) => 
   )
   return (
     <Page title="全部策略组">
-      <Block title="常用" note="节点页、切换器、策略组卡片和全景看板都围绕这些; 进策略组里可以加入或移出常用。">
+      <Block title="常用" note="节点页、策略组卡片和全景看板都围绕这些; 进策略组里可以加入或移出常用。">
         <Grid>{common.map(tile)}</Grid>
       </Block>
       {common.length > 1 ? (

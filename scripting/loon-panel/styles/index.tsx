@@ -10,7 +10,7 @@ import { RingStyle, TrendStyle, LockCircular, LockRect, LockInline } from './usa
 import { NodeStyle, HealthStyle } from './node'
 import { BoardStyle } from './board'
 import { TodayStyle, BudgetStyle, MultiSmall, MultiMedium, CountdownStyle, CompareStyle, HoursStyle, ValueStyle, MonthStyle } from './flow'
-import { UnlockSmall, UnlockMedium, PickerStyle, ModeStyle, IpStyle, SafetyStyle, RankStyle, ConsoleStyle, GroupsStyle, EventsStyle, OverviewStyle, OverviewSmall, TrafficStyle, TrafficSmall, PingStyle, NodesStyle, ReportStyle, LockLatency, LockToday, LockPing } from './net'
+import { UnlockSmall, UnlockMedium, PickerStyle, ModeStyle, IpStyle, SafetyStyle, RankStyle, ConsoleStyle, EventsStyle, OverviewStyle, OverviewSmall, TrafficStyle, TrafficSmall, PingStyle, NodesStyle, ReportStyle, LockLatency, LockToday, LockPing } from './net'
 
 type View = (props: { ctx: Ctx }) => any
 
@@ -41,8 +41,7 @@ export const STYLES: StyleDef[] = [
   { id: 'Q', name: '今日时段', icon: 'clock.fill', desc: '今天每小时用了多少, 高峰在几点', views: { systemMedium: HoursStyle } },
   { id: 'S', name: '延迟排行', icon: 'trophy.fill', desc: '最快的 5 个节点, 点一行切过去', views: { systemMedium: RankStyle } },
   { id: 'T', name: '控制台', icon: 'slider.horizontal.below.rectangle', desc: '切模式、切最快、体检、更新订阅', views: { systemMedium: ConsoleStyle } },
-  { id: 'U', name: '策略组卡片', icon: 'square.grid.2x2.fill', desc: '常用策略组的当前节点, 点卡片选节点, 可以翻页', views: { systemMedium: GroupsStyle } },
-  { id: 'AE', name: '切换器', icon: 'arrow.triangle.swap', desc: '先列出策略组, 点一个进去列出节点, 点哪个切哪个; 中号 6 个、大号 12 个一页', views: { systemMedium: PickerStyle, systemLarge: PickerStyle } },
+  { id: 'U', name: '策略组卡片', icon: 'square.grid.2x2.fill', desc: '先列出常用策略组和当前节点, 点一个进去选节点; 中号 6 个、大号 12 个一页', views: { systemMedium: PickerStyle, systemLarge: PickerStyle } },
   { id: 'V', name: '事件时间线', icon: 'list.bullet.rectangle.fill', desc: '切网络、节点挂了、自动切换、用量提醒', views: { systemMedium: EventsStyle } },
   { id: 'W', name: '三网延迟', icon: 'point.3.connected.trianglepath.dotted', desc: '电信、联通、移动到出口的延迟、丢包和入站路径', views: { systemMedium: PingStyle } },
   { id: 'X', name: '性价比', icon: 'yensign.circle.fill', desc: '每 G 多少钱、剩余流量还值多少', views: { systemMedium: ValueStyle } },
@@ -61,7 +60,9 @@ export const FAMILY_PREFIX: Record<Family, string> = {
 }
 
 export const stylesFor = (f: Family) => STYLES.filter(s => s.views[f])
-export const styleById = (id: string) => STYLES.find(s => s.id === id)
+/** 合并或改名后的旧样式: 桌面参数和默认样式里存的旧名字照样能用 */
+const ALIAS: Record<string, string> = { AE: 'U', 切换器: 'U' }
+export const styleById = (id: string) => STYLES.find(s => s.id === (ALIAS[id] ?? id))
 /** 桌面参数: 「中·用量趋势」 */
 export const paramOf = (s: StyleDef, f: Family) => `${FAMILY_PREFIX[f]}·${s.name}`
 
@@ -69,7 +70,9 @@ export const paramOf = (s: StyleDef, f: Family) => `${FAMILY_PREFIX[f]}·${s.nam
 export function resolveStyle(param: string | undefined, family: Family): StyleDef {
   const name = (param ?? '').trim().replace(/^(锁屏圆|锁屏条|锁屏行|锁屏|小|中|大)\s*[·.:：\-\s]\s*/, '')
   const ok = (s: StyleDef) => !!s.views[family]
-  const hit = name
+  const hit = name && ALIAS[name]
+    ? styleById(ALIAS[name])
+    : name
     ? STYLES.find(s => ok(s) && (s.name === name || s.id.toLowerCase() === name.toLowerCase())) ?? STYLES.find(s => ok(s) && s.name.includes(name))
     : undefined
   if (hit) return hit
