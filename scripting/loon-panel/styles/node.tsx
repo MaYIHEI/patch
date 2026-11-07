@@ -42,7 +42,7 @@ export function NodeStyle(props: { ctx: Ctx }) {
       <HStack spacing={4}>
         {availability(r) !== null ? <Text font={10} foregroundStyle={th.t2} lineLimit={1}>{`可用 ${Math.round(availability(r)! * 100)}%`}</Text> : null}
         <Spacer minLength={2} />
-        <Text font={10} monospacedDigit foregroundStyle={th.t2} lineLimit={1} minScaleFactor={0.7}>{r?.ip ?? ''}</Text>
+        <Text font={10} monospacedDigit foregroundStyle={th.t2} lineLimit={1} minScaleFactor={0.7}>{r?.ip ?? '没读到出口 IP'}</Text>
       </HStack>
       <Text font={10} foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.7}>{r?.ip ? `${flag(r.cc)} ${r.org ?? asnText(r)}` : checkText(ctx)}</Text>
     </Root>

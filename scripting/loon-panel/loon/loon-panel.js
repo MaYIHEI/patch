@@ -6,7 +6,7 @@
 // 请求 http://1.1.1.1/loon-panel/deep?node=…: 对节点跑一次深度检测 (加 &speed=1 同时测速)
 // POST http://1.1.1.1/loon-panel/opts: 保存 App 里的设置, 正文是要改的项 (JSON); 空字符串 = 恢复默认
 
-const VERSION = '0.3.21'
+const VERSION = '0.3.26'
 const STORE_KEY = 'loon_panel'
 const CORE_KEY = 'loon_panel_core'
 // 检测核心库 (paperclip ipquality-web-test), 解锁和深度检测都用它, 这里不另写一份
@@ -36,6 +36,7 @@ function readOpts() {
 
 const OPT = readOpts()
 
+const IP_BACKUP = 'http://ip-api.com/line/?fields=query'
 const CRON_BUDGET = 100000   // 插件里定时任务 timeout=120 秒, 留余量
 const REQ_BUDGET = 20000     // 操作地址 timeout=30 秒, 小组件按钮也等不了太久
 const DEEP_BUDGET = 75000    // 深度检测地址 timeout=90 秒
@@ -207,6 +208,16 @@ function exitInfo(r, ip) {
   r.org = clean($utils.ipaso(ip))
 }
 
+/** 有的节点连不上默认的查询地址, 换一个再试一次 */
+async function readIP(node) {
+  for (const url of [OPT.ip_url, IP_BACKUP]) {
+    const a = await get(url, node)
+    const ip = a.error ? '' : pickIP(a.data)
+    if (ip) return ip
+  }
+  return ''
+}
+
 async function probe(node) {
   const r = { t: Date.now(), ok: false, ms: 0 }
   const a = await get(OPT.test_url, node)
@@ -216,8 +227,7 @@ async function probe(node) {
   }
   r.ok = true
   r.ms = a.ms
-  const b = await get(OPT.ip_url, node)
-  const ip = b.error ? '' : pickIP(b.data)
+  const ip = await readIP(node)
   if (ip) exitInfo(r, ip)
   return r
 }
@@ -235,6 +245,7 @@ async function runChecks(store, targets, current, budget) {
       r = await probe(name)
       fails = r.ok ? 0 : fails + 1
     }
+    if (r.ok && !r.ip && prev.ip) for (const k of ['ip', 'cc', 'asn', 'org']) r[k] = prev[k]   // 这次没查到出口, 先留着上次的
     r.h = (prev.h || []).concat(r.ok ? r.ms : -1).slice(-HISTORY)
     r.fail = r.ok ? 0 : (prev.fail || 0) + fails
     if (!r.ok && prev.alerted) r.alerted = true
