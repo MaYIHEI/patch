@@ -38,7 +38,7 @@ import {
 import type { Color } from 'scripting'
 
 import {
-  loadLoon, cachedLoon, setLoon, deepCheck, dnsServers, leafNodes, pathTo, isAuto, sampleLoon, mainGroup, shownGroups, setOpts, healthCount, availability, loonStatus, clearLoonCache, MODES, DATA_URL,
+  loadLoon, cachedLoon, setLoon, deepCheck, dnsServers, clearChecks, leafNodes, pathTo, isAuto, sampleLoon, mainGroup, shownGroups, setOpts, healthCount, availability, loonStatus, clearLoonCache, MODES, DATA_URL,
   type Deep, type LoonData, type Group, type NodeResult, type OptsPatch,
 } from './loon'
 import {
@@ -668,6 +668,20 @@ function DeepPage(props: { node: string; loon: LoonData; reload: (force?: boolea
         { k: '耗时', v: `${Math.round(d.status.ms / 1000)} 秒` },
       ]) : null}
       {d?.errors && Object.keys(d.errors).length ? rows('没拿到的项目', Object.entries(d.errors).map(([k, v]) => ({ k, v: String(v) }))) : null}
+      {d ? (
+        <KitGroup inset={14}>
+          <ActionRow icon="trash" color="systemRed" title="清除这个节点的结果" destructive action={async () => {
+            try {
+              await clearChecks(props.node)
+              setD(null)
+              setNote('已清除')
+              await props.reload()
+            } catch (e) {
+              setNote(`清除失败, 请更新 Loon 插件: ${(e as Error).message}`)
+            }
+          }} />
+        </KitGroup>
+      ) : null}
     </Page>
   )
 }
@@ -1422,6 +1436,16 @@ function DataPage(props: { reload: () => Promise<void> }) {
             clearHistory()
             setNote('历史已清除')
             await props.reload()
+          }} />
+          <RoundButton icon="xmark.bin" title="清除检测" action={async () => {
+            if (!(await Dialog.confirm({ title: '清除全部检测结果?', message: '深度检测、体检历史、解锁和事件记录都会清掉, 设置和锁定的策略组不变', cancelLabel: '取消', confirmLabel: '清除' }))) return
+            try {
+              await clearChecks()
+              setNote('检测结果已清除')
+              await props.reload()
+            } catch (e) {
+              setNote(`清除失败, 请更新 Loon 插件: ${(e as Error).message}`)
+            }
           }} />
         </HStack>
       </Block>

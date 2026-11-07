@@ -111,6 +111,13 @@ export const cachedLoon = (): LoonData | null => {
   return raw ? { ...JSON.parse(raw) as LoonData, stale: true } : null
 }
 
+/** 清掉检测结果: 给节点名只清这个节点的深度检测; 不给就清全部检测结果、体检历史、解锁和事件 */
+export async function clearChecks(node?: string): Promise<LoonData> {
+  const data = await get(`${DATA_URL.replace(/data$/, 'clear')}?${node ? `node=${encodeURIComponent(node)}` : 'all=1'}`, 15)
+  AppStorage.set(CACHE_KEY, JSON.stringify(data))
+  return data
+}
+
 /** 操作地址: 切模式 / 切节点 / 不带参数 = 复测当前节点; 返回最新状态 */
 export async function setLoon(q: { mode?: number; group?: string; node?: string; lock?: number; quiet?: number }, timeout = 25): Promise<LoonData> {
   const qs = Object.entries(q).filter(([, v]) => v !== undefined).map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join('&')
