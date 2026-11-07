@@ -458,10 +458,10 @@ export function OverviewStyle(props: { ctx: Ctx }) {
     <Root ctx={ctx} spacing={6}>
       <Header ctx={ctx} title="总览" trailing={<HStack spacing={6}><PageButton ctx={ctx} page={page} pages={pages} /><ModeTap ctx={ctx} /></HStack>} />
       <HStack spacing={6} alignment="top" fixedSize={{ horizontal: false, vertical: true }}>
-        <VStack alignment="leading" spacing={2} padding={{ trailing: 6 }} frame={{ minWidth: 108, maxWidth: 108, maxHeight: 'infinity', alignment: 'topLeading' }}>
-          <Text font={10} foregroundStyle={th.t2} lineLimit={1}>{u ? (u.total > 0 ? `${s.name} 剩余` : `${s.name} 已用`) : leaf?.group ?? '当前节点'}</Text>
-          <Num value={u ? fmtBytes(u.total > 0 ? s.remain : s.used) : latencyText(leaf?.r)} size={22} color={u ? th.t1 : latencyInk(ctx, leaf?.r)} />
-          {u ? null : <Text font={10} foregroundStyle={th.t2} lineLimit={1} minScaleFactor={0.75}>{leaf ? nodeLabel(leaf.name, leaf.r) : ''}</Text>}
+        <VStack alignment="leading" spacing={3} padding={{ trailing: 6, vertical: 2 }} frame={{ minWidth: 112, maxWidth: 112, maxHeight: 'infinity', alignment: 'topLeading' }}>
+          <Text font={11} foregroundStyle={th.t2} lineLimit={1}>{u ? (u.total > 0 ? `${s.name} 剩余` : `${s.name} 已用`) : leaf?.group ?? '当前节点'}</Text>
+          <Num value={u ? fmtBytes(u.total > 0 ? s.remain : s.used) : latencyText(leaf?.r)} size={27} color={u ? th.t1 : latencyInk(ctx, leaf?.r)} />
+          {u ? null : <Text font={11} foregroundStyle={th.t1} lineLimit={1} minScaleFactor={0.75}>{leaf ? nodeLabel(leaf.name, leaf.r) : ''}</Text>}
           {u ? null : <Text font={10} monospacedDigit foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.75}>{leaf?.r?.ip ?? '没读到出口 IP'}</Text>}
           {u && u.total > 0 ? <Bar ctx={ctx} value={s.ratio} color={usageColor(s.ratio)} height={4} /> : null}
           <Spacer minLength={2} />
