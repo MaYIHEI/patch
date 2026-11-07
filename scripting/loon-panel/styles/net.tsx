@@ -462,7 +462,7 @@ export function OverviewStyle(props: { ctx: Ctx }) {
           <Text font={10} foregroundStyle={th.t2} lineLimit={1}>{u ? (u.total > 0 ? `${s.name} 剩余` : `${s.name} 已用`) : leaf?.group ?? '当前节点'}</Text>
           <Num value={u ? fmtBytes(u.total > 0 ? s.remain : s.used) : latencyText(leaf?.r)} size={22} color={u ? th.t1 : latencyInk(ctx, leaf?.r)} />
           {u ? null : <Text font={10} foregroundStyle={th.t2} lineLimit={1} minScaleFactor={0.75}>{leaf ? nodeLabel(leaf.name, leaf.r) : ''}</Text>}
-          {u ? null : <Text font={10} monospacedDigit foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.75}>{leaf?.r?.ip ?? ''}</Text>}
+          {u ? null : <Text font={10} monospacedDigit foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.75}>{leaf?.r?.ip ?? '没读到出口 IP'}</Text>}
           {u && u.total > 0 ? <Bar ctx={ctx} value={s.ratio} color={usageColor(s.ratio)} height={4} /> : null}
           <Spacer minLength={2} />
           {u ? null : <Uptime h={leaf?.r?.h} height={4} />}
