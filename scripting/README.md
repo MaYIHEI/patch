@@ -12,6 +12,7 @@
 |---|---|---|---|
 | [`claude-quota/`](./claude-quota/) | Claude.ai 配额监控 (5h / 7d / Opus) | iOS 18+ / 26 推荐 | ✅ 维护中 |
 | [`cmcc/`](./cmcc/) | 中国移动话费 / 流量 / 语音 / 积分, 凭证自动续期 | iOS 18+ | ✅ 维护中 |
+| [`loon-panel/`](./loon-panel/) | Loon 面板：机场流量、节点体检、解锁和 IP 质量检测，小组件里切换模式和节点 (配套 Loon 插件) | iOS 18+ / Loon 3.5.1 (983)+ | 🔜 待真机验证 |
 
 ---
 
