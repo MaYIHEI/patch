@@ -1390,6 +1390,7 @@ function CheckPage(props: { loon: LoonData | null; reload: () => Promise<void> }
           <ToggleTile icon="wifi" title="切网复测" sub="网络切换后测一次" value={o?.net ?? true} disabled={!live} onChanged={v => { save({ net: v }) }} />
           <ToggleTile icon="bell" title="异常通知" sub="连续 3 次超时" value={o?.notify ?? true} disabled={!live} onChanged={v => { save({ notify: v }) }} />
           <ToggleTile icon="bolt" title="自动切换" sub="挂了切到最快" value={o?.auto ?? false} disabled={!live} onChanged={v => { save({ auto: v }) }} />
+          <ToggleTile icon="lock.open" title="数据库直连" sub="深度检测查得更全, 会暴露手机 IP" value={o?.lookup_direct ?? false} disabled={!live} onChanged={v => { save({ lookup_direct: v }) }} />
         </Grid>
       </Block>
       <KitGroup>

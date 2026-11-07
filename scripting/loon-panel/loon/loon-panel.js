@@ -7,7 +7,7 @@
 // 请求 http://1.1.1.1/loon-panel/clear?node=…: 清掉这个节点的深度检测结果; ?all=1 清掉全部检测结果、体检历史、解锁和事件, 设置和锁定不动
 // POST http://1.1.1.1/loon-panel/opts: 保存 App 里的设置, 正文是要改的项 (JSON); 空字符串 = 恢复默认
 
-const VERSION = '0.3.35'
+const VERSION = '0.3.36'
 const STORE_KEY = 'loon_panel'
 
 // 设置都在 Scripting 的 App 里改, 存在 store.opts; 插件参数只留体检频率 (cron 只能写在规则里)
@@ -19,6 +19,7 @@ const DEFAULT_OPTS = {
   timeout: 5000,    // 单次超时 (毫秒)
   test_url: 'http://www.gstatic.com/generate_204',
   ip_url: 'https://api.ipify.org',
+  lookup_direct: false,  // 按 IP 查数据库时先从手机直连, 失败再走节点; 查得更全, 但这些服务会看到手机 IP
   push_key: '',     // 体检完推送刷新小组件; 只存在这里, 不返回给数据地址
   targets: [],
 }
@@ -475,7 +476,7 @@ const browserHeaders = () => ({
   'User-Agent': MOBILE_UA,
 })
 
-/** 检测的请求都走被检测的节点, 不从手机直连发出, 第三方只看到节点 IP; c.allowHttpErrors 不把非 2xx 当失败 */
+/** 检测的请求默认都走被检测的节点, 第三方只看到节点 IP; c.node 可以改走 DIRECT; c.allowHttpErrors 不把非 2xx 当失败 */
 function sendRequest(method, url, c) {
   return new Promise((resolve, reject) => {
     const left = checkEnd - Date.now()
@@ -534,7 +535,24 @@ async function requestJson(url, c = {}) {
   }
 }
 
-/** check.place 的 Cloudflare 会拦很多机场节点的 IP, 查得太频繁还会封 IP, 只试一次 */
+/** 打开「数据库直连」后, 按 IP 查数据库先从手机直连, 失败再走节点; 默认只走节点 */
+async function either(send) {
+  if (!OPT.lookup_direct) return send('')
+  try {
+    return await send('DIRECT')
+  } catch (direct) {
+    try {
+      return await send('')
+    } catch (node) {
+      throw new Error(`直连 ${shorten(errorText(direct), 24)}；节点 ${shorten(errorText(node), 24)}`)
+    }
+  }
+}
+
+const lookupJson = (url, c = {}) => either(node => requestJson(url, Object.assign({}, c, { node })))
+const lookupText = (url, c = {}) => either(node => requestText(url, Object.assign({}, c, { node })))
+
+/** check.place 的 Cloudflare 会拦很多机场节点的 IP, 查得太频繁还会封 IP, 只走节点试一次, 不拿手机 IP 去试 */
 async function requestBackendJson(url) {
   try {
     return await requestJson(url)
@@ -799,10 +817,10 @@ function parseScamalyticsHtml(html, ip) {
 }
 
 async function requestIpregistry(ip) {
-  const home = await capture(requestText('https://ipregistry.co'))
+  const home = await capture(lookupText('https://ipregistry.co'))
   // 页面不再给演示密钥时, 用上游 IPQuality 脚本里的同一个备用密钥
   const key = (home.ok && (home.value.match(/apiKey=["']([a-zA-Z0-9]+)["']/i) || [])[1]) || 'sb69ksjcajfs4c'
-  return requestJson(`https://api.ipregistry.co/${ip}?hostname=true&key=${key}`, {
+  return lookupJson(`https://api.ipregistry.co/${ip}?hostname=true&key=${key}`, {
     headers: { Accept: 'application/json', Origin: 'https://ipregistry.co', Referer: 'https://ipregistry.co/', 'User-Agent': MOBILE_UA },
   })
 }
@@ -827,16 +845,16 @@ async function collectDatabases(ip, discovery) {
     maxmind: requestBackendJson(`${CHECK_PLACE}/${ip}?lang=cn`),
     maxmindBackup: requestBackendJson(`${CHECK_PLACE}/${ip}?lang=en`),
     ippure: discovery.ippure ? Promise.resolve(discovery.ippure) : Promise.reject(new Error(discovery.ippureError || 'IPPure 请求失败')),
-    ipapi: discovery.ipapi ? Promise.resolve(discovery.ipapi) : requestJson(`${IPAPI_URL}?q=${ip}`),
-    ipinfo: requestJson(`https://ipinfo.io/widget/demo/${ip}`),
-    ipwhois: requestJson(`https://ipwho.is/${ip}`),
+    ipapi: discovery.ipapi ? Promise.resolve(discovery.ipapi) : lookupJson(`${IPAPI_URL}?q=${ip}`),
+    ipinfo: lookupJson(`https://ipinfo.io/widget/demo/${ip}`),
+    ipwhois: lookupJson(`https://ipwho.is/${ip}`),
     ip2locationFull: requestBackendJson(`${CHECK_PLACE}/${ip}?db=ip2location`),
-    ip2location: requestText(`https://www.ip2location.io/${ip}`),
+    ip2location: lookupText(`https://www.ip2location.io/${ip}`),
     abuseipdb: requestBackendJson(`${CHECK_PLACE}/${ip}?db=abuseipdb`),
     scamalytics: requestScamalytics(ip),
     ipqs: requestBackendJson(`${CHECK_PLACE}/${ip}?db=ipqualityscore`),
-    proxycheck: requestJson(`https://proxycheck.io/v2/${ip}?vpn=1&asn=1&risk=1`),
-    dbip: requestText(`https://db-ip.com/${ip}`),
+    proxycheck: lookupJson(`https://proxycheck.io/v2/${ip}?vpn=1&asn=1&risk=1`),
+    dbip: lookupText(`https://db-ip.com/${ip}`),
     ipregistry: requestIpregistry(ip),
     ipdata: requestBackendJson(`${CHECK_PLACE}/${ip}?db=ipdata`),
   }
@@ -1515,7 +1533,7 @@ function snapshot(state, store, result) {
     deep: store.deep,
     locks: store.locks,
     events: store.events.slice().reverse(),
-    opts: { notify: OPT.notify, auto: OPT.auto, net: OPT.net, timeout: OPT.timeout, test_url: OPT.test_url, ip_url: OPT.ip_url, push: !!(OPT.push_key && OPT.targets.length), full: OPT.groups },
+    opts: { notify: OPT.notify, auto: OPT.auto, net: OPT.net, lookup_direct: OPT.lookup_direct, timeout: OPT.timeout, test_url: OPT.test_url, ip_url: OPT.ip_url, push: !!(OPT.push_key && OPT.targets.length), full: OPT.groups },
     cfg: configShape(state.conf),
   }
   if (result) body.result = result
