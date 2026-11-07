@@ -5,7 +5,7 @@
 import { VStack, HStack, ZStack, Text, Spacer, Image, Button, Link, Capsule, Rectangle, RoundedRectangle, Gauge, AccessoryWidgetBackground } from 'scripting'
 import type { Color } from 'scripting'
 
-import {
+import { dnsServers,
   MODES, groupPage, pickerView, focusOf, pathTo, isAuto, mainGroup, rankedNodes, healthCount, availability, unlockNode, latestDeep, loonStatus,
   type Deep, type Group, type Isp,
 } from '../loon'
@@ -597,6 +597,7 @@ const pingColor = (avg?: number, loss?: number) => (avg === undefined ? '#8E8E93
 function PingCards(props: { ctx: Ctx; d: Deep }) {
   const { ctx, d } = props
   const { th } = ctx
+  const routed = d.inbound?.some(x => x.summary)
   return (
     <HStack spacing={6}>
       {(['ct', 'cu', 'cm'] as Isp[]).map(isp => {
@@ -607,7 +608,7 @@ function PingCards(props: { ctx: Ctx; d: Deep }) {
             <Text font={11} foregroundStyle={th.t2}>{ISP[isp]}</Text>
             <Num value={p?.avg !== undefined ? `${Math.round(p.avg)}ms` : '-'} size={17} color={pingColor(p?.avg, p?.loss) === OK ? th.t1 : pingColor(p?.avg, p?.loss)} />
             <Text font={10} monospacedDigit foregroundStyle={th.t3} lineLimit={1}>{p ? `丢包 ${p.loss ?? 0}%` : ' '}</Text>
-            {way?.summary ? <Text font={10} foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.7}>{way.summary}</Text> : null}
+            {routed ? <Text font={10} foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.7}>{way?.summary ?? ' '}</Text> : null}
           </Cell>
         )
       })}
@@ -685,7 +686,7 @@ export function ReportStyle(props: { ctx: Ctx }) {
   const hit = latestDeep(loon, ctx.prefs)
   if (!hit) return <Root ctx={ctx}><Header ctx={ctx} title="线路体检报告" font={14} /><Empty ctx={ctx} icon="doc.text.magnifyingglass" text={NO_DEEP} /></Root>
   const d = hit.data
-  const way = (d.backhaul ?? []).map(b => `${ISP[b.isp]} ${b.summary ?? ''}`.trim()).join(' · ')
+  const way = (d.backhaul ?? []).map(b => `${ISP[b.isp]} ${b.summary ?? '未识别'}`).join(' · ')
   const media = (d.media ?? []).filter(m => m.status === 'yes').map(m => m.name)
   const stab = d.stability?.length ? d.stability.reduce((a, s) => ({ ok: a.ok + s.ok, total: a.total + s.total }), { ok: 0, total: 0 }) : null
   return (
@@ -701,7 +702,8 @@ export function ReportStyle(props: { ctx: Ctx }) {
       {media.length ? <Line ctx={ctx} label="解锁" text={media.join(' ')} color={OK} /> : null}
       {stab ? <Line ctx={ctx} label="HTTPS" text={`成功 ${stab.ok}/${stab.total}`} color={stab.ok === stab.total ? OK : WARN} /> : null}
       {d.dnsbl ? <Line ctx={ctx} label="黑名单" text={d.dnsbl.listed.length ? `命中 ${d.dnsbl.listed.length}/${d.dnsbl.checked}` : `${d.dnsbl.checked} 家未命中`} color={d.dnsbl.listed.length ? WARN : OK} /> : null}
-      {d.dnsleak ? <Line ctx={ctx} label="DNS" text={[...d.dnsleak.servers.slice(0, 2).map(s => `${s.cc ?? ''} ${s.org ?? s.ip}`.trim()), d.dns ? (d.dns.polluted.length ? '本地疑似污染' : '本地未见污染') : ''].filter(Boolean).join(' · ') || '无结果'} color={d.dns?.polluted.length ? WARN : undefined} /> : null}
+      {d.dnsleak ? <Line ctx={ctx} label="DNS" text={dnsServers(d).join(' · ') || '无结果'} /> : null}
+      {d.dns ? <Line ctx={ctx} label="污染" text={d.dns.polluted.length ? `本地疑似 ${d.dns.polluted.length}/${d.dns.checked}` : '本地未见'} color={d.dns.polluted.length ? WARN : OK} /> : null}
       {ctx.nat ? <Line ctx={ctx} label="NAT" text={ctx.nat.text} color={ctx.nat.type === 'blocked' ? BAD : undefined} /> : null}
       {d.speed?.down ? <Line ctx={ctx} label="带宽" text={`下载 ${Math.round(d.speed.down)}Mbps${d.speed.up ? ` · 上传 ${Math.round(d.speed.up)}Mbps` : ''}${d.speed.conns ? ` · ${d.speed.conns} 连接` : ''}`} /> : null}
       <Spacer minLength={0} />

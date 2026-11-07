@@ -6,7 +6,7 @@
 // 请求 http://1.1.1.1/loon-panel/deep?node=…: 对节点跑一次深度检测 (加 &speed=1 同时测速, &full=1 再加 MTR 和 BGP 路径)
 // POST http://1.1.1.1/loon-panel/opts: 保存 App 里的设置, 正文是要改的项 (JSON); 空字符串 = 恢复默认
 
-const VERSION = '0.3.29'
+const VERSION = '0.3.30'
 const STORE_KEY = 'loon_panel'
 
 // 设置都在 Scripting 的 App 里改, 存在 store.opts; 插件参数只留体检频率 (cron 只能写在规则里)
@@ -711,7 +711,7 @@ const MEDIA_TESTS = [
 function collectMedia() {
   return Promise.all(MEDIA_TESTS.map(([name, test]) => test().catch(e => {
     console.log(`${name} 检测失败: ${errorText(e)}`)
-    return mediaResult(name, 'unknown', '', '请求失败')
+    return mediaResult(name, 'unknown', '', `请求失败：${shorten(errorText(e), 40)}`)
   })))
 }
 
@@ -843,14 +843,15 @@ async function collectDatabases(ip, discovery) {
   }
   const keys = Object.keys(tasks)
   const settled = await Promise.all(keys.map(k => capture(tasks[k])))
-  const data = {}
+  const data = { reasons: {} }
   keys.forEach((key, i) => {
     const r = settled[i]
     const other = r.ok && reportsOtherIP(key, r.value, ip)
+    if (!r.ok) data.reasons[key] = shorten(r.error, 60)
+    else if (other && key !== 'ippure') data.reasons[key] = '返回的不是这个出口的数据'
     // IPPure 走节点, 报告的 IP 不同说明这个节点有分流出口, 结果只留着看出口, 不算进风险
     if (key === 'ippure' && other) data.ippure = Object.assign({}, r.value, { split: true })
     else data[key] = r.ok && !other ? r.value : null
-    if (!r.ok) console.log(`${key}: ${r.error}`)
   })
   return data
 }
@@ -975,6 +976,7 @@ function buildSources(data) {
     failed: list.filter(x => !x[1]).map(x => x[0]),
     skipped: quota ? ['IPQS 上游额度不足'] : [],
     split: data.ippure && data.ippure.split ? data.ippure.ip : '',
+    reasons: Object.keys(data.reasons).length ? data.reasons : null,
   })
 }
 
@@ -1326,16 +1328,20 @@ async function collectDNSPollution() {
     headers: { Accept: 'application/json', 'Cache-Control': 'no-cache', 'Content-Type': 'application/json' },
   })
   const owners = {}
-  for (const x of Array.isArray(lookup) ? lookup : []) if (x && x.status === 'success') owners[x.query] = cleanASN(x.as)
+  for (const x of Array.isArray(lookup) ? lookup : []) if (x && x.status === 'success' && x.as) owners[x.query] = x.as
   let checked = 0
   const polluted = []
+  const hits = []
   DNS_TARGETS.forEach((t, i) => {
     const known = (answers[i].ok ? answers[i].value : []).filter(ip => owners[ip])
     if (!known.length) return
     checked++
-    if (known.some(ip => owners[ip] !== t.asn)) polluted.push(t.domain)
+    const foreign = known.find(ip => cleanASN(owners[ip]) !== t.asn)
+    if (!foreign) return
+    polluted.push(t.domain)
+    hits.push({ domain: t.domain, ip: foreign, owner: owners[foreign] })
   })
-  return checked ? { checked, polluted } : { error: '查不到解析结果的 IP 归属' }
+  return checked ? { checked, polluted, hits } : { error: '查不到解析结果的 IP 归属' }
 }
 
 async function collectStability() {
