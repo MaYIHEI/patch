@@ -110,7 +110,7 @@ Loon 插件参数只有一项：
 |---|---|---|
 | 体检频率 | `*/30 * * * *` | Cron 表达式 |
 
-**订阅链接**只保存在本机钥匙串里，不写进文件；用量历史只存数字，保存在本机约 60 天。深度检测和解锁检测会把节点的出口 IP 提交给第三方查询服务。任何会返回 `Subscription-Userinfo` 头的地址都能用；需要额外请求头（比如自建面板的 `Authorization`）时，在链接末尾加 `#headers=` 和 URL 编码后的 JSON，例如 `#headers=%7B%22Authorization%22%3A%22Bearer%20xxx%22%7D`。
+**订阅链接**只保存在本机钥匙串里，不写进文件；用量历史只存数字，保存在本机约 60 天。深度检测和解锁检测会把节点的出口 IP 提交给第三方查询服务；其中按 IP 查数据库的请求先从手机直连发出，这些服务会看到你的手机 IP。任何会返回 `Subscription-Userinfo` 头的地址都能用；需要额外请求头（比如自建面板的 `Authorization`）时，在链接末尾加 `#headers=` 和 URL 编码后的 JSON，例如 `#headers=%7B%22Authorization%22%3A%22Bearer%20xxx%22%7D`。
 
 ---
 
