@@ -227,20 +227,29 @@ export function leafNodes(d: LoonData, name: string, seen = new Set<string>()): 
   return [...new Set(out)]
 }
 
-export function pickerView(d: LoonData, prefs: Prefs, size: number, open = ''): { group?: Group; via: Hop[]; nodes: string[]; total: number; page: number; pages: number; groups: number } {
-  const groups = shownGroups(d, prefs).filter(g => g.subs.length)
+/** 切换器轮换的组: 常用策略组里能手动选的; 没设常用时取前 4 个能手动选的. 自动类的组 Loon 自己选节点, 放进来也选不了 */
+export function pickGroups(d: LoonData, prefs: Prefs): Group[] {
+  const pool = (prefs.groups.length ? shownGroups(d, prefs) : d.groups).filter(g => g.subs.length && !isAuto(g.name))
+  return prefs.groups.length ? pool : pool.slice(0, 4)
+}
+
+export function pickerView(d: LoonData, prefs: Prefs, size: number, open = ''): { group?: Group; via: Hop[]; nodes: string[]; total: number; page: number; pages: number; groups: number; next?: string } {
+  const groups = pickGroups(d, prefs)
   const opened = d.groups.find(g => g.name === open)
   if (!groups.length && !opened) return { via: [], nodes: [], total: 0, page: 0, pages: 1, groups: 0 }
   const pick = readPick()
-  const top = opened ?? groups[pick.g % groups.length]
+  const index = wrap(pick.g, groups.length || 1)
+  const top = opened ?? groups[index]
+  const next = groups.length > 1 ? groups[(index + 1) % groups.length].name : undefined
   // 只进一层: 点进下层策略组后直接列出它下面所有节点, 不再一层层点
   const inner = d.groups.find(x => x.name === pick.path?.[0] && top.subs.includes(x.name))
   const group = inner ?? top
   const via: Hop[] = inner ? [{ group: top.name, node: inner.name }] : []
-  const all = inner ? leafNodes(d, inner.name) : top.subs.filter(n => !/^REJECT/i.test(n))
+  // 按网络切换的组同一个成员会出现好几次, 去重
+  const all = inner ? leafNodes(d, inner.name) : [...new Set(top.subs.filter(n => !/^REJECT/i.test(n)))]
   const pages = Math.max(1, Math.ceil(all.length / size))
   const page = wrap(pick.p, pages)
-  return { group, via, nodes: all.slice(page * size, (page + 1) * size), total: all.length, page, pages, groups: groups.length }
+  return { group, via, nodes: all.slice(page * size, (page + 1) * size), total: all.length, page, pages, groups: groups.length, next }
 }
 
 export const nextPickGroup = () => { const x = readPick(); AppStorage.set(PICK_KEY, { g: x.g + 1, p: 0 }) }

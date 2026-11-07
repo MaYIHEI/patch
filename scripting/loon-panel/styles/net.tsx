@@ -304,7 +304,7 @@ export function PickerStyle(props: { ctx: Ctx }) {
   const { th, loon } = ctx
   if (!loon) return <NoLoon ctx={ctx} title="切换器" />
   const open = ctx.inApp ? '' : focusOf(ctx.size)
-  const { group: g, via, nodes, total, page, pages, groups } = pickerView(loon, ctx.prefs, ctx.size === 'l' ? 15 : 6, open)
+  const { group: g, via, nodes, total, page, pages, groups, next } = pickerView(loon, ctx.prefs, ctx.size === 'l' ? 15 : 6, open)
   if (!g) return <NoLoon ctx={ctx} title="切换器" />
   // 上面是当前节点, 下面是选项; 选项少时卡片定高, 多时撑满, 翻页时卡片大小不变
   const few = total <= (ctx.size === 'l' ? 6 : 3)
@@ -340,7 +340,7 @@ export function PickerStyle(props: { ctx: Ctx }) {
           <HStack spacing={8}>
             {last ? <Tap ctx={ctx} intent={LeavePickIntent(undefined)}><Text font={11} foregroundStyle={th.accent} lineLimit={1}>返回</Text></Tap> : null}
             {!last && open ? <Tap ctx={ctx} intent={ClosePickIntent(undefined)}><Text font={11} foregroundStyle={th.accent} lineLimit={1}>返回</Text></Tap> : null}
-            {!last && !open && groups > 1 ? <Tap ctx={ctx} intent={NextPickGroupIntent(undefined)}><Text font={11} foregroundStyle={th.accent} lineLimit={1}>换组</Text></Tap> : null}
+            {!last && !open && groups > 1 && next ? <Tap ctx={ctx} intent={NextPickGroupIntent(undefined)}><Text font={11} foregroundStyle={th.accent} lineLimit={1} minScaleFactor={0.8}>{`换到 ${next} ›`}</Text></Tap> : null}
             <Pager ctx={ctx} page={page} pages={pages} turn={step => TurnPickPageIntent({ step })} />
           </HStack>
         )}
