@@ -301,7 +301,7 @@ function PickerNow(props: { ctx: Ctx; group: Group; full: boolean }) {
 /** 策略组卡片第一层: 列出策略组 (设了常用就只列常用), 点一个进去选节点 */
 function PickerGroups(props: { ctx: Ctx }) {
   const { ctx } = props
-  const per = ctx.size === 'l' ? 12 : 6   // 一行 3 个: 中号 2 行, 大号 4 行, 卡片和策略组卡片一样高
+  const per = ctx.size === 'l' ? 15 : 6   // 一行 3 个: 中号 2 行, 大号 5 行 (真机上 4 行下面还空一行)
   const { list, page, pages } = groupPage(ctx.loon!, ctx.prefs, per)
   const rows = chunk(list, 3)
   return (
