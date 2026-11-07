@@ -9,6 +9,7 @@
 
 import { fetch } from 'scripting'
 import { md5hex, encB64, decStr, nonce8, cellNumFor } from './crypto'
+import { record, clearHistory } from './history'
 
 // DOM 的 Storage class 类型与 Scripting 全局 Storage 冲突，手动 cast
 const AppStorage = Storage as unknown as {
@@ -69,6 +70,8 @@ export type UserInfo = {
   netYears?: number
 }
 
+export type LedgerItem = { name: string; amount: number; time: number }
+
 export type Account = {
   /** 话费余额, 元 */
   balance: number
@@ -82,6 +85,8 @@ export type Account = {
   voice?: { total: number; used: number; remain: number }
   points?: number
   user?: UserInfo
+  /** 账本里的扣费记录, 新的在前; 如「本月实时话费」 */
+  ledger?: LedgerItem[]
   /** 尾号 4 位 */
   phoneTail: string
   stale: boolean
@@ -118,6 +123,7 @@ export async function loadAccount(selector?: string): Promise<Account> {
   try {
     const account = await withSession(tel, login, cookie => queryAll(cookie, query))
     writeCache(tel, account)
+    record(tel, account)
     return account
   } catch (err) {
     if (cached && Date.now() - cached.fetchedAt < STALE_OK_MS) return { ...cached, stale: true }
@@ -320,10 +326,28 @@ function buildAccount(fee: any, ledger: any, remain: any, points: any, user: any
       channel: u.userChannel || undefined,
       netYears: parseNetYears(u.userAge),
     } : undefined,
+    ledger: parseLedger(book),
     phoneTail: tel.slice(-4),
     stale: false,
     fetchedAt: Date.now(),
   }
+}
+
+// 账本每个账户下有一个扣费数组 (元素带 expendNum / expendName / expendTime), 字段名没有抓到稳定样本, 按元素形状找
+function parseLedger(book: any): LedgerItem[] | undefined {
+  const items: LedgerItem[] = []
+  for (const acc of book?.accoutQryInfo ?? []) {
+    for (const v of Object.values(acc ?? {})) {
+      if (!Array.isArray(v) || v[0]?.expendNum === undefined) continue
+      for (const x of v) {
+        const amount = num(x.expendNum)
+        const m = String(x.expendTime ?? '').match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})/)
+        if (amount === undefined || !m) continue
+        items.push({ name: String(x.expendName ?? ''), amount, time: new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]).getTime() })
+      }
+    }
+  }
+  return items.length ? items.sort((a, b) => b.time - a.time) : undefined
 }
 
 // ────────────────────────────────────────────────────────────
@@ -405,6 +429,7 @@ export async function removeAccount(tel: string): Promise<void> {
   Keychain.remove(KEYCHAIN_LOGIN + tel)
   Keychain.remove(KEYCHAIN_SESSION + tel)
   AppStorage.remove(CACHE_KEY + tel)
+  clearHistory(tel)
 }
 
 /** 清掉所有账号的查询缓存, 下次刷新实时查询 */

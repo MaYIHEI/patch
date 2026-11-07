@@ -1,80 +1,98 @@
 // cmcc / index.tsx
-// 配置脚本 — 在 Scripting app 里跑, 不是 widget
+// App 页面 — 在 Scripting 里运行, 不是 widget. 写法同 loon-panel
 //
-// 用途:
-// 1) 第一次配置: 从 BoxJS 导入登录凭证, 存到 Keychain
-// 2) 查看当前数据 / 立即刷新
-// 3) 多账号切换 / 删除, 检查脚本更新
+// 底栏三页: 小组件 (预览、样式库、外观) / 账号 (导入、每个号的数据) / 设置 (刷新间隔、BoxJS、更新)
 
 import {
   Button,
-  Form,
+  Tab,
+  TabView,
+  useObservable,
+  ColorPicker,
   HStack,
-  Image,
-  LabeledContent,
   Navigation,
+  NavigationLink,
   NavigationStack,
-  RoundedRectangle,
+  Picker,
+  Circle,
+  ScrollView,
   Script,
-  Section,
+  Slider,
   Spacer,
   Text,
   TextField,
+  Toggle,
   VStack,
+  ZStack,
+  Widget,
+  Path,
   fetch,
   useEffect,
   useState,
 } from 'scripting'
 import type { Color } from 'scripting'
-import {
-  importFromBoxJS,
-  removeAccount,
-  clearCache,
-  listAccounts,
-  loadAccount,
-  feeRaw,
-  formatFlow,
-  CmccError,
-  type Account,
-  type FlowPart,
-} from './api'
+
+import { importFromBoxJS, removeAccount, clearCache, listAccounts, feeRaw, CmccError } from './api'
+import { Page, Card, Stage, Grid, Block, Panel, NavTile, Group, ActionRow, InfoRow, PickerRow, Chip, SmallButton } from './kit'
+import { getData, setData, getLook, setLook, getDefaults, setDefault, RECOMMENDED_BG, type Look, type Family, type DataPrefs } from './settings'
+import { metersOf, amount, starText, pointsText, netText, errorText, hhmm, chunk, type Slot } from './ui'
+import { STYLES, MULTI, NEEDS_HIST, stylesFor, styleById, paramOf, renderStyle, type StyleDef } from './styles/index'
+import { loadSlots, sampleSlots } from './slots'
 
 declare const Safari: { openURL(url: string): Promise<boolean> }
 
-const LOGO_URL = 'https://raw.githubusercontent.com/MaYIHEI/pin/refs/heads/main/app/cmcc.png'
-const REMOTE_META = 'https://raw.githubusercontent.com/MaYIHEI/patch/main/scripting/cmcc/script.json'
-const INSTALL_URL = 'scripting://import_scripts?urls=%5B%22https%3A%2F%2Fwww.imarkr.com%2Fapi%2Fgithub%2Fdownload%2FMaYIHEI%2Fpatch%2Fscripting%2Fcmcc.zip%22%5D'
+// testing 分支: 检查更新读 testing, 合并到 main 时改回 main
+const BRANCH = 'testing'
+const REMOTE_META = `https://raw.githubusercontent.com/MaYIHEI/patch/${BRANCH}/scripting/cmcc/script.json`
+const INSTALL_URL = `https://www.scripting.fun/import_scripts/?urls=${encodeURIComponent(JSON.stringify([`https://www.imarkr.com/api/github/download/MaYIHEI/patch/scripting/cmcc.zip?branch=${BRANCH}`]))}`
 const HOMEPAGE = 'https://github.com/MaYIHEI/patch/tree/main/scripting/cmcc'
+const PLUGIN_PAGE = 'https://github.com/MaYIHEI/paperclip/tree/main/app/cmcc'
+const BG_PATH = () => Path.join(FileManager.appGroupDocumentsDirectory, 'cmcc', 'background.jpg')
 
 async function main() {
-  await Navigation.present({ element: <SetupScreen /> })
+  await Navigation.present({ element: <Home />, modalPresentationStyle: 'fullScreen', swipeBackBehavior: 'dismiss' })
   Script.exit()
 }
 
 // ─────────────────────────────────────────────────────────────
-// 工具
+// 共用
 // ─────────────────────────────────────────────────────────────
-function remainText(f?: FlowPart): string {
-  return f ? formatFlow(f.remainMB) : '-'
+type Shared = { slots: Slot[]; reload: (force?: boolean) => Promise<void> }
+
+const BOX: Record<Family, { width: number; height: number }> = {
+  systemSmall: { width: 158, height: 158 },
+  systemMedium: { width: 338, height: 158 },
+  systemLarge: { width: 338, height: 354 },
+  accessoryCircular: { width: 76, height: 76 },
+  accessoryRectangular: { width: 172, height: 76 },
+  accessoryInline: { width: 172, height: 34 },
 }
 
-function flowText(f?: FlowPart): string {
-  return f ? `剩 ${formatFlow(f.remainMB)} / ${formatFlow(f.totalMB)}` : '-'
+const FAMILY_NAME: Record<Family, string> = {
+  systemSmall: '小号', systemMedium: '中号', systemLarge: '大号', accessoryCircular: '锁屏圆形', accessoryRectangular: '锁屏长条', accessoryInline: '锁屏单行',
 }
 
-function timeText(epochMs: number): string {
-  const d = new Date(epochMs)
-  const pad = (n: number) => n.toString().padStart(2, '0')
-  return `${d.getMonth() + 1}月${d.getDate()}日 ${pad(d.getHours())}:${pad(d.getMinutes())}`
+type SizeTab = 'systemSmall' | 'systemMedium' | 'systemLarge' | 'lock'
+
+/** 预览用的号: 单号样式只给第一个, 多号样式给全部 */
+const slotsFor = (style: StyleDef, all: Slot[]) => (MULTI.includes(style.id) ? all : all.slice(0, 1))
+
+/** 有真实数据用真实的, 没有用示例 */
+const previewSlots = (p: Shared) => (p.slots.some(s => s.account) ? p.slots : sampleSlots())
+
+/** 按真实尺寸渲染一个小组件; scale < 1 时整体缩小 */
+function Preview(props: { style: StyleDef; family: Family; slots: Slot[]; look?: Look; scale?: number }) {
+  const box = BOX[props.family]
+  const k = props.scale ?? 1
+  const view = renderStyle(props.style, props.family, { inApp: true, slots: slotsFor(props.style, props.slots), look: props.look ?? getLook(), page: 0 })
+  const room = props.family.startsWith('system') ? 12 : 0
+  return (
+    <ZStack frame={{ width: box.width * k, height: (box.height + room) * k }}>
+      <VStack frame={{ width: box.width, height: box.height + room }} scaleEffect={k}>{view}</VStack>
+    </ZStack>
+  )
 }
 
-function errorText(e: unknown): string {
-  if (e instanceof CmccError && e.kind === 'auth') return '登录凭证已失效, 划掉中国移动 App 重开以重新抓取, 再导入'
-  if (e instanceof CmccError && e.kind === 'risk') return '中国移动要求安全验证: 打开中国移动 App 按提示完成验证, 再点「立即刷新」'
-  return (e as Error).message
-}
-
-/** "0.10.0" > "0.9.1" */
 function isNewer(remote: string, local: string): boolean {
   const a = remote.split('.').map(Number), b = local.split('.').map(Number)
   for (let i = 0; i < Math.max(a.length, b.length); i++) {
@@ -83,298 +101,524 @@ function isNewer(remote: string, local: string): boolean {
   return false
 }
 
-// ─────────────────────────────────────────────────────────────
-// 行部件 — iOS 设置风格: 彩色圆角方块图标 + 标题
-// ─────────────────────────────────────────────────────────────
-function IconSquare(props: { icon: string; color: Color }) {
-  return (
-    <Image
-      systemName={props.icon}
-      font={13}
-      fontWeight="semibold"
-      foregroundStyle="white"
-      frame={{ width: 28, height: 28 }}
-      background={<RoundedRectangle cornerRadius={7} fill={props.color} />}
-    />
-  )
-}
+const tailsOf = (slots: Slot[]) => slots.filter(s => s.account).map(s => s.account!.phoneTail)
 
-function InfoRow(props: { icon: string; color: Color; title: string; value: string }) {
-  return (
-    <LabeledContent
-      label={
-        <HStack spacing={12}>
-          <IconSquare icon={props.icon} color={props.color} />
-          <Text>{props.title}</Text>
-        </HStack>
-      }
-      value={props.value}
-    />
-  )
-}
+/** 某个样式的桌面参数: 多号样式带上所有尾号 */
+const paramFor = (s: StyleDef, slots: Slot[]) => paramOf(s, MULTI.includes(s.id) && s.id !== 'Q' && s.id !== 'T' ? tailsOf(slots).slice(0, 2) : [])
 
-function ActionRow(props: { icon: string; color: Color; title: string; detail?: string; disabled?: boolean; action: () => void }) {
-  return (
-    <Button action={props.action} disabled={props.disabled}>
-      <HStack spacing={12}>
-        <IconSquare icon={props.icon} color={props.color} />
-        <Text foregroundStyle="label">{props.title}</Text>
-        <Spacer />
-        {props.detail ? <Text foregroundStyle="secondaryLabel">{props.detail}</Text> : null}
-      </HStack>
-    </Button>
-  )
-}
-
-function Metric(props: { title: string; value: string }) {
-  return (
-    <VStack spacing={2} frame={{ maxWidth: 'infinity' }}>
-      <Text font={17} fontWeight="semibold" fontDesign="rounded">{props.value}</Text>
-      <Text font={12} foregroundStyle="secondaryLabel">{props.title}</Text>
-    </VStack>
-  )
-}
-
-/** 顶部账号卡: 图标 + 品牌 + 大号余额, 下面三项核心数据 */
-function Hero(props: { account: Account | null; hint: string }) {
-  const { account, hint } = props
-  const sub = account
-    ? [account.user?.brand, account.phoneTail ? `尾号 ${account.phoneTail}` : ''].filter(Boolean).join(' · ')
-    : hint
-  return (
-    <VStack spacing={14} padding={{ vertical: 6 }}>
-      <HStack spacing={14}>
-        <Image imageUrl={LOGO_URL} resizable frame={{ width: 52, height: 52 }} clipShape={{ type: 'rect', cornerRadius: 12 }} />
-        <VStack alignment="leading" spacing={3}>
-          <Text font={17} fontWeight="semibold">中国移动</Text>
-          <Text font={13} foregroundStyle="secondaryLabel">{sub}</Text>
-        </VStack>
-        <Spacer />
-        {account ? (
-          <VStack alignment="trailing" spacing={1}>
-            <Text font={28} fontWeight="semibold" fontDesign="rounded" foregroundStyle={account.balance < 10 ? 'systemRed' : 'label'}>
-              {account.balance.toFixed(2)}
-            </Text>
-            <Text font={12} foregroundStyle="secondaryLabel">话费余额 · 元</Text>
-          </VStack>
-        ) : null}
-      </HStack>
-      {account ? (
-        <HStack>
-          <Metric title="通用剩余" value={remainText(account.general)} />
-          <Metric title="定向剩余" value={remainText(account.targeted)} />
-          <Metric title="积分" value={account.points !== undefined ? String(account.points) : '-'} />
-        </HStack>
-      ) : null}
-    </VStack>
-  )
-}
+const notes = (s: StyleDef, real: boolean) => [!real ? '示例数据' : '', NEEDS_HIST.includes(s.id) ? '需要几天历史' : ''].filter(Boolean).join(' · ')
 
 // ─────────────────────────────────────────────────────────────
-// 页面
+// 底栏
 // ─────────────────────────────────────────────────────────────
-function SetupScreen() {
+function Home() {
   const dismiss = Navigation.useDismiss()
-  const [host, setHost] = useState('boxjs.com')
-  const [account, setAccount] = useState<Account | null>(null)
-  const [status, setStatus] = useState('')
+  const [slots, setSlots] = useState<Slot[]>([])
+  const [tick, setTick] = useState(0)
+  const tab = useObservable<number>(0)
+
+  useEffect(() => { reload() }, [])
+
+  async function reload(force = false) {
+    if (force) clearCache()
+    setSlots(listAccounts().length ? await loadSlots(styleById('T')!, []) : [])
+    setTick(tick + 1)
+    Widget.reloadAll()
+  }
+
+  const shared: Shared = { slots, reload }
+  const close = <Button title="关闭" action={dismiss} />
+  const onChanged = () => setTick(tick + 1)
+
+  return (
+    <TabView selection={tab}>
+      <Tab title="小组件" systemImage="square.grid.2x2.fill" value={0}>
+        <NavigationStack><WidgetTab shared={shared} close={close} onChanged={onChanged} toAccounts={() => tab.setValue(1)} /></NavigationStack>
+      </Tab>
+      <Tab title="账号" systemImage="person.crop.circle.fill" value={1}>
+        <NavigationStack><AccountsTab {...shared} close={close} /></NavigationStack>
+      </Tab>
+      <Tab title="设置" systemImage="gearshape.fill" value={2}>
+        <NavigationStack><SettingsTab {...shared} close={close} /></NavigationStack>
+      </Tab>
+    </TabView>
+  )
+}
+
+const GALLERY: Partial<Record<Family, number>> = { systemSmall: 0.8, systemMedium: 0.62, systemLarge: 0.5 }
+
+// ─────────────────────────────────────────────────────────────
+// 小组件页: 当前默认样式的预览 + 同尺寸其他样式 + 样式库 / 外观
+// ─────────────────────────────────────────────────────────────
+function WidgetTab(props: { shared: Shared; close: any; onChanged: () => void; toAccounts: () => void }) {
+  const { shared } = props
+  const [family, setFamily] = useState<Family>('systemMedium')
+  const real = shared.slots.some(s => s.account)
+  const data = previewSlots(shared)
+  const look = getLook()
+  const style = styleById(getDefaults()[family]) ?? stylesFor(family)[0]
+  const more = stylesFor(family).filter(x => x.id !== style.id)
+  return (
+    <Page title="小组件" large bar={{ cancellationAction: props.close, topBarTrailing: <Button title="刷新" systemImage="arrow.clockwise" action={() => shared.reload(true)} /> }}>
+      {!listAccounts().length ? (
+        <Card inner={14}>
+          <HStack spacing={12}>
+            <Chip icon="person.crop.circle.badge.plus" />
+            <VStack alignment="leading" spacing={2}>
+              <Text font={15} foregroundStyle="label">还没有导入账号</Text>
+              <Text font={12} foregroundStyle="secondaryLabel">下面是示例数据; 到「账号」从 BoxJS 导入</Text>
+            </VStack>
+            <Spacer />
+            <SmallButton title="去导入" action={props.toAccounts} />
+          </HStack>
+        </Card>
+      ) : null}
+      <VStack spacing={14} frame={{ maxWidth: 'infinity' }}>
+        <Picker title="尺寸" value={family} onChanged={(v: any) => setFamily(v as Family)} pickerStyle="segmented">
+          <Text tag="systemSmall">小</Text>
+          <Text tag="systemMedium">中</Text>
+          <Text tag="systemLarge">大</Text>
+          <Text tag="accessoryRectangular">锁屏</Text>
+        </Picker>
+        <Stage>
+          <Preview style={style} family={family} slots={data} />
+          <Text font={12} foregroundStyle="secondaryLabel">{[`${style.name} · ${FAMILY_NAME[family]}`, notes(style, real)].filter(Boolean).join(' · ')}</Text>
+        </Stage>
+      </VStack>
+      {more.length ? (
+        <Block title="这个尺寸还有">
+          <ScrollView axes="horizontal" scrollIndicator="hidden">
+            <HStack spacing={12} alignment="top">
+              {more.map(x => (
+                <NavigationLink destination={<StyleDetail style={x} family={family} slots={data} real={real} onChanged={props.onChanged} />} buttonStyle="plain">
+                  <VStack spacing={6}>
+                    <Preview style={x} family={family} slots={data} scale={GALLERY[family] ?? 1} />
+                    <Text font={12} foregroundStyle="secondaryLabel" lineLimit={1}>{x.name}</Text>
+                  </VStack>
+                </NavigationLink>
+              ))}
+            </HStack>
+          </ScrollView>
+        </Block>
+      ) : null}
+      <VStack alignment="leading" spacing={8}>
+        <Grid>
+          <NavTile icon="square.grid.2x2" title="换个样式" value={`共 ${STYLES.length} 种`} destination={<StyleLibrary {...shared} start={family.startsWith('accessory') ? 'lock' : family as SizeTab} onChanged={props.onChanged} />} />
+          <NavTile icon="paintpalette" title="外观" value={look.mode === 'plain' ? '素净' : look.bgType === 'image' ? '自定义图片' : '自定义纯色'} destination={<AppearancePage {...shared} onChanged={props.onChanged} />} />
+        </Grid>
+        <Text font={12} foregroundStyle="secondaryLabel" padding={{ horizontal: 20 }}>加到桌面: 长按桌面空白处 → + → 搜 Scripting → 选 cmcc; 长按小组件 → 编辑小组件 → 参数里填「样式名 尾号」。</Text>
+      </VStack>
+    </Page>
+  )
+}
+
+function StyleLibrary(props: Shared & { start: SizeTab; onChanged: () => void }) {
+  const [tab, setTab] = useState<SizeTab>(props.start)
+  const real = props.slots.some(s => s.account)
+  const [sample, setSample] = useState(!real)
+  const [tick, setTick] = useState(0)
+  const data = sample ? sampleSlots() : previewSlots(props)
+  const defaults = getDefaults()
+  const changed = () => { setTick(tick + 1); props.onChanged() }
+
+  const card = (s: StyleDef, f: Family, scale: number) => (
+    <NavigationLink destination={<StyleDetail style={s} family={f} slots={data} real={real && !sample} onChanged={changed} />}>
+      <VStack spacing={6}>
+        <Preview style={s} family={f} slots={data} scale={scale} />
+        <HStack spacing={4}>
+          <Text font={13} fontWeight="medium" foregroundStyle="label">{s.name}</Text>
+          {defaults[f] === s.id ? <Text font={10} foregroundStyle="secondaryLabel">默认</Text> : null}
+        </HStack>
+      </VStack>
+    </NavigationLink>
+  )
+
+  const grid = (f: Family) => {
+    const cols = f === 'systemSmall' || f.startsWith('accessory') ? 2 : 1
+    const scale = f === 'systemLarge' ? 0.92 : 1
+    return (
+      <VStack spacing={16}>
+        {chunk(stylesFor(f), cols).map(row => (
+          <HStack spacing={12} alignment="top">
+            {row.map(s => <VStack frame={{ maxWidth: 'infinity' }}>{card(s, f, scale)}</VStack>)}
+            {row.length < cols ? <VStack frame={{ maxWidth: 'infinity' }} /> : null}
+          </HStack>
+        ))}
+      </VStack>
+    )
+  }
+
+  return (
+    <Page title="样式库">
+      <VStack alignment="leading" spacing={18}>
+        <Picker title="尺寸" value={tab} onChanged={(v: any) => setTab(v as SizeTab)} pickerStyle="segmented">
+          <Text tag="systemSmall">小</Text>
+          <Text tag="systemMedium">中</Text>
+          <Text tag="systemLarge">大</Text>
+          <Text tag="lock">锁屏</Text>
+        </Picker>
+        <Toggle title="示例预览" value={sample} onChanged={setSample} />
+        {tab === 'lock' ? (
+          <VStack alignment="leading" spacing={24}>
+            <VStack alignment="leading" spacing={12}><Text font={17} fontWeight="semibold" padding={{ horizontal: 4 }}>圆形</Text>{grid('accessoryCircular')}</VStack>
+            <VStack alignment="leading" spacing={12}><Text font={17} fontWeight="semibold" padding={{ horizontal: 4 }}>长条</Text>{grid('accessoryRectangular')}</VStack>
+            <VStack alignment="leading" spacing={12}><Text font={17} fontWeight="semibold" padding={{ horizontal: 4 }}>单行</Text>{grid('accessoryInline')}</VStack>
+          </VStack>
+        ) : grid(tab)}
+      </VStack>
+    </Page>
+  )
+}
+
+function StyleDetail(props: { style: StyleDef; family: Family; slots: Slot[]; real: boolean; onChanged: () => void }) {
+  const { style, family } = props
+  const [note, setNote] = useState('')
+  const param = paramFor(style, props.slots)
+  const sizes = (Object.keys(style.views) as Family[]).map(f => FAMILY_NAME[f]).join('、')
+  const lock = family.startsWith('accessory')
+
+  async function use() {
+    setDefault(family, style.id)
+    await Pasteboard.setString(param)
+    Widget.reloadAll()
+    props.onChanged()
+    setNote(`已设为${FAMILY_NAME[family]}默认样式, 参数「${param}」已复制`)
+  }
+
+  return (
+    <Page title={style.name}>
+      <Stage>
+        <Preview style={style} family={family} slots={props.slots} scale={family === 'systemLarge' ? 0.92 : 1} />
+        {notes(style, props.real) ? <Text font={12} foregroundStyle="secondaryLabel">{notes(style, props.real)}</Text> : null}
+      </Stage>
+      <Block note={`${style.desc}。支持: ${sizes}`}>
+        <Button action={use} buttonStyle="borderedProminent" controlSize="large" frame={{ maxWidth: 'infinity' }}>
+          <Text font={16} fontWeight="semibold" frame={{ maxWidth: 'infinity' }}>用这个样式</Text>
+        </Button>
+      </Block>
+      <Block note={note || (lock
+        ? `锁屏: 长按锁屏 → 自定 → 添加小组件 → Scripting → cmcc, 参数填「${param}」。不填用默认样式。`
+        : `桌面: 长按小组件 → 编辑小组件 → 参数里粘贴「${param}」, 后面可加尾号选号 (如「${style.name} 1234」)。不填用这个尺寸的默认样式。`)} />
+    </Page>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// 外观: 素净 / 自定义 (纯色或图片), 顶部实时预览
+// ─────────────────────────────────────────────────────────────
+function Swatches(props: { colors: Color[]; value: Color; onPick: (c: Color) => void }) {
+  return (
+    <HStack spacing={10}>
+      {props.colors.map(c => (
+        <Button action={() => props.onPick(c)} buttonStyle="plain">
+          <Circle fill={c} frame={{ width: 28, height: 28 }}
+            overlay={<Circle stroke={{ shapeStyle: c === props.value ? 'systemBlue' : 'separator', strokeStyle: { lineWidth: c === props.value ? 3 : 1 } }} />} />
+        </Button>
+      ))}
+    </HStack>
+  )
+}
+
+function AppearancePage(props: Shared & { onChanged: () => void }) {
+  const [look, setLookState] = useState<Look>(getLook())
+  const [fam, setFam] = useState<Family>('systemMedium')
+  const [note, setNote] = useState('')
+  const data = previewSlots(props)
+  const style = styleById(getDefaults()[fam]) ?? stylesFor(fam)[0]
+
+  function update(patch: Partial<Look>) {
+    const next = { ...look, ...patch }
+    setLookState(next)
+    setLook(next)
+    Widget.reloadAll()
+    props.onChanged()
+  }
+
+  async function pickImage() {
+    const [img] = await Photos.pickPhotos(1)
+    if (!img) return
+    // 缩到长边 1200 再存, 小组件内存只有 30MB 左右
+    const k = Math.min(1, 1200 / Math.max(img.width, img.height))
+    const small = img.preparingThumbnail({ width: Math.round(img.width * k), height: Math.round(img.height * k) }) ?? img
+    const jpg = small.toJPEGData(0.85)
+    if (!jpg) return setNote('图片转换失败')
+    await FileManager.createDirectory(Path.join(FileManager.appGroupDocumentsDirectory, 'cmcc'), true)
+    await FileManager.writeAsData(BG_PATH(), jpg)
+    update({ bgType: 'image', image: BG_PATH() })
+    setNote('')
+  }
+
+  return (
+    <Page title="外观">
+      <Stage>
+        <Preview style={style} family={fam} slots={data} look={look} scale={fam === 'systemLarge' ? 0.8 : 1} />
+        <Text font={12} foregroundStyle="secondaryLabel">{`${style.name} · ${FAMILY_NAME[fam]}`}</Text>
+      </Stage>
+      <Picker title="尺寸" value={fam} onChanged={(v: any) => setFam(v as Family)} pickerStyle="segmented">
+        <Text tag="systemSmall">小</Text>
+        <Text tag="systemMedium">中</Text>
+        <Text tag="systemLarge">大</Text>
+      </Picker>
+
+      <Panel title="外观" note={look.mode === 'plain' ? '浅色白底、深色深灰底, 跟随系统; 只有进度条和状态带颜色。' : '背景可选纯色或相册图片, 文字颜色可自动或手动选; 用图片时可调暗化保证文字清楚。'}>
+        <Picker title="外观" value={look.mode} onChanged={(v: any) => update({ mode: v })} pickerStyle="segmented">
+          <Text tag="plain">素净</Text>
+          <Text tag="custom">自定义</Text>
+        </Picker>
+      </Panel>
+
+      {look.mode === 'custom' ? (
+        <Panel title="背景" note={note || undefined}>
+          <Picker title="背景" value={look.bgType} onChanged={(v: any) => update({ bgType: v })} pickerStyle="segmented">
+            <Text tag="color">纯色</Text>
+            <Text tag="image">图片</Text>
+          </Picker>
+          {look.bgType === 'color' ? (
+            <VStack alignment="leading" spacing={10}>
+              <Swatches colors={RECOMMENDED_BG} value={look.color} onPick={c => update({ color: c })} />
+              <ColorPicker title="自选颜色" value={look.color} onChanged={(c: Color) => update({ color: c })} supportsOpacity={false} />
+            </VStack>
+          ) : (
+            <VStack alignment="leading" spacing={10}>
+              <Button title={look.image ? '换一张图片' : '从相册选择'} action={pickImage} />
+              {look.image ? (
+                <VStack alignment="leading" spacing={4}>
+                  <Text font={13} foregroundStyle="secondaryLabel">{`模糊 ${Math.round(look.blur)}`}</Text>
+                  <Slider min={0} max={20} value={look.blur} onChanged={(v: number) => update({ blur: v })} />
+                  <Text font={13} foregroundStyle="secondaryLabel">{`暗化 ${Math.round(look.dim * 100)}%`}</Text>
+                  <Slider min={0} max={0.7} value={look.dim} onChanged={(v: number) => update({ dim: v })} />
+                </VStack>
+              ) : null}
+            </VStack>
+          )}
+        </Panel>
+      ) : null}
+
+      {look.mode === 'custom' ? (
+        <Panel title="文字颜色" note="自动: 纯色背景按亮度在黑白之间选, 图片背景用白色。灰字由文字色调淡得到, 红绿橙状态色不变。">
+          <Picker title="文字颜色" value={look.text} onChanged={(v: any) => update({ text: v })} pickerStyle="segmented">
+            <Text tag="auto">自动</Text>
+            <Text tag="white">白色</Text>
+            <Text tag="black">黑色</Text>
+            <Text tag="custom">自选</Text>
+          </Picker>
+          {look.text === 'custom' ? (
+            <ColorPicker title="自选文字颜色" value={look.textColor} onChanged={(c: Color) => update({ textColor: c })} supportsOpacity={false} />
+          ) : null}
+        </Panel>
+      ) : null}
+    </Page>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// 账号页: 每个号一张卡, 导入和刷新
+// ─────────────────────────────────────────────────────────────
+function errorWords(e: unknown): string {
+  if (e instanceof CmccError && e.kind === 'auth') return '登录凭证已失效, 划掉中国移动 App 重开以重新抓取, 再导入'
+  if (e instanceof CmccError && e.kind === 'risk') return '中国移动要求安全验证: 打开中国移动 App 按提示完成验证, 再刷新'
+  return (e as Error).message
+}
+
+function AccountCard(props: { slot: Slot }) {
+  const { slot } = props
+  const a = slot.account
+  if (!a) {
+    const msg = errorText(slot.error)
+    return (
+      <Card inner={14}>
+        <VStack alignment="leading" spacing={4}>
+          <Text font={16} fontWeight="semibold" foregroundStyle="label">{slot.name}</Text>
+          <Text font={13} foregroundStyle="systemOrange">{msg.title}</Text>
+          <Text font={12} foregroundStyle="secondaryLabel">{msg.hint}</Text>
+        </VStack>
+      </Card>
+    )
+  }
+  return (
+    <Card inner={14}>
+      <VStack alignment="leading" spacing={10}>
+        <HStack spacing={12}>
+          <VStack alignment="leading" spacing={2}>
+            <Text font={16} fontWeight="semibold" foregroundStyle="label">{`尾号 ${a.phoneTail}`}</Text>
+            <Text font={12} foregroundStyle="secondaryLabel">{[a.user?.brand, a.user?.starLevel ? starText(a) : '', a.user?.netYears !== undefined ? `网龄 ${netText(a)}` : ''].filter(Boolean).join(' · ')}</Text>
+          </VStack>
+          <Spacer />
+          <VStack alignment="trailing" spacing={1}>
+            <Text font={22} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={a.balance < 10 ? 'systemRed' : 'label'}>{a.balance.toFixed(2)}</Text>
+            <Text font={11} foregroundStyle="secondaryLabel">{a.balance < 0 ? '已欠费' : '余额'}</Text>
+          </VStack>
+        </HStack>
+        <HStack spacing={8}>
+          {metersOf(a).map(m => (
+            <VStack alignment="leading" spacing={2} frame={{ maxWidth: 'infinity', alignment: 'leading' }}>
+              <Text font={11} foregroundStyle="secondaryLabel">{m.label}</Text>
+              <Text font={14} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={m.percent < 20 ? 'systemRed' : 'label'}>{amount(m.key, m.remain)}</Text>
+            </VStack>
+          ))}
+        </HStack>
+      </VStack>
+    </Card>
+  )
+}
+
+function AccountsTab(props: Shared & { close: any }) {
+  const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
-  const [tels, setTels] = useState<string[]>([])
-  const [current, setCurrent] = useState('')
-  const [updateText, setUpdateText] = useState('')
-  const [raw, setRaw] = useState('')
-  const version = Script.metadata.version ?? '-'
-  const configured = tels.length > 0
+  const host = getData().host
 
-  useEffect(() => {
-    const list = listAccounts()
-    setTels(list)
-    if (list.length > 0) select(list[0])
-  }, [])
-
-  async function run(task: () => Promise<Account>) {
+  async function doImport() {
     setBusy(true)
-    setStatus('')
+    setNote('从 BoxJS 导入...')
     try {
-      setAccount(await task())
+      const tels = await importFromBoxJS(host)
+      setNote(`已导入 ${tels.length} 个号`)
+      await props.reload()
     } catch (e) {
-      setStatus(errorText(e))
-    } finally {
-      setBusy(false)
+      setNote(errorWords(e))
+    }
+    setBusy(false)
+  }
+
+  async function refresh() {
+    setBusy(true)
+    setNote('查询中...')
+    await props.reload(true)
+    setNote(`已刷新 ${hhmm(Date.now())}`)
+    setBusy(false)
+  }
+
+  return (
+    <Page title="账号" large bar={{ cancellationAction: props.close, topBarTrailing: <Button title="刷新" systemImage="arrow.clockwise" disabled={busy} action={refresh} /> }}>
+      {props.slots.length ? (
+        <VStack spacing={12}>
+          {props.slots.map(s => (
+            <NavigationLink destination={<AccountDetail slot={s} reload={props.reload} />} buttonStyle="plain">
+              <AccountCard slot={s} />
+            </NavigationLink>
+          ))}
+        </VStack>
+      ) : null}
+      <Group
+        title="导入"
+        note={note || '1) Loon 装好 paperclip 中国移动插件和 BoxJS\n2) 划掉中国移动 App 再重开, 收到「获取成功」通知; 多个号用 App 的「切换账号」各抓一次\n3) 保持 Loon 开启, 点「从 BoxJS 导入」, 插件里存的号一次全部导入'}
+      >
+        <ActionRow icon="square.and.arrow.down" title="从 BoxJS 导入" sub={`BoxJS: ${host}`} disabled={busy} action={doImport} />
+        <ActionRow icon="arrow.clockwise" title="立即刷新全部" disabled={busy || !props.slots.length} action={refresh} />
+        <ActionRow icon="puzzlepiece.extension" title="中国移动插件" sub="paperclip · Loon / Surge / QX" action={() => { Safari.openURL(PLUGIN_PAGE) }} />
+      </Group>
+    </Page>
+  )
+}
+
+function AccountDetail(props: { slot: Slot; reload: (force?: boolean) => Promise<void> }) {
+  const dismiss = Navigation.useDismiss()
+  const { slot } = props
+  const a = slot.account
+  const [raw, setRaw] = useState('')
+
+  async function diag() {
+    setRaw('查询中...')
+    try {
+      setRaw(await feeRaw(slot.tel))
+    } catch (e) {
+      setRaw(errorWords(e))
     }
   }
 
-  function select(tel: string) {
-    setCurrent(tel)
-    setAccount(null)
-    run(() => loadAccount(tel))
+  async function remove() {
+    const ok = await Dialog.confirm({ title: `删除${slot.name}?`, message: '会删除 Keychain 里这个号的登录凭证和本机历史', cancelLabel: '取消', confirmLabel: '删除' })
+    if (!ok) return
+    await removeAccount(slot.tel)
+    await props.reload()
+    dismiss()
   }
 
-  function handleImport() {
-    run(async () => {
-      const imported = await importFromBoxJS(host.trim() || 'boxjs.com')
-      const tel = imported[imported.length - 1]
-      setTels(listAccounts())
-      setCurrent(tel)
-      return loadAccount(tel)
-    })
+  return (
+    <Page title={slot.name}>
+      {a ? (
+        <Group title="套餐与账户" note={`更新于 ${hhmm(a.fetchedAt)}${a.stale ? ' · 网络失败, 显示的是缓存' : ''}; 本机已记录 ${slot.hist?.days ?? 0} 天历史`}>
+          <InfoRow icon="yensign.circle" title={a.balance < 0 ? '已欠费' : '话费余额'} value={`¥${a.balance.toFixed(2)}`} color={a.balance < 10 ? 'systemRed' : undefined} />
+          {a.monthFee !== undefined ? <InfoRow icon="creditcard" title="本月消费" value={`¥${a.monthFee.toFixed(2)}`} /> : null}
+          {metersOf(a).map(m => <InfoRow icon={m.key === 'voice' ? 'phone' : m.key === 'tgt' ? 'square.stack.3d.up' : 'antenna.radiowaves.left.and.right'} title={m.key === 'voice' ? '语音' : `${m.label}流量`} value={`剩 ${amount(m.key, m.remain)} / ${amount(m.key, m.total)}`} />)}
+          <InfoRow icon="star" title="积分" value={pointsText(a)} />
+          {a.user?.starLevel ? <InfoRow icon="rosette" title="星级" value={`${starText(a)} · ${a.user.starScore ?? '-'}分`} /> : null}
+          {a.user?.netYears !== undefined ? <InfoRow icon="calendar" title="网龄" value={`${netText(a)}`} /> : null}
+          {a.user?.channel ? <InfoRow icon="mappin.and.ellipse" title="归属" value={a.user.channel} /> : null}
+        </Group>
+      ) : (
+        <Group title="状态" note={errorText(slot.error).hint}>
+          <InfoRow icon="exclamationmark.triangle" color="systemOrange" title={errorText(slot.error).title} />
+        </Group>
+      )}
+      <Group title="诊断" note={raw || '查看话费接口的原始返回 (只有金额字段), 余额显示不对时截图给开发者。'}>
+        <ActionRow icon="ladybug" title="话费原始数据" action={diag} />
+      </Group>
+      <Group>
+        <ActionRow icon="trash" color="systemRed" title={`删除${slot.name}`} destructive action={remove} />
+      </Group>
+    </Page>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// 设置: 刷新间隔、BoxJS、更新
+// ─────────────────────────────────────────────────────────────
+function SettingsTab(props: Shared & { close: any }) {
+  const [prefs, setPrefsState] = useState<DataPrefs>(getData())
+  const [updateText, setUpdateText] = useState('')
+  const version = Script.metadata.version ?? '-'
+
+  function update(patch: Partial<DataPrefs>) {
+    const next = { ...prefs, ...patch }
+    setPrefsState(next)
+    setData(next)
+    Widget.reloadAll()
   }
 
-  function handleRefresh() {
-    run(async () => {
-      clearCache()
-      return loadAccount(current)
-    })
-  }
-
-  async function handleCheckUpdate() {
+  async function checkUpdate() {
     setUpdateText('检查中...')
     try {
       const res = await fetch(REMOTE_META)
       const remote = String((await res.json() as { version?: string }).version ?? '')
-      if (!remote || !isNewer(remote, version)) {
-        setUpdateText('已是最新')
-        return
-      }
+      if (!remote || !isNewer(remote, version)) return setUpdateText('已是最新')
       setUpdateText(`有新版本 ${remote}`)
-      const ok = await Dialog.confirm({
-        title: `发现新版本 ${remote}`,
-        message: `当前 ${version}, 更新会重新导入脚本, 登录凭证保留`,
-        cancelLabel: '稍后',
-        confirmLabel: '更新',
-      })
+      const ok = await Dialog.confirm({ title: `发现新版本 ${remote}`, message: `当前 ${version}, 更新会重新导入脚本, 登录凭证和历史保留`, cancelLabel: '稍后', confirmLabel: '更新' })
       if (ok) await Safari.openURL(INSTALL_URL)
     } catch {
       setUpdateText('检查失败')
     }
   }
 
-  async function handleFeeRaw() {
-    setRaw('查询中...')
-    try {
-      setRaw(await feeRaw(current))
-    } catch (e) {
-      setRaw(errorText(e))
-    }
-  }
-
-  async function handleRemove() {
-    const ok = await Dialog.confirm({
-      title: `删除尾号 ${current.slice(-4)}?`,
-      message: '会删除 Keychain 里这个号的登录凭证',
-      cancelLabel: '取消',
-      confirmLabel: '删除',
-    })
+  async function clearAll() {
+    const ok = await Dialog.confirm({ title: '清除全部账号?', message: '会删除 Keychain 里所有号的登录凭证和本机历史', cancelLabel: '取消', confirmLabel: '清除' })
     if (!ok) return
-    await removeAccount(current)
-    const list = listAccounts()
-    setTels(list)
-    setStatus('')
-    if (list.length > 0) select(list[0])
-    else { setCurrent(''); setAccount(null) }
+    for (const t of listAccounts()) await removeAccount(t)
+    await props.reload()
   }
-
-  const hint = busy ? '查询中...' : configured ? '暂无数据' : '还没有导入凭证'
-  const u = account?.user
 
   return (
-    <NavigationStack>
-      <Form
-        navigationTitle="中国移动"
-        navigationBarTitleDisplayMode="inline"
-        toolbar={{ cancellationAction: <Button title="关闭" action={dismiss} /> }}
-      >
-        <Section
-          footer={
-            account ? (
-              <Text>{`更新于 ${timeText(account.fetchedAt)}${account.stale ? ' · 网络失败, 显示的是缓存' : ''}`}</Text>
-            ) : undefined
-          }
-        >
-          <Hero account={account} hint={hint} />
-          {status ? <Text font={13} foregroundStyle="systemRed">{status}</Text> : null}
-        </Section>
-
-        {account ? (
-          <Section header={<Text>套餐与账户</Text>}>
-            {account.monthFee !== undefined ? (
-              <InfoRow icon="creditcard.fill" color="systemBlue" title="本月消费" value={`¥${account.monthFee.toFixed(2)}`} />
-            ) : null}
-            <InfoRow icon="antenna.radiowaves.left.and.right" color="systemGreen" title="通用流量" value={flowText(account.general)} />
-            <InfoRow icon="square.stack.3d.up.fill" color="systemTeal" title="定向流量" value={flowText(account.targeted)} />
-            {account.voice?.total ? (
-              <InfoRow icon="phone.fill" color="systemOrange" title="语音" value={`剩 ${Math.round(account.voice.remain)} / ${Math.round(account.voice.total)} 分钟`} />
-            ) : null}
-            {u?.starLevel ? <InfoRow icon="star.fill" color="systemYellow" title="星级" value={`${u.starLevel}星 · ${u.starScore ?? '-'}分`} /> : null}
-            {u?.netYears !== undefined ? <InfoRow icon="calendar" color="systemIndigo" title="网龄" value={`${u.netYears.toFixed(1)} 年`} /> : null}
-            {u?.channel ? <InfoRow icon="mappin.and.ellipse" color="systemPink" title="归属" value={u.channel} /> : null}
-          </Section>
-        ) : null}
-
-        {configured ? (
-          <Section
-            header={<Text>账号</Text>}
-            footer={
-              <Text>
-                {'小组件显示哪个号: 长按小组件 → 编辑小组件 → 参数, 填手机尾号 4 位; 不填显示第一个.\n添加另一个号: 在中国移动 App 里用「切换账号」登录该号 (别用「退出登录」), 划掉重开 App 让插件抓取, 再点「从 BoxJS 导入」, 插件里存的号会一次全部导入.'}
-              </Text>
-            }
-          >
-            {tels.map(t => (
-              <ActionRow
-                key={t}
-                icon="person.crop.circle.fill"
-                color={t === current ? 'systemBlue' : 'systemGray'}
-                title={`尾号 ${t.slice(-4)}`}
-                detail={t === current ? '当前' : undefined}
-                disabled={busy}
-                action={() => select(t)}
-              />
-            ))}
-          </Section>
-        ) : null}
-
-        <Section
-          header={<Text>登录凭证</Text>}
-          footer={
-            <Text>
-              {'1) Loon 装好 paperclip 中国移动插件和 BoxJS\n2) 划掉中国移动 App 再重开, 收到「获取成功」通知\n3) 保持 Loon 开启, 点「从 BoxJS 导入」'}
-            </Text>
-          }
-        >
-          <LabeledContent
-            label={
-              <HStack spacing={12}>
-                <IconSquare icon="shippingbox.fill" color="systemGray" />
-                <Text>BoxJS 域名</Text>
-              </HStack>
-            }
-          >
-            <TextField title="boxjs.com" value={host} onChanged={setHost} multilineTextAlignment="trailing" />
-          </LabeledContent>
-          <ActionRow icon="square.and.arrow.down.fill" color="systemBlue" title="从 BoxJS 导入" detail={busy ? '处理中...' : undefined} disabled={busy} action={handleImport} />
-          {configured ? (
-            <ActionRow icon="arrow.clockwise" color="systemGreen" title="立即刷新" disabled={busy} action={handleRefresh} />
-          ) : null}
-        </Section>
-
-        <Section header={<Text>关于</Text>}>
-          <InfoRow icon="info.circle.fill" color="systemGray" title="版本" value={version} />
-          <ActionRow icon="arrow.down.circle.fill" color="systemPurple" title="检查更新" detail={updateText || undefined} action={handleCheckUpdate} />
-          <ActionRow icon="link" color="systemGray" title="项目主页" action={() => { Safari.openURL(HOMEPAGE) }} />
-          {configured ? (
-            <ActionRow icon="ladybug.fill" color="systemOrange" title="话费原始数据" detail={`尾号 ${current.slice(-4)}`} action={handleFeeRaw} />
-          ) : null}
-          {raw ? <Text font={12} fontDesign="monospaced" foregroundStyle="secondaryLabel">{raw}</Text> : null}
-        </Section>
-
-        {configured ? (
-          <Section footer={<Text>凭证只存本机 Keychain, 导入后小组件每次刷新自动续期, 不再需要 Loon.</Text>}>
-            <Button title={`删除尾号 ${current.slice(-4)}`} role="destructive" action={handleRemove} />
-          </Section>
-        ) : null}
-      </Form>
-    </NavigationStack>
+    <Page title="设置" large bar={{ cancellationAction: props.close }}>
+      <Group title="数据" note="小组件按这个间隔请系统刷新, 实际由系统决定; 想马上看点小组件右上角的时间。">
+        <PickerRow icon="clock" title="刷新间隔" value={prefs.refresh} options={[[60, '1 小时'], [120, '2 小时'], [240, '4 小时']]} onChanged={v => update({ refresh: v as DataPrefs['refresh'] })} />
+        <HStack spacing={14} padding={{ horizontal: 14, vertical: 11 }} frame={{ maxWidth: 'infinity', minHeight: 48 }}>
+          <Chip icon="shippingbox" />
+          <Text font={16} foregroundStyle="label">BoxJS 域名</Text>
+          <Spacer minLength={8} />
+          <TextField title="boxjs.com" value={prefs.host} onChanged={(v: string) => update({ host: v })} multilineTextAlignment="trailing" />
+        </HStack>
+      </Group>
+      <Group title="关于" note={BRANCH === 'testing' ? '测试版: 检查更新会装 testing 分支的最新版。' : undefined}>
+        <InfoRow icon="info.circle" title="版本" value={version} />
+        <ActionRow icon="arrow.down.circle" title="检查更新" value={updateText || undefined} action={checkUpdate} />
+        <ActionRow icon="link" title="项目主页" action={() => { Safari.openURL(HOMEPAGE) }} />
+      </Group>
+      {props.slots.length ? (
+        <Group note="凭证只存本机 Keychain, 导入后小组件每次刷新自动续期, 不再需要 Loon。">
+          <ActionRow icon="trash" color="systemRed" title="清除全部账号" destructive action={clearAll} />
+        </Group>
+      ) : null}
+    </Page>
   )
 }
 
