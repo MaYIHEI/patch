@@ -31,7 +31,7 @@ export function Tap(props: { ctx: Ctx; intent: any; children?: any }) {
   return <Button intent={props.intent} buttonStyle="plain">{props.children}</Button>
 }
 
-/** 翻页: ‹ 1/3 ›, 只有一页时不显示 */
+/** 翻页: ‹ 1/3 ›, 点中间的页码回第一页; 只有一页时不显示 */
 function Pager(props: { ctx: Ctx; page: number; pages: number; turn: (step: number) => any }) {
   const { ctx, page, pages, turn } = props
   const { th } = ctx
@@ -44,7 +44,9 @@ function Pager(props: { ctx: Ctx; page: number; pages: number; turn: (step: numb
   return (
     <HStack spacing={0}>
       {arrow('chevron.left', -1)}
-      <Text font={11} monospacedDigit foregroundStyle={th.accent} lineLimit={1} frame={{ minWidth: 28 }}>{`${page + 1}/${pages}`}</Text>
+      <Tap ctx={ctx} intent={page > 0 ? turn(-page) : undefined}>
+        <Text font={11} monospacedDigit foregroundStyle={th.accent} lineLimit={1} frame={{ minWidth: 28 }}>{`${page + 1}/${pages}`}</Text>
+      </Tap>
       {arrow('chevron.right', 1)}
     </HStack>
   )
@@ -426,12 +428,12 @@ function TileGrid(props: { ctx: Ctx; title: string; tiles: TileData[] }) {
 }
 
 /** 中号总览的骨架: 左边不加底, 右边常用策略组 */
-function OverviewFrame(props: { ctx: Ctx; children?: any }) {
+function OverviewFrame(props: { ctx: Ctx; title: string; children?: any }) {
   const { ctx } = props
   const { list: groups, page, pages } = groupPage(ctx.loon!, ctx.prefs, 4)
   return (
     <Root ctx={ctx} spacing={6}>
-      <Header ctx={ctx} title="总览" trailing={<HStack spacing={6}><PageButton ctx={ctx} page={page} pages={pages} /><ModeTap ctx={ctx} /></HStack>} />
+      <Header ctx={ctx} title={props.title} trailing={<HStack spacing={6}><PageButton ctx={ctx} page={page} pages={pages} /><ModeTap ctx={ctx} /></HStack>} />
       <HStack spacing={6} alignment="top" fixedSize={{ horizontal: false, vertical: true }}>
         <VStack alignment="leading" spacing={3} padding={{ trailing: 6, vertical: 2 }} frame={{ minWidth: 112, maxWidth: 112, maxHeight: 'infinity', alignment: 'topLeading' }}>
           {props.children}
@@ -476,7 +478,7 @@ export function OverviewStyle(props: { ctx: Ctx }) {
   if (!ctx.inApp && focusOf(ctx.size)) return <PickerStyle ctx={ctx} />
   const leaf = mainGroupLeaf(ctx)
   return (
-    <OverviewFrame ctx={ctx}>
+    <OverviewFrame ctx={ctx} title="网络">
       <Text font={11} foregroundStyle={th.t2} lineLimit={1}>{leaf?.group ?? '当前节点'}</Text>
       <Num value={latencyText(leaf?.r)} size={27} color={latencyInk(ctx, leaf?.r)} />
       <Text font={11} foregroundStyle={th.t1} lineLimit={1} minScaleFactor={0.75}>{leaf ? nodeLabel(leaf.name, leaf.r) : ''}</Text>
@@ -528,7 +530,7 @@ export function TrafficStyle(props: { ctx: Ctx }) {
   const leaf = mainGroupLeaf(ctx)
   const limited = u.total > 0
   return (
-    <OverviewFrame ctx={ctx}>
+    <OverviewFrame ctx={ctx} title="流量">
       <Text font={11} foregroundStyle={th.t2} lineLimit={1}>{`${s.name} ${limited ? '剩余' : '已用'}`}</Text>
       <Num value={fmtBytes(limited ? s.remain : s.used)} size={27} />
       {limited ? <Bar ctx={ctx} value={s.ratio} color={usageColor(s.ratio)} height={4} /> : null}
@@ -536,9 +538,9 @@ export function TrafficStyle(props: { ctx: Ctx }) {
       <Text font={10} foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.75}>{subLine(s)}</Text>
       <Spacer minLength={2} />
       <HStack spacing={4}>
-        <Text font={11} foregroundStyle={th.t1} lineLimit={1} minScaleFactor={0.7}>{leaf ? nodeLabel(leaf.name, leaf.r) : ''}</Text>
+        <Text font={10} foregroundStyle={th.t3} lineLimit={1}>当前延迟</Text>
         <Spacer minLength={2} />
-        <Text font={11} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={latencyInk(ctx, leaf?.r)} lineLimit={1}>{leaf?.r?.ok ? String(leaf.r.ms) : latencyText(leaf?.r)}</Text>
+        <Text font={12} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={latencyInk(ctx, leaf?.r)} lineLimit={1}>{latencyText(leaf?.r)}</Text>
       </HStack>
     </OverviewFrame>
   )
