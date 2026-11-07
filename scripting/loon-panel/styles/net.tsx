@@ -339,7 +339,6 @@ export function PickerStyle(props: { ctx: Ctx }) {
         trailing={(
           <HStack spacing={8}>
             {last ? <Tap ctx={ctx} intent={LeavePickIntent(undefined)}><Text font={11} foregroundStyle={th.accent} lineLimit={1}>返回</Text></Tap> : null}
-            {last && !linked && !loon.stale ? <Tap ctx={ctx} intent={SwitchIntent({ group: last.group, node: last.node })}><Text font={11} fontWeight="semibold" foregroundStyle={th.accent} lineLimit={1}>用这组</Text></Tap> : null}
             {!last && open ? <Tap ctx={ctx} intent={ClosePickIntent(undefined)}><Text font={11} foregroundStyle={th.accent} lineLimit={1}>返回</Text></Tap> : null}
             {!last && !open && groups > 1 ? <Tap ctx={ctx} intent={NextPickGroupIntent(undefined)}><Text font={11} foregroundStyle={th.accent} lineLimit={1}>换组</Text></Tap> : null}
             <Pager ctx={ctx} page={page} pages={pages} turn={step => TurnPickPageIntent({ step })} />
