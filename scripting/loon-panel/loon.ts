@@ -25,7 +25,7 @@ export type NodeResult = { ok: boolean; ms: number; t: number; ip?: string; cc?:
 export type Group = { name: string; now: string; leaf: string; subs: string[]; gone?: boolean }
 export type Media = { name: string; status: 'yes' | 'partial' | 'no' | 'unknown'; region?: string; note?: string }
 export type Isp = 'ct' | 'cu' | 'cm'
-/** 深度检测结果 (ipquality-web-test 核心库的 data), 拿不到的字段没有 */
+/** 深度检测结果, 拿不到的字段没有 */
 export type Deep = {
   t: number
   basic?: { ip?: string; cc?: string; country?: string; city?: string; asn?: string; org?: string }
