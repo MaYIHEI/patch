@@ -152,9 +152,13 @@ export function CountdownStyle(props: { ctx: Ctx }) {
     return { m, text, color: (f.runOut ? RED : f.avg !== null ? GREEN : null) as Paint | null }
   })
   const big = (
-    <HStack alignment="lastTextBaseline" spacing={4}>
+    <HStack alignment="bottom" spacing={6}>
       <Num value={days} size={ctx.size === 's' ? 46 : 54} color={ctx.th.t1} />
-      <Label ctx={ctx} text={`天后重置 · ${md(mo.reset)}`} />
+      {/* 小号一行放不下「天后重置 · 12月1日」, 分两行 */}
+      <VStack alignment="leading" spacing={1} padding={{ bottom: 6 }}>
+        <Label ctx={ctx} text="天后重置" />
+        <Text font={10} foregroundStyle={ctx.th.t3} lineLimit={1}>{md(mo.reset)}</Text>
+      </VStack>
     </HStack>
   )
   const list = (
