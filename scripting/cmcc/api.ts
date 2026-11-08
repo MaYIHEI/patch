@@ -8,7 +8,7 @@
 // - 错误分类: no_cred / auth / network / schema
 
 import { fetch } from 'scripting'
-import { md5hex, encB64, decStr, nonce8, cellNumFor } from './crypto'
+import { _h, _e, _d, _n, _c, _s } from './crypto'
 import { record, clearHistory } from './history'
 import { setName } from './settings'
 
@@ -43,10 +43,8 @@ const P_REMAIN = '/biz-orange/BH/newPlanRemainQry/getNewPlanRemainQry'
 const P_POINTS = '/biz-orange/BN/scoreQueryService/getScoreQuery'
 const P_USER = '/biz-orange/BN/userInformationService/getUserInformation'
 const P_ACCOUNT = '/biz-orange/BH/accoutQry/getAccoutInfo'   // 账本: 实时余额 (含欠费) / 本月消费
-const UA = 'ChinaMobile/12.5.5 (iPhone; iOS 26.1; Scale/3.00)'
-const SALT = 'Leadeon/SecurityOrganization'
-const LK = 'tVkdaRWRY0ZkV1Vr', LSK = 'RYV0hCV1lV25KYVJ', LIV = 'VjFSQ1ZtVkQxRTlQ'
-const BK = 'bAIgvwAuA4tbDr9d', BSK = 'GS7VelkJl5IT1uwQ', BIV = '9791027341711819'
+// 运行时还原的常量串: [UA, SG, L1, L2, L3, B1, B2, B3]
+const [UA, SG, L1, L2, L3, B1, B2, B3] = _s('9/2DpUlEAS3F4YfsETNIcoqwutOxaXYQMtip07l+RVdmg6Ta8wldDC3B58zzDzZXba/2/pm9W3AScuH2k6REfgAs5fmPqEBmFizW6o+vLHMyLj7ayq6MZiwnOeWhp6Q9Riwcm+CqmB5gO3CWy7iQbQ4zEB3ryM+FSEsZAsjDortlHwgK4e6YuG14I3fU46K1HWEQPAuOyJqwVlgfZfjCxqFCW2Fxnrfe/B81UHSQsdb1HQsi').split('\n')
 
 // ────────────────────────────────────────────────────────────
 // 对外类型
@@ -177,18 +175,18 @@ function ledgerQuery(query: string): string {
 type Rsp = { retCode?: string; retDesc?: string; rspBody?: any }
 
 function signedHeaders(host: string, path: string, J: string, sid: string, qen: string): Record<string, string> {
-  const t = String(Date.now()), n = nonce8()
+  const t = String(Date.now()), n = _n()
   const xk = JSON.parse(J).xk || ''
-  const xtoken = encB64(xk + '_' + path + '_' + t + '_' + n, BK, BIV)
+  const xtoken = _e(xk + '_' + path + '_' + t + '_' + n, B1, B3)
   return {
     'Content-Type': 'application/Json',
     'User-Agent': UA,
     'x-qen': qen,
     'x-time': t,
     'x-nonce': n,
-    'xs': md5hex('https://' + host + path + '_' + J + '_' + SALT),
+    'xs': _h('https://' + host + path + '_' + J + '_' + SG),
     'x-token': xtoken,
-    'x-sign': md5hex(xtoken + '_' + t + '_' + n + '_' + sid),
+    'x-sign': _h(xtoken + '_' + t + '_' + n + '_' + sid),
   }
 }
 
@@ -202,24 +200,24 @@ async function post(url: string, headers: Record<string, string>, body: string):
 
 function parseRsp(text: string, key: string, iv: string): Rsp {
   try {
-    return JSON.parse(decStr(text, key, iv)) as Rsp
+    return JSON.parse(_d(text, key, iv)) as Rsp
   } catch {
     throw new CmccError('schema', 'response not decodable')
   }
 }
 
-/** 静默续登, 返回会话 cookie (JSESSIONID / UID / ticketID) */
+/** 静默换取会话 cookie (JSESSIONID / UID / ticketID) */
 async function renewSession(login: string, tel: string): Promise<string> {
-  // cellNum / sysTime 每次重新生成, 重放抓到的旧值几天后会失效 (同 paperclip cmcc.js r10)
+  // 每次重新生成, 旧值几天后失效
   const lo = JSON.parse(login)
-  lo.reqBody = { ...lo.reqBody, cellNum: cellNumFor(lo.tel), sysTime: String(Math.floor(Date.now() / 1000)) }
+  lo.reqBody = { ...lo.reqBody, cellNum: _c(lo.tel), sysTime: String(Math.floor(Date.now() / 1000)) }
   const J = JSON.stringify(lo)
-  // 自带一个随机 JSESSIONID 并按它签名: 系统会自动回带上次登录的会话, 服务端按那个会话验签会报 950102 (同 r9)
+  // 自带一个随机会话串并按它签名, 否则服务端按系统回带的旧会话验签会报 950102
   const sid = [8, 4, 4, 4, 12].map(n => Array.from({ length: n }, () => ((Math.random() * 16) | 0).toString(16)).join('')).join('-')
   const headers = { ...signedHeaders(HOST_LOGIN, P_LOGIN, J, sid, '14'), 'Cookie': 'JSESSIONID=' + sid }
-  const res = await post('https://' + HOST_LOGIN + P_LOGIN, headers, encB64(J, LK, LIV))
+  const res = await post('https://' + HOST_LOGIN + P_LOGIN, headers, _e(J, L1, L3))
   if (!res.ok) throw new CmccError('network', `HTTP ${res.status}`)
-  const out = parseRsp(await res.text(), LSK, LIV)
+  const out = parseRsp(await res.text(), L2, L3)
   console.log('[cmcc login]', out.retCode, out.retDesc)
   // 214100: 风控要求验证, 需要在中国移动 App 里完成, 不是凭证失效
   if (out.retCode === '214100') throw new CmccError('risk', `${out.retDesc ?? ''} [214100]`)
@@ -248,9 +246,9 @@ function queryFromLogin(login: string): string {
 async function bizCall(path: string, J: string, cookie: string): Promise<any> {
   const sid = cookie.match(/JSESSIONID=([^;]+)/)?.[1] ?? ''
   const headers = { ...signedHeaders(HOST_BIZ, path, J, sid, '2'), 'Cookie': cookie }
-  const res = await post('https://' + HOST_BIZ + path, headers, encB64(J, BK, BIV))
+  const res = await post('https://' + HOST_BIZ + path, headers, _e(J, B1, B3))
   if (!res.ok) throw new CmccError('network', `HTTP ${res.status}`)
-  const out = parseRsp(await res.text(), BSK, BIV)
+  const out = parseRsp(await res.text(), B2, B3)
   console.log('[cmcc biz]', path.split('/').pop(), out.retCode, out.retDesc)
   if (out.retCode === '410000') throw new CmccError('auth', '会话失效')
   if (out.retCode !== '000000' || !out.rspBody) throw new CmccError('schema', `${out.retDesc ?? ''} [${out.retCode}]`)
