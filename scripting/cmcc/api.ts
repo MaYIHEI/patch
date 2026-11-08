@@ -86,7 +86,7 @@ export type Account = {
   voice?: { total: number; used: number; remain: number }
   points?: number
   user?: UserInfo
-  /** 账本里的扣费记录, 新的在前; 如「本月实时话费」 */
+  /** 账本里的扣费记录, 新的在前; 如「本月实时话费」*/
   ledger?: LedgerItem[]
   /** 尾号 4 位 */
   phoneTail: string
