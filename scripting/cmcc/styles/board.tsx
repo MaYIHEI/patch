@@ -33,24 +33,24 @@ function detailOf(m: Meter, slot: Slot): string {
 }
 
 /** 一行额度: 标签列 | 剩余/总量 + 预测, 进度条 (+ 明细) | 百分比列 */
-function MeterRow(props: { ctx: Ctx; m: Meter; slot: Slot; detail?: string; noTotal?: boolean; planBelow?: boolean }) {
+function MeterRow(props: { ctx: Ctx; m: Meter; slot: Slot; detail?: string; noTotal?: boolean; planBelow?: boolean; big?: boolean }) {
   const { ctx, m } = props
   const { th } = ctx
   const plan = planShort(m, props.slot)
   return (
     <HStack spacing={8}>
-      <Text font={12} fontWeight="medium" foregroundStyle={th.t1} frame={{ width: 28, alignment: 'leading' }}>{m.label}</Text>
+      <Text font={props.big ? 13 : 12} fontWeight="medium" foregroundStyle={th.t1} frame={{ width: 28, alignment: 'leading' }}>{m.label}</Text>
       <VStack alignment="leading" spacing={3} frame={{ maxWidth: 'infinity' }}>
         <HStack spacing={2}>
-          <Text font={10} monospacedDigit foregroundStyle={th.t2} lineLimit={1}>{props.noTotal ? amount(m.key, m.remain) : `${amount(m.key, m.remain)} / ${totalText(m.key, m.total)}`}</Text>
+          <Text font={props.big ? 11 : 10} monospacedDigit foregroundStyle={th.t2} lineLimit={1} minScaleFactor={0.85}>{props.noTotal ? amount(m.key, m.remain) : `${amount(m.key, m.remain)} / ${totalText(m.key, m.total)}`}</Text>
           <Spacer minLength={4} />
           {props.planBelow ? null : <Text font={10} fontWeight="medium" foregroundStyle={plan.bad ? dyn(RED) : th.t3} lineLimit={1}>{plan.text}</Text>}
         </HStack>
-        <Bar ctx={ctx} percent={m.percent} height={4} tick={(1 - month().elapsed) * 100} />
+        <Bar ctx={ctx} percent={m.percent} height={props.big ? 5 : 4} tick={(1 - month().elapsed) * 100} />
         {props.planBelow ? <Text font={10} foregroundStyle={plan.bad ? dyn(RED) : th.t3} lineLimit={1}>{plan.text}</Text> : null}
         {props.detail ? <Text font={10} foregroundStyle={th.t3} lineLimit={1} minScaleFactor={0.85}>{props.detail}</Text> : null}
       </VStack>
-      <Text font={12} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={th.t1} frame={{ width: 34, alignment: 'trailing' }}>{`${Math.round(m.percent)}%`}</Text>
+      <Text font={props.big ? 14 : 12} fontWeight="semibold" fontDesign="rounded" monospacedDigit foregroundStyle={th.t1} frame={{ width: 36, alignment: 'trailing' }}>{`${Math.round(m.percent)}%`}</Text>
     </HStack>
   )
 }
@@ -205,12 +205,14 @@ function Medium(props: { ctx: Ctx; slot: Slot; a: Account; ms: Meter[]; index: n
           {hasChart ? null : <Text font={10} foregroundStyle={th.t3} lineLimit={1}>{`积分 ${pointsText(a)}`}</Text>}
           <Text font={10} foregroundStyle={th.t3} lineLimit={1}>{hasChart ? `近 7 天 · ${resetDays()}天重置` : `${resetDays()} 天后重置`}</Text>
         </VStack>
-        <VStack spacing={ms.length === 3 ? 9 : 12} frame={{ maxWidth: 'infinity', maxHeight: 'infinity' }}>
-          <Spacer minLength={0} />
-          {ms.length === 1 ? [<HeroMeter ctx={ctx} m={ms[0]} slot={slot} size={24} />, <Text font={10} foregroundStyle={th.t3} lineLimit={1} frame={{ maxWidth: 'infinity', alignment: 'leading' }}>{`每天可用 ${amount(ms[0].key, forecast(ms[0], slot.hist).perDay)} · 积分 ${pointsText(a)}`}</Text>] : null}
-          {ms.length === 2 ? ms.map(m => <MeterRow ctx={ctx} m={m} slot={slot} planBelow />) : null}
-          {ms.length === 3 ? ms.map(m => <MeterRow ctx={ctx} m={m} slot={slot} noTotal />) : null}
-          <Spacer minLength={0} />
+        <VStack spacing={0} frame={{ maxWidth: 'infinity', maxHeight: 'infinity' }}>
+          {ms.length === 1 ? [<Spacer minLength={0} />, <HeroMeter ctx={ctx} m={ms[0]} slot={slot} size={24} />, <Text font={10} foregroundStyle={th.t3} lineLimit={1} frame={{ maxWidth: 'infinity', alignment: 'leading' }} padding={{ top: 6 }}>{`每天可用 ${amount(ms[0].key, forecast(ms[0], slot.hist).perDay)}`}</Text>, <Spacer minLength={0} />] : null}
+          {/* 两项 / 三项: 每行平分右侧高度, 不挤在中间 */}
+          {ms.length > 1 ? ms.map(m => (
+            <VStack frame={{ maxWidth: 'infinity', maxHeight: 'infinity' }}>
+              <MeterRow ctx={ctx} m={m} slot={slot} big noTotal={ms.length === 3} planBelow={ms.length === 2} />
+            </VStack>
+          )) : null}
         </VStack>
       </HStack>
     </Root>
@@ -224,10 +226,11 @@ function Large(props: { ctx: Ctx; slot: Slot; a: Account; ms: Meter[]; index: nu
   const lastFee = slot.hist?.lastMonthFee ?? null
   const m0 = ms[0]
   const avg = m0 ? slot.hist?.avg(m0.key) ?? null : null
-  const chartTitle = <Section ctx={ctx} title={`近 7 天${m0?.label ?? ''}`} right={m0 && avg !== null ? `日均 ${amount(m0.key, avg)}` : '记录中'} />
+  const gap = <Spacer minLength={5} />
   return (
-    <Root ctx={ctx} spacing={7}>
+    <Root ctx={ctx} spacing={0}>
       <Top ctx={ctx} a={a} index={props.index} />
+      {gap}
       <HStack alignment="bottom">
         <VStack alignment="leading" spacing={1}>
           <Num value={a.balance.toFixed(2)} size={34} color={balanceColor(ctx, a)} />
@@ -239,20 +242,26 @@ function Large(props: { ctx: Ctx; slot: Slot; a: Account; ms: Meter[]; index: nu
           <Label ctx={ctx} text={lastFee !== null ? `本月 · 上月 ¥${lastFee.toFixed(0)}` : '本月消费'} />
         </VStack>
       </HStack>
-      <Section ctx={ctx} title="套餐" right={`第 ${mo.day} 天 · ${resetDays()} 天后重置`} />
-      {ms.length === 1 ? (
-        <Cell ctx={ctx} gap={5}>
-          <HeroMeter ctx={ctx} m={ms[0]} slot={slot} size={30} />
-          <Text font={10} foregroundStyle={th.t3} lineLimit={1}>{detailOf(ms[0], slot)}</Text>
-        </Cell>
-      ) : null}
-      {ms.length === 2 ? <VStack spacing={6}>{ms.map(m => <Cell ctx={ctx}><MeterRow ctx={ctx} m={m} slot={slot} detail={detailOf(m, slot)} /></Cell>)}</VStack> : null}
-      {ms.length === 3 ? <VStack spacing={9}>{ms.map(m => <MeterRow ctx={ctx} m={m} slot={slot} detail={detailOf(m, slot)} />)}</VStack> : null}
+      {gap}
+      <VStack spacing={7}>
+        <Section ctx={ctx} title="套餐" right={`第 ${mo.day} 天 · ${resetDays()} 天后重置`} />
+        {ms.length === 1 ? (
+          <Cell ctx={ctx} gap={5}>
+            <HeroMeter ctx={ctx} m={ms[0]} slot={slot} size={30} />
+            <Text font={10} foregroundStyle={th.t3} lineLimit={1}>{detailOf(ms[0], slot)}</Text>
+          </Cell>
+        ) : null}
+        {ms.length === 2 ? <VStack spacing={6}>{ms.map(m => <Cell ctx={ctx}><MeterRow ctx={ctx} m={m} slot={slot} detail={detailOf(m, slot)} /></Cell>)}</VStack> : null}
+        {ms.length === 3 ? <VStack spacing={8}>{ms.map(m => <MeterRow ctx={ctx} m={m} slot={slot} detail={detailOf(m, slot)} />)}</VStack> : null}
+      </VStack>
+      {gap}
       <AccountStrip ctx={ctx} a={a} />
-      {chartTitle}
-      <Chart ctx={ctx} slot={slot} m={m0} height={ms.length === 3 ? 36 : ms.length === 2 ? 36 : 40} />
-      <Spacer minLength={0} />
-      {ms.length === 3 ? null : <LastLedger ctx={ctx} a={a} />}
+      {gap}
+      <VStack spacing={5}>
+        <Section ctx={ctx} title={`近 7 天${m0?.label ?? ''}`} right={m0 && avg !== null ? `日均 ${amount(m0.key, avg)}` : undefined} />
+        {m0 ? <DailyBars ctx={ctx} values={slot.hist?.daily(m0.key, 7) ?? []} height={ms.length === 3 ? 34 : 38} /> : null}
+      </VStack>
+      {ms.length === 3 ? null : [gap, <LastLedger ctx={ctx} a={a} />]}
     </Root>
   )
 }
