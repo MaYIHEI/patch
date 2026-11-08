@@ -42,7 +42,7 @@ import { installUpdate } from './update'
 
 declare const Safari: { openURL(url: string): Promise<boolean> }
 
-const BRANCH = 'main'
+const BRANCH = 'testing'
 const REMOTE_META = `https://raw.githubusercontent.com/MaYIHEI/patch/${BRANCH}/scripting/cmcc/script.json`
 const PACKAGE_URL = `https://www.imarkr.com/api/github/download/MaYIHEI/patch/scripting/cmcc.zip?branch=${BRANCH}`
 const HOMEPAGE = 'https://github.com/MaYIHEI/patch/tree/main/scripting/cmcc'

@@ -147,7 +147,6 @@ export function BigBalanceStyle(props: { ctx: Ctx }) {
   const p = primary(ctx)
   if (!p) return <NoData ctx={ctx} />
   const a = p.account
-  const foot = metersOf(a).map(m => `${m.label} ${amount(m.key, m.remain)}`).join(' · ')
   if (ctx.size === 'm') {
     const rows: [string, string][] = [
       ...(a.monthFee !== undefined ? [['本月', `¥${a.monthFee.toFixed(2)}`] as [string, string]] : []),
@@ -187,10 +186,13 @@ export function BigBalanceStyle(props: { ctx: Ctx }) {
         <Spacer />
       </HStack>
       <Spacer />
-      <HStack>
-        <Spacer />
-        <Text font={10} foregroundStyle={ctx.th.t3} lineLimit={1} minScaleFactor={0.8}>{foot}</Text>
-        <Spacer />
+      <HStack spacing={4}>
+        {metersOf(a).map(m => (
+          <VStack spacing={1} frame={{ maxWidth: 'infinity' }}>
+            <Num value={amount(m.key, m.remain)} size={12} color={ctx.th.t1} />
+            <Label ctx={ctx} text={m.label} size={10} color={ctx.th.t3} />
+          </VStack>
+        ))}
       </HStack>
     </Root>
   )

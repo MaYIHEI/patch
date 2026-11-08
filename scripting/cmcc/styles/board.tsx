@@ -136,7 +136,7 @@ function Top(props: { ctx: Ctx; a: Account; index: number }) {
 function Small(props: { ctx: Ctx; slot: Slot; a: Account; ms: Meter[] }) {
   const { ctx, slot, a, ms } = props
   const { th } = ctx
-  const head = [ctx.slots.length > 1 ? slot.name : `${resetDays()}天`, a.points !== undefined ? `积分 ${a.points}` : ''].filter(Boolean).join(' · ')
+  const head = ctx.slots.length > 1 ? slot.name : `${resetDays()} 天后重置`
   return (
     <Root ctx={ctx} spacing={0}>
       <HStack spacing={4}>
@@ -199,7 +199,7 @@ function Medium(props: { ctx: Ctx; slot: Slot; a: Account; ms: Meter[]; index: n
       <HStack spacing={14} frame={{ maxHeight: 'infinity' }}>
         <VStack alignment="leading" spacing={2} frame={{ width: 104, maxHeight: 'infinity', alignment: 'topLeading' }}>
           <Num value={a.balance.toFixed(2)} size={27} color={balanceColor(ctx, a)} />
-          <Text font={10} foregroundStyle={a.balance < 0 ? dyn(RED) : th.t3} lineLimit={1}>{a.balance < 0 ? `已欠费 · 本月 ${feeText(a)}` : `本月 ${feeText(a)}`}</Text>
+          <Text font={10} foregroundStyle={a.balance < 0 ? dyn(RED) : th.t3} lineLimit={1}>{a.balance < 0 ? `欠费 · 本月 ${feeText(a)}` : `本月 ${feeText(a)}`}</Text>
           <Spacer minLength={2} />
           {hasChart ? <Chart ctx={ctx} slot={slot} m={ms[0]} height={32} /> : null}
           {hasChart ? null : <Text font={10} foregroundStyle={th.t3} lineLimit={1}>{`积分 ${pointsText(a)}`}</Text>}
@@ -297,7 +297,7 @@ function DualTop(props: { ctx: Ctx; slots: Slot[] }) {
 
 function DualFail(props: { ctx: Ctx; slot: Slot }) {
   const msg = errorText(props.slot.error)
-  return <Text font={11} foregroundStyle={props.ctx.th.t2} lineLimit={1}>{`${props.slot.name} · ${msg.title}: ${msg.hint}`}</Text>
+  return <Text font={11} foregroundStyle={props.ctx.th.t2} lineLimit={2}>{`${props.slot.name} · ${msg.title}: ${msg.hint}`}</Text>
 }
 
 function DualMedium(props: { ctx: Ctx; slots: Slot[] }) {

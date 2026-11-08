@@ -24,8 +24,8 @@ const SM = (v: View) => ({ systemSmall: v, systemMedium: v })
 const ML = (v: View) => ({ systemMedium: v, systemLarge: v })
 
 export const STYLES: StyleDef[] = [
+  { id: 'W', name: '全景', icon: 'rectangle.3.group.bubble.fill', desc: '余额、每项预测、积分网龄、近 7 天; 多号点标签切换', views: SML(BoardStyle) },
   { id: 'A', name: '自适应', icon: 'rectangle.3.group.fill', desc: '余额 + 套餐里有的每一项, 按项数自动排版', views: SML(AdaptiveStyle) },
-  { id: 'W', name: '全景', icon: 'rectangle.3.group.bubble.fill', desc: '一个组件看全: 余额、本月、每项剩余和预测、积分网龄、近 7 天; 多个号点标签切换', views: SML(BoardStyle) },
   { id: 'X', name: '双号全景', icon: 'rectangle.split.1x2.fill', desc: '两个号同屏看全: 余额、本月、每项剩余和预测、近 7 天', views: ML(DualBoardStyle) },
   { id: 'B', name: '大字余额', icon: 'textformat.size', desc: '只有一个居中的大余额', views: SM(BigBalanceStyle) },
   { id: 'D', name: '账单卡', icon: 'creditcard.fill', desc: '做成一张银行卡: 余额、尾号、本月消费', views: { systemMedium: BillStyle } },

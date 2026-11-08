@@ -93,14 +93,14 @@ export function TodayStyle(props: { ctx: Ctx }) {
     <VStack alignment="leading" spacing={4}>
       <Label ctx={ctx} text={`今天能用 ${amount(m.key, allow)}`} />
       <Text font={11} foregroundStyle={used !== null && ratio > 1 ? (RED as DynamicShapeStyle) : ctx.th.t3} lineLimit={1}>
-        {used === null ? '记录中, 今天再刷新一次就有' : ratio > 1 ? `超了 ${amount(m.key, used - allow)}, 明天少用点` : `还能用 ${amount(m.key, left)}`}
+        {used === null ? '记录中, 再刷新一次' : ratio > 1 ? `超了 ${amount(m.key, used - allow)}` : `还能用 ${amount(m.key, left)}`}
       </Text>
     </VStack>
   )
   if (ctx.size === 's') {
     return (
       <Root ctx={ctx} spacing={6}>
-        <Header ctx={ctx} title={`${m.label} · 今天`} />
+        <Header ctx={ctx} title={m.label} />
         <HStack><Spacer />{gauge}<Spacer /></HStack>
         <Spacer />
         {lines}
@@ -280,7 +280,7 @@ export function ForecastStyle(props: { ctx: Ctx }) {
           <DailyBars ctx={ctx} values={p.hist?.daily('gen', 7) ?? []} height={60} labels={weekLabels(7)} />
         </VStack>
       ) : null}
-      {!big && ms.length > 2 ? null : <Text font={10} foregroundStyle={ctx.th.t3} lineLimit={1}>竖线 = 匀速用到月底此刻该剩多少, 条在线左边说明用快了</Text>}
+      {!big && ms.length > 2 ? null : <Text font={10} foregroundStyle={ctx.th.t3} lineLimit={1}>竖线 = 匀速用到月底此刻该剩多少</Text>}
     </Root>
   )
 }
