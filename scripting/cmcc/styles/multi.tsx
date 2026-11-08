@@ -5,7 +5,7 @@ import { VStack, HStack, Text, Spacer, Image, Button, Rectangle } from 'scriptin
 import type { DynamicShapeStyle } from 'scripting'
 
 import {
-  Root, Header, SyncTap, Tabs, pageIndex, Num, Label, Cell, Stat, Bar, MeterLine, MeterStack, ErrorBox, errorText, metersOf, amount, balanceColor, balanceLabel, pointsText, RED, ORANGE, type Ctx, type Slot,
+  Root, Header, SyncTap, Tabs, pageIndex, Num, Label, Cell, Stat, Bar, MeterLine, MeterStack, ErrorBox, errorText, metersOf, amount, totalText, balanceColor, balanceLabel, pointsText, RED, ORANGE, type Ctx, type Slot,
 } from '../ui'
 import { PageIntent } from '../app_intents'
 import { NoData } from './basic'
@@ -82,7 +82,7 @@ export function DualStyle(props: { ctx: Ctx }) {
         <Spacer />
         {big ? (
           <VStack spacing={6}>
-            {ms.map(m => <Cell ctx={ctx}><MeterLine ctx={ctx} m={m} font={15} note={ms.length > 2 ? undefined : `共 ${amount(m.key, m.total)} · 剩 ${Math.round(m.percent)}%`} /></Cell>)}
+            {ms.map(m => <Cell ctx={ctx}><MeterLine ctx={ctx} m={m} font={15} note={ms.length > 2 ? undefined : `共 ${totalText(m.key, m.total)} · 剩 ${Math.round(m.percent)}%`} /></Cell>)}
           </VStack>
         ) : <MeterStack ctx={ctx} ms={ms} total={ms.length < 3} />}
         {big ? [<Spacer />, (

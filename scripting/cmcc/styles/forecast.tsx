@@ -22,6 +22,9 @@ const dyn = (x: any) => x as DynamicShapeStyle
 /** 柱状图: 值越大越高, 最后一根 (今天) 用强调色 */
 export function DailyBars(props: { ctx: Ctx; values: (number | null)[]; height: number; labels?: string[] }) {
   const { ctx } = props
+  if (!props.values.some(v => v !== null)) {
+    return <Text font={11} foregroundStyle={ctx.th.t3} frame={{ maxWidth: 'infinity', height: props.height, alignment: 'center' }}>记录中, 用几天后显示</Text>
+  }
   const max = Math.max(1e-9, ...props.values.map(v => v ?? 0))
   return (
     <HStack alignment="bottom" spacing={4} frame={{ height: props.height + (props.labels ? 14 : 0) }}>
@@ -331,9 +334,8 @@ export function MonthStyle(props: { ctx: Ctx }) {
               if (dayNo < 1 || dayNo > mo.dim) return <RoundedRectangle cornerRadius={5} fill="rgba(0,0,0,0)" frame={{ maxWidth: 'infinity', height: 26 }} />
               const fill: Paint = typeof v === 'number' ? `rgba(52,199,89,${(0.18 + (v / max) * 0.82).toFixed(2)})` : ctx.th.card
               return (
-                <ZStack frame={{ maxWidth: 'infinity', height: 26 }} background={<RoundedRectangle cornerRadius={5} fill={fill} />}>
-                  <Text font={10} foregroundStyle={dayNo === mo.day ? ctx.th.t1 : ctx.th.t3} fontWeight={dayNo === mo.day ? 'semibold' : 'regular'}>{String(dayNo)}</Text>
-                </ZStack>
+                <RoundedRectangle cornerRadius={5} fill={fill} frame={{ maxWidth: 'infinity', height: 26 }}
+                  overlay={<Text font={10} foregroundStyle={dayNo === mo.day ? ctx.th.t1 : ctx.th.t3} fontWeight={dayNo === mo.day ? 'semibold' : 'regular'}>{String(dayNo)}</Text>} />
               )
             })}
           </HStack>

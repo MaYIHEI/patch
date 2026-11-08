@@ -147,6 +147,9 @@ export function metersOf(a: Account): Meter[] {
 /** 流量按 G / M, 语音按分钟 */
 export const amount = (key: Key, v: number) => (key === 'voice' ? `${Math.round(v)}分` : formatFlow(v))
 
+/** 总量: 196.00G 写成 196G, 省宽度 */
+export const totalText = (key: Key, v: number) => amount(key, v).replace(/\.00G$/, 'G')
+
 /** 剩余比例: > 50% 绿, 20-50% 橙, < 20% 红 */
 export const levelColor = (percent: number): Pair => (percent < 20 ? RED : percent <= 50 ? ORANGE : GREEN)
 
@@ -433,7 +436,7 @@ export function MeterLine(props: { ctx: Ctx; m: Meter; font?: number; bar?: numb
         <Label ctx={ctx} text={m.label} />
         <Spacer minLength={4} />
         <Num value={amount(m.key, m.remain)} size={props.font ?? 13} color={ctx.th.t1} />
-        {props.total ? <Text font={10} foregroundStyle={ctx.th.t3} lineLimit={1}>{`/${amount(m.key, m.total)}`}</Text> : null}
+        {props.total ? <Text font={10} foregroundStyle={ctx.th.t3} lineLimit={1}>{`/${totalText(m.key, m.total)}`}</Text> : null}
       </HStack>
       <Bar ctx={ctx} percent={m.percent} height={props.bar ?? 5} tick={props.tick} />
       {props.note ? <Text font={10} foregroundStyle={ctx.th.t3} lineLimit={1}>{props.note}</Text> : null}

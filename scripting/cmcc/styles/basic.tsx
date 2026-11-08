@@ -5,7 +5,7 @@ import { VStack, HStack, ZStack, Text, Spacer, Gauge, AccessoryWidgetBackground,
 
 import { formatFlow, type Account } from '../api'
 import {
-  Root, Header, SyncTap, Logo, Num, Label, Balance, Cell, Stat, Bar, MeterStack, ErrorBox, LockPreview, lockFg, primary, metersOf, amount,
+  Root, Header, SyncTap, Logo, Num, Label, Balance, Cell, Stat, Bar, MeterStack, ErrorBox, LockPreview, lockFg, primary, metersOf, amount, totalText,
   starText, pointsText, netText, balanceColor, balanceLabel, RED, type Ctx, type Meter,
 } from '../ui'
 
@@ -17,17 +17,17 @@ export function NoData(props: { ctx: Ctx }) {
 // ─────────────────────────────────────────────────────────────
 // A 自适应: 按套餐有几项 (1-3) 排版; 原 0.4 默认样式
 // ─────────────────────────────────────────────────────────────
-function MeterCard(props: { ctx: Ctx; m: Meter; detail?: boolean; big?: boolean }) {
+function MeterCard(props: { ctx: Ctx; m: Meter; detail?: boolean; big?: boolean; roomy?: boolean }) {
   const { ctx, m } = props
   return (
     <Cell ctx={ctx} gap={props.big ? 8 : 4}>
       <HStack alignment="lastTextBaseline" spacing={2}>
         <Label ctx={ctx} text={m.label} />
         <Spacer />
-        <Num value={amount(m.key, m.remain)} size={props.big ? 22 : 17} color={ctx.th.t1} />
-        <Text font={11} foregroundStyle={ctx.th.t3}>{`/${amount(m.key, m.total)}`}</Text>
+        <Num value={amount(m.key, m.remain)} size={props.big ? 22 : props.roomy ? 20 : 17} color={ctx.th.t1} />
+        <Text font={11} foregroundStyle={ctx.th.t3}>{`/${totalText(m.key, m.total)}`}</Text>
       </HStack>
-      <Bar ctx={ctx} percent={m.percent} height={props.big ? 8 : 5} />
+      <Bar ctx={ctx} percent={m.percent} height={props.big ? 8 : props.roomy ? 7 : 5} />
       {props.detail ? <Text font={11} foregroundStyle={ctx.th.t3}>{`已用 ${amount(m.key, m.used)} · 剩 ${Math.round(m.percent)}%`}</Text> : null}
     </Cell>
   )
@@ -42,7 +42,7 @@ function SlimCard(props: { ctx: Ctx; m: Meter }) {
         <Label ctx={ctx} text={m.label} />
         <Spacer />
         <Num value={amount(m.key, m.remain)} size={14} color={ctx.th.t1} />
-        <Text font={10} foregroundStyle={ctx.th.t3}>{`/${amount(m.key, m.total)}`}</Text>
+        <Text font={10} foregroundStyle={ctx.th.t3}>{`/${totalText(m.key, m.total)}`}</Text>
       </HStack>
       <Bar ctx={ctx} percent={m.percent} height={4} />
     </Cell>
@@ -93,7 +93,7 @@ export function AdaptiveStyle(props: { ctx: Ctx }) {
         ...ms.map(m => <MeterCard ctx={ctx} m={m} />),
         <HStack spacing={6}>
           <Chip ctx={ctx} label="积分" value={pointsText(a)} />
-          <Chip ctx={ctx} label={a.user?.brand ?? '星级'} value={starText(a)} />
+          <Chip ctx={ctx} label={a.user?.brand ?? '星级'} value={a.user?.brand ? '' : starText(a)} />
         </HStack>,
       ]
     } else {
@@ -132,7 +132,7 @@ export function AdaptiveStyle(props: { ctx: Ctx }) {
           </VStack>
         ) : null}
       </HStack>
-      <VStack spacing={6}>{ms.map(m => <MeterCard ctx={ctx} m={m} detail={ms.length < 3} big={ms.length === 1} />)}</VStack>
+      <VStack spacing={6}>{ms.map(m => <MeterCard ctx={ctx} m={m} detail={ms.length < 3} big={ms.length === 1} roomy={ms.length === 3} />)}</VStack>
       <Spacer />
       <HStack spacing={6}>{stats.map(([l, v]) => <Stat ctx={ctx} label={l} value={v} />)}</HStack>
     </Root>
