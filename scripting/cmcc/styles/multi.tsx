@@ -54,7 +54,7 @@ export function DualStyle(props: { ctx: Ctx }) {
         <VStack alignment="leading" spacing={2} frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'topLeading' }}>
           <Label ctx={ctx} text={s.name} />
           <Num value={a.balance.toFixed(2)} size={19} color={balanceColor(ctx, a)} />
-          <Text font={10} foregroundStyle={a.balance < 0 ? dyn(RED) : ctx.th.t3}>{a.balance < 0 ? '已欠费' : '余额'}</Text>
+          {ms.length > 2 ? null : <Text font={10} foregroundStyle={a.balance < 0 ? dyn(RED) : ctx.th.t3}>{a.balance < 0 ? '已欠费' : '余额'}</Text>}
           <Spacer />
           <VStack alignment="leading" spacing={ms.length > 2 ? 2 : 5}>
             {ms.map(m => (
@@ -82,7 +82,7 @@ export function DualStyle(props: { ctx: Ctx }) {
         <Spacer />
         {big ? (
           <VStack spacing={6}>
-            {ms.map(m => <Cell ctx={ctx}><MeterLine ctx={ctx} m={m} font={15} note={`共 ${amount(m.key, m.total)} · 剩 ${Math.round(m.percent)}%`} /></Cell>)}
+            {ms.map(m => <Cell ctx={ctx}><MeterLine ctx={ctx} m={m} font={15} note={ms.length > 2 ? undefined : `共 ${amount(m.key, m.total)} · 剩 ${Math.round(m.percent)}%`} /></Cell>)}
           </VStack>
         ) : <MeterStack ctx={ctx} ms={ms} total={ms.length < 3} />}
         {big ? [<Spacer />, (

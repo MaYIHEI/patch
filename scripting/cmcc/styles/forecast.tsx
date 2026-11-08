@@ -271,7 +271,7 @@ export function ForecastStyle(props: { ctx: Ctx }) {
       <Header ctx={ctx} title={`本月第 ${mo.day} 天`} sub={`已过 ${Math.round(mo.elapsed * 100)}%`} />
       {rows}
       <Spacer />
-      {big ? (
+      {big && ms.length < 3 ? (
         <VStack alignment="leading" spacing={4}>
           <Label ctx={ctx} text="通用近 7 天每天用量" />
           <DailyBars ctx={ctx} values={p.hist?.daily('gen', 7) ?? []} height={60} labels={weekLabels(7)} />

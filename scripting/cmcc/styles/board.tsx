@@ -183,7 +183,7 @@ export function BoardStyle(props: { ctx: Ctx }) {
           </Cell>
         ))}
       </VStack>
-      <Section ctx={ctx} title="账户" />
+      {roomy ? <Section ctx={ctx} title="账户" /> : null}
       <HStack spacing={6}>
         {[['积分', pointsText(a)], ['星级', starText(a)], ['星级分', a.user?.starScore !== undefined ? String(a.user.starScore) : '-'], ['网龄', netText(a)]].map(([l, v]) => (
           <Cell ctx={ctx} gap={0}><Text font={10} foregroundStyle={th.t3}>{l}</Text><Num value={v} size={13} color={th.t1} /></Cell>
