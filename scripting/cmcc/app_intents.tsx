@@ -31,3 +31,13 @@ export const PageIntent = AppIntentManager.register({
     Widget.reloadAll()
   },
 })
+
+/** 号码标签: 直接切到第几个号 */
+export const PageSetIntent = AppIntentManager.register({
+  name: 'CmccPageSetIntent',
+  protocol: AppIntentProtocol.AppIntent,
+  perform: async ({ page }: { page: number }) => {
+    AppStorage.set(PAGE_KEY, page)
+    Widget.reloadAll()
+  },
+})

@@ -4,10 +4,10 @@
 import { VStack, HStack, ZStack, Text, Spacer, Image, Gauge, AccessoryWidgetBackground, RoundedRectangle } from 'scripting'
 import type { DynamicShapeStyle } from 'scripting'
 
-import { formatFlow } from '../api'
+import { formatFlow, type Account } from '../api'
 import {
-  Root, Header, SyncTap, Num, Label, Balance, Cell, Stat, Bar, MeterLine, ErrorBox, LockPreview, lockFg, primary, metersOf, amount,
-  starText, pointsText, netText, balanceColor, RED, GREEN, type Ctx, type Meter,
+  Root, Header, SyncTap, Logo, Num, Label, Balance, Cell, Stat, Bar, MeterLine, ErrorBox, LockPreview, lockFg, primary, metersOf, amount,
+  starText, pointsText, netText, balanceColor, balanceLabel, RED, GREEN, type Ctx, type Meter,
 } from '../ui'
 
 /** 没有数据时整张显示错误 */
@@ -115,34 +115,31 @@ export function AdaptiveStyle(props: { ctx: Ctx }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// B 大字余额: 余额最大, 底部一条最紧要的额度
+// B 大字余额: 只有一个居中的大数字, 底下一行小字
 // ─────────────────────────────────────────────────────────────
 export function BigBalanceStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const p = primary(ctx)
   if (!p) return <NoData ctx={ctx} />
   const a = p.account
-  const ms = metersOf(a)
+  const foot = metersOf(a).map(m => `${m.label} ${amount(m.key, m.remain)}`).join(' · ')
   return (
     <Root ctx={ctx} spacing={0}>
-      <Header ctx={ctx} title={ctx.size === 'm' ? '中国移动' : undefined} />
       <Spacer />
-      <HStack alignment="bottom">
-        <VStack alignment="leading" spacing={2}>
-          <Num value={a.balance.toFixed(2)} size={ctx.size === 's' ? 40 : 52} color={balanceColor(ctx, a)} />
-          <Label ctx={ctx} text={a.balance < 0 ? '已欠费 · 元' : '话费余额 · 元'} color={a.balance < 0 ? RED : ctx.th.t2} />
+      <HStack>
+        <Spacer />
+        <VStack spacing={3}>
+          <Num value={a.balance.toFixed(2)} size={ctx.size === 's' ? 46 : 58} color={balanceColor(ctx, a)} />
+          <Label ctx={ctx} text={ctx.size === 'm' && a.monthFee !== undefined ? `${balanceLabel(a)} · 本月 ¥${a.monthFee.toFixed(2)}` : balanceLabel(a)} color={a.balance < 0 ? RED : ctx.th.t2} />
         </VStack>
-        {ctx.size === 'm' && a.monthFee !== undefined ? [<Spacer />, (
-          <VStack alignment="trailing" spacing={2}>
-            <Num value={`¥${a.monthFee.toFixed(2)}`} size={18} color={ctx.th.t1} />
-            <Label ctx={ctx} text="本月消费" />
-          </VStack>
-        )] : null}
+        <Spacer />
       </HStack>
       <Spacer />
-      {ctx.size === 's'
-        ? (ms[0] ? <MeterLine ctx={ctx} m={ms[0]} /> : null)
-        : <HStack spacing={12}>{ms.map(m => <MeterLine ctx={ctx} m={m} />)}</HStack>}
+      <HStack>
+        <Spacer />
+        <Text font={10} foregroundStyle={ctx.th.t3} lineLimit={1} minScaleFactor={0.8}>{foot}</Text>
+        <Spacer />
+      </HStack>
     </Root>
   )
 }
@@ -175,44 +172,59 @@ export function StatusStyle(props: { ctx: Ctx }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// D 账单卡: 品牌星级 + 余额 / 本月, 底部一排数字
+// D 账单卡: 做成一张银行卡, 卡号位放尾号; 大号下面再列额度和统计
 // ─────────────────────────────────────────────────────────────
+const CHIP = { gradient: [{ color: '#E2C878', location: 0 }, { color: '#B8963A', location: 1 }], startPoint: { x: 0, y: 0 }, endPoint: { x: 1, y: 1 } }
+
+function BankCard(props: { ctx: Ctx; a: Account; tall?: boolean }) {
+  const { ctx, a } = props
+  return (
+    <VStack
+      alignment="leading"
+      spacing={0}
+      padding={{ horizontal: 14, vertical: 12 }}
+      frame={{ maxWidth: 'infinity', maxHeight: props.tall ? 'infinity' : undefined, alignment: 'topLeading' }}
+      background={<RoundedRectangle cornerRadius={16} style="continuous" fill={ctx.th.card} />}
+    >
+      <HStack spacing={6}>
+        <Logo size={20} />
+        <Spacer />
+        <Text font={11} foregroundStyle={ctx.th.t2} lineLimit={1}>{[a.user?.brand, a.user?.starLevel ? starText(a) : ''].filter(Boolean).join(' · ')}</Text>
+      </HStack>
+      <RoundedRectangle cornerRadius={4} fill={CHIP as any} frame={{ width: 26, height: 18 }} padding={{ top: 8 }} />
+      <Spacer minLength={6} />
+      <HStack alignment="bottom">
+        <VStack alignment="leading" spacing={3}>
+          <Num value={`¥${a.balance.toFixed(2)}`} size={26} color={balanceColor(ctx, a)} />
+          <Text font={11} fontDesign="monospaced" foregroundStyle={ctx.th.t3} lineLimit={1}>{`**** **** **** ${a.phoneTail}`}</Text>
+        </VStack>
+        <Spacer />
+        <VStack alignment="trailing" spacing={1}>
+          <Text font={10} foregroundStyle={ctx.th.t3}>本月</Text>
+          <Num value={a.monthFee !== undefined ? `¥${a.monthFee.toFixed(2)}` : '-'} size={14} color={ctx.th.t1} />
+        </VStack>
+      </HStack>
+    </VStack>
+  )
+}
+
 export function BillStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const p = primary(ctx)
   if (!p) return <NoData ctx={ctx} />
   const a = p.account
-  const ms = metersOf(a)
-  const cells: [string, string, boolean][] = [
-    ...ms.map(m => [m.label, amount(m.key, m.remain), m.percent < 20] as [string, string, boolean]),
-    ['积分', pointsText(a), false], ['网龄', netText(a), false],
-  ]
-  const big = ctx.size === 'l'
+  if (ctx.size === 'm') {
+    return <Root ctx={ctx} spacing={0}><BankCard ctx={ctx} a={a} tall /></Root>
+  }
   return (
-    <Root ctx={ctx} spacing={big ? 16 : 0}>
-      <Header ctx={ctx} title={a.user?.brand ?? '中国移动'} sub={a.user?.starLevel ? starText(a) : undefined} />
-      {big ? null : <Spacer />}
-      <HStack alignment="bottom">
-        <Balance ctx={ctx} a={a} size={big ? 44 : 34} />
-        <Spacer />
-        <VStack alignment="trailing" spacing={1}>
-          <Num value={a.monthFee !== undefined ? `¥${a.monthFee.toFixed(2)}` : '-'} size={big ? 20 : 17} color={ctx.th.t1} />
-          <Label ctx={ctx} text="本月已用" />
-        </VStack>
-      </HStack>
+    <Root ctx={ctx} spacing={12}>
+      <BankCard ctx={ctx} a={a} />
+      <VStack spacing={8}>{metersOf(a).map(m => <MeterLine ctx={ctx} m={m} total bar={6} font={15} />)}</VStack>
       <Spacer />
-      {big ? (
-        <VStack spacing={8}>{ms.map(m => <MeterLine ctx={ctx} m={m} total bar={7} font={16} />)}</VStack>
-      ) : null}
-      {big ? <Spacer /> : null}
-      <HStack spacing={0}>
-        {cells.slice(0, 5).map(([l, v, c], i) => [
-          i ? <Spacer /> : null,
-          <VStack alignment="leading" spacing={1}>
-            <Text font={10} foregroundStyle={ctx.th.t3}>{l}</Text>
-            <Num value={v} size={13} color={c ? RED : ctx.th.t1} />
-          </VStack>,
-        ])}
+      <HStack spacing={6}>
+        <Stat ctx={ctx} label="积分" value={pointsText(a)} />
+        <Stat ctx={ctx} label="星级分" value={a.user?.starScore !== undefined ? String(a.user.starScore) : '-'} />
+        <Stat ctx={ctx} label="网龄" value={netText(a)} />
       </HStack>
     </Root>
   )

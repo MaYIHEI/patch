@@ -1,11 +1,11 @@
 // cmcc / styles/multi.tsx
 // 多个号和能点的: 双号对照 / 谁先用完 / 多号翻页 / 控制台 / 账本记录
 
-import { VStack, HStack, Text, Spacer, Image, Button, Rectangle, RoundedRectangle, Link, Script } from 'scripting'
+import { VStack, HStack, ZStack, Text, Spacer, Image, Button, Circle, Rectangle, RoundedRectangle, Link, Script } from 'scripting'
 import type { DynamicShapeStyle } from 'scripting'
 
 import {
-  Root, Header, SyncTap, Num, Label, Cell, Stat, Bar, MeterLine, ErrorBox, errorText, primary, metersOf, amount, forecast, md, hhmm,
+  Root, Header, SyncTap, Tabs, pageIndex, Num, Label, Cell, Stat, Bar, MeterLine, ErrorBox, errorText, primary, metersOf, amount, forecast, md, hhmm,
   balanceColor, balanceLabel, pointsText, RED, GREEN, ORANGE, type Ctx, type Slot, type Paint,
 } from '../ui'
 import type { Account } from '../api'
@@ -109,7 +109,7 @@ export function DualStyle(props: { ctx: Ctx }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// T 谁先用完: 所有号的所有项按紧张程度排队
+// T 谁先用完: 所有号的所有项按紧张程度排队, 前面是大号排名
 // ─────────────────────────────────────────────────────────────
 type Row = { who: string; what: string; text: string; color: Paint; percent: number; rank: number }
 
@@ -137,36 +137,31 @@ export function QueueStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const rows = rowsOf(ctx.slots)
   if (!rows.length) return <NoData ctx={ctx} />
-  const n = ctx.size === 'l' ? 7 : 3
+  const big = ctx.size === 'l'
   return (
-    <Root ctx={ctx} spacing={ctx.size === 'l' ? 8 : 5}>
+    <Root ctx={ctx} spacing={big ? 10 : 7}>
       <Header ctx={ctx} title="谁先用完" sub={`${ctx.slots.filter(s => s.account).length} 个号`} />
-      {rows.slice(0, n).map(r => ctx.size === 'l' ? (
-        <Cell ctx={ctx} gap={5}>
-          <HStack>
-            <Text font={12} fontWeight="semibold" foregroundStyle={ctx.th.t1} lineLimit={1}>{r.who}</Text>
-            <Label ctx={ctx} text={r.what} />
-            <Spacer />
-            <Text font={11} foregroundStyle={r.color} lineLimit={1}>{r.text}</Text>
-          </HStack>
-          <Bar ctx={ctx} percent={r.percent} height={5} />
-        </Cell>
-      ) : (
-        <HStack spacing={6}>
-          <Text font={11} fontWeight="semibold" foregroundStyle={ctx.th.t1} lineLimit={1}>{r.who}</Text>
-          <Label ctx={ctx} text={r.what} />
-          <Spacer minLength={4} />
-          <Text font={11} foregroundStyle={r.color} lineLimit={1}>{r.text}</Text>
+      {rows.slice(0, big ? 7 : 3).map((r, i) => (
+        <HStack spacing={10}>
+          <Num value={i + 1} size={big ? 24 : 20} color={i === 0 ? r.color : ctx.th.t3} />
+          <VStack alignment="leading" spacing={3} frame={{ maxWidth: 'infinity' }}>
+            <HStack spacing={5}>
+              <Text font={12} fontWeight="semibold" foregroundStyle={ctx.th.t1} lineLimit={1}>{r.who}</Text>
+              <Label ctx={ctx} text={r.what} />
+              <Spacer minLength={4} />
+              <Text font={11} foregroundStyle={r.color} lineLimit={1}>{r.text}</Text>
+            </HStack>
+            <Bar ctx={ctx} percent={Math.max(1, r.percent)} height={4} />
+          </VStack>
         </HStack>
       ))}
-      <Spacer />
-      <Text font={10} foregroundStyle={ctx.th.t3}>最上面的最该先处理</Text>
+      <Spacer minLength={0} />
     </Root>
   )
 }
 
 // ─────────────────────────────────────────────────────────────
-// Q 多号翻页: 一个组件轮着看所有号, 点 ‹ › 切换
+// Q 多号翻页: 顶部号码标签, 点哪个看哪个; › 翻到下一个
 // ─────────────────────────────────────────────────────────────
 function PageTap(props: { ctx: Ctx; step: number; icon: string }) {
   const img = <Image systemName={props.icon} font={12} fontWeight="semibold" foregroundStyle={props.ctx.th.t2} frame={{ width: 22, height: 18 }} />
@@ -178,42 +173,45 @@ export function PagerStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const slots = ctx.slots
   if (!slots.some(s => s.account)) return <NoData ctx={ctx} />
-  const n = slots.length
-  const i = ((ctx.page % n) + n) % n
+  const i = pageIndex(ctx)
   const s = slots[i]
   const a = s.account
-  const nav = (
-    <HStack spacing={2}>
-      <PageTap ctx={ctx} step={-1} icon="chevron.left" />
-      <Text font={11} foregroundStyle={ctx.th.t3} monospacedDigit>{`${i + 1}/${n}`}</Text>
-      <PageTap ctx={ctx} step={1} icon="chevron.right" />
+  const top = (
+    <HStack spacing={6}>
+      <Tabs ctx={ctx} index={i} />
+      <Spacer minLength={4} />
+      {slots.length > 1 ? <PageTap ctx={ctx} step={1} icon="chevron.right" /> : null}
       <SyncTap ctx={ctx} t={a?.fetchedAt} stale={a?.stale} />
     </HStack>
   )
-  const dots = (
-    <HStack spacing={4}>
-      <Spacer />
-      {slots.map((_, k) => <RoundedRectangle cornerRadius={3} fill={k === i ? ctx.th.t1 : ctx.th.track} frame={{ width: k === i ? 12 : 6, height: 6 }} />)}
-      <Spacer />
-    </HStack>
-  )
-  if (!a) return <Root ctx={ctx}><Header ctx={ctx} title={s.name} right={nav} /><SlotError ctx={ctx} slot={s} />{dots}</Root>
+  if (!a) return <Root ctx={ctx}>{top}<SlotError ctx={ctx} slot={s} /></Root>
   const ms = metersOf(a)
+  const big = ctx.size === 'l'
   return (
-    <Root ctx={ctx} spacing={ctx.size === 'l' ? 12 : 6}>
-      <Header ctx={ctx} title={s.name} sub={a.user?.brand} right={nav} />
-      <HStack alignment="bottom" spacing={14} frame={{ maxHeight: ctx.size === 'l' ? undefined : 'infinity' }}>
+    <Root ctx={ctx} spacing={big ? 12 : 8}>
+      {top}
+      <HStack alignment="bottom" spacing={14} frame={{ maxHeight: big ? undefined : 'infinity' }}>
         <VStack alignment="leading" spacing={1}>
-          <Num value={a.balance.toFixed(2)} size={ctx.size === 'l' ? 40 : 32} color={balanceColor(ctx, a)} />
+          <Num value={a.balance.toFixed(2)} size={big ? 40 : 32} color={balanceColor(ctx, a)} />
           <Label ctx={ctx} text={balanceLabel(a)} color={a.balance < 0 ? dyn(RED) : ctx.th.t2} />
         </VStack>
-        <VStack spacing={6} frame={{ maxWidth: 'infinity' }}>
-          {ctx.size === 'l' ? null : ms.slice(0, 2).map(m => <MeterLine ctx={ctx} m={m} font={12} />)}
-        </VStack>
+        {big ? <Spacer /> : <VStack spacing={6} frame={{ maxWidth: 'infinity' }}>{ms.slice(0, 2).map(m => <MeterLine ctx={ctx} m={m} font={12} total />)}</VStack>}
+        {big && a.monthFee !== undefined ? (
+          <VStack alignment="trailing" spacing={1}>
+            <Num value={`¥${a.monthFee.toFixed(2)}`} size={18} color={ctx.th.t1} />
+            <Label ctx={ctx} text="本月消费" />
+          </VStack>
+        ) : null}
       </HStack>
-      {ctx.size === 'l' ? <VStack spacing={8}>{ms.map(m => <Cell ctx={ctx}><MeterLine ctx={ctx} m={m} total font={16} bar={6} /></Cell>)}</VStack> : null}
-      {ctx.size === 'l' ? <Spacer /> : null}
-      {n > 1 ? dots : null}
+      {big ? <VStack spacing={8}>{ms.map(m => <Cell ctx={ctx}><MeterLine ctx={ctx} m={m} total font={16} bar={6} /></Cell>)}</VStack> : null}
+      {big ? <Spacer /> : null}
+      {big ? (
+        <HStack spacing={6}>
+          <Stat ctx={ctx} label="积分" value={pointsText(a)} size={13} />
+          <Stat ctx={ctx} label="品牌" value={a.user?.brand ?? '-'} size={13} />
+          <Stat ctx={ctx} label="网龄" value={a.user?.netYears !== undefined ? `${a.user.netYears.toFixed(1)}年` : '-'} size={13} />
+        </HStack>
+      ) : null}
     </Root>
   )
 }
@@ -269,27 +267,35 @@ export function ConsoleStyle(props: { ctx: Ctx }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// U 账本记录: 账本里的扣费记录 (实时话费、月结扣费等)
+// U 账本记录: 时间线, 账本里的扣费记录 (实时话费、月结扣费等)
 // ─────────────────────────────────────────────────────────────
 export function LedgerStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const p = primary(ctx)
   if (!p) return <NoData ctx={ctx} />
   const a: Account = p.account
-  const list = a.ledger ?? []
-  const n = ctx.size === 'l' ? 10 : 4
+  const list = (a.ledger ?? []).slice(0, ctx.size === 'l' ? 10 : 4)
   return (
-    <Root ctx={ctx} spacing={ctx.size === 'l' ? 8 : 5}>
+    <Root ctx={ctx} spacing={6}>
       <Header ctx={ctx} title="账本记录" sub={`余额 ${a.balance.toFixed(2)}`} />
-      {list.length ? list.slice(0, n).map(x => (
-        <HStack spacing={8}>
-          <Text font={11} foregroundStyle={ctx.th.t3} monospacedDigit frame={{ width: 52, alignment: 'leading' }}>{md(x.time).replace('月', '/').replace('日', '')}</Text>
-          <Text font={12} foregroundStyle={ctx.th.t1} lineLimit={1}>{x.name}</Text>
-          <Spacer minLength={4} />
-          <Num value={`−${x.amount.toFixed(2)}`} size={12} color={ctx.th.t1} />
-        </HStack>
-      )) : <Text font={12} foregroundStyle={ctx.th.t2}>账本里暂时没有记录</Text>}
-      <Spacer />
+      {list.length ? (
+        <VStack spacing={0}>
+          {list.map((x, i) => (
+            <HStack spacing={10} frame={{ minHeight: ctx.size === 'l' ? 26 : 22 }}>
+              {/* 时间线: 竖线 + 圆点, 第一条是绿点 */}
+              <ZStack frame={{ width: 10, maxHeight: 'infinity' }}>
+                <Rectangle fill={ctx.th.track} frame={{ width: 2, maxHeight: 'infinity' }} />
+                <Circle fill={i === 0 ? dyn(GREEN) : ctx.th.t3} frame={{ width: 8, height: 8 }} />
+              </ZStack>
+              <Text font={11} foregroundStyle={ctx.th.t3} monospacedDigit frame={{ width: 38, alignment: 'leading' }}>{md(x.time).replace('月', '/').replace('日', '')}</Text>
+              <Text font={12} foregroundStyle={ctx.th.t1} lineLimit={1}>{x.name}</Text>
+              <Spacer minLength={4} />
+              <Num value={`−${x.amount.toFixed(2)}`} size={12} color={ctx.th.t1} />
+            </HStack>
+          ))}
+        </VStack>
+      ) : <Text font={12} foregroundStyle={ctx.th.t2}>账本里暂时没有记录</Text>}
+      <Spacer minLength={0} />
       {a.monthFee !== undefined ? <Text font={10} foregroundStyle={ctx.th.t3}>{`本月已用 ¥${a.monthFee.toFixed(2)}`}</Text> : null}
     </Root>
   )

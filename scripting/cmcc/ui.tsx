@@ -7,7 +7,7 @@ import type { Color, DynamicShapeStyle } from 'scripting'
 import { formatFlow, CmccError, type Account } from './api'
 import type { Hist, Key } from './history'
 import type { Look, Family } from './settings'
-import { RefreshIntent } from './app_intents'
+import { RefreshIntent, PageSetIntent } from './app_intents'
 
 // ─────────────────────────────────────────────────────────────
 // 配色: 素净 = 浅白 / 深灰, 只有进度条和状态带颜色
@@ -205,11 +205,11 @@ export function tightest(ms: Meter[], hist?: Hist): { m: Meter; f: Forecast } | 
 // ─────────────────────────────────────────────────────────────
 const PAD: Record<Size, number> = { s: 14, m: 14, l: 16 }
 
-/** 小组件根视图; tone 让整张变成状态色 (状态色块样式用) */
-export function Root(props: { ctx: Ctx; spacing?: number; tone?: 'good' | 'bad'; children?: any }) {
+/** 小组件根视图; tone 让整张变成状态色 (状态色块样式用), bg 固定底色 (终端样式用) */
+export function Root(props: { ctx: Ctx; spacing?: number; tone?: 'good' | 'bad'; bg?: Paint; children?: any }) {
   const { ctx } = props
   const { th } = ctx
-  const bg: Paint = props.tone && !th.custom ? ((props.tone === 'bad' ? RED_TINT : GREEN_TINT) as DynamicShapeStyle) : th.bg
+  const bg: Paint = props.bg ?? (props.tone && !th.custom ? ((props.tone === 'bad' ? RED_TINT : GREEN_TINT) as DynamicShapeStyle) : th.bg)
   const img = th.image
   const backdrop = img ? (
     <ZStack>
@@ -281,6 +281,44 @@ export function Header(props: { ctx: Ctx; title?: string; sub?: string; right?: 
       {props.right === undefined ? <SyncTap ctx={props.ctx} /> : props.right}
     </HStack>
   )
+}
+
+/** 分区小标题: 灰字 + 一条细线 (+ 右侧灰字), 同 loon-panel 全景看板 */
+export function Section(props: { ctx: Ctx; title: string; right?: string }) {
+  const { th } = props.ctx
+  return (
+    <HStack spacing={6}>
+      <Text font={10} fontWeight="semibold" foregroundStyle={th.t3}>{props.title}</Text>
+      <Rectangle fill={th.border} frame={{ maxWidth: 'infinity', height: 0.5 }} />
+      {props.right ? <Text font={10} foregroundStyle={th.t3} lineLimit={1}>{props.right}</Text> : null}
+    </HStack>
+  )
+}
+
+/** 号码标签: 多个号时一排胶囊, 点哪个切到哪个; 当前的反色 */
+export function Tabs(props: { ctx: Ctx; index: number }) {
+  const { ctx } = props
+  const { th } = ctx
+  return (
+    <HStack spacing={5}>
+      {ctx.slots.map((s, i) => {
+        const on = i === props.index
+        const pill = (
+          <Text font={11} fontWeight={on ? 'semibold' : 'regular'} foregroundStyle={on ? th.bg : th.t2} lineLimit={1}
+            padding={{ horizontal: 9, vertical: 3 }} background={<Capsule fill={on ? th.t1 : th.card} />}>
+            {s.name}
+          </Text>
+        )
+        return ctx.inApp || on ? pill : <Button intent={PageSetIntent({ page: i })} buttonStyle="plain">{pill}</Button>
+      })}
+    </HStack>
+  )
+}
+
+/** 当前页对应的号 (多号翻页 / 全景用) */
+export function pageIndex(ctx: Ctx) {
+  const n = Math.max(1, ctx.slots.length)
+  return ((ctx.page % n) + n) % n
 }
 
 /** 大数字: 圆体、等宽, 放不下自动缩小 */

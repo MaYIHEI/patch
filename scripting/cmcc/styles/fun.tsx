@@ -6,7 +6,7 @@ import type { DynamicShapeStyle } from 'scripting'
 
 import {
   Root, Header, Num, Label, primary, metersOf, amount, month, forecast, md, hhmm, starText, pointsText, netText,
-  RED, GREEN, ORANGE, type Ctx, type Paint,
+  RED, GREEN, type Ctx, type Paint,
 } from '../ui'
 import { NoData } from './basic'
 
@@ -114,47 +114,58 @@ export function BadgeStyle(props: { ctx: Ctx }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// O 终端: 等宽字逐行 ✓ ! ✗
+// O 终端: 不管系统深浅色都是黑底, 等宽字逐行 ✓ ! ✗
 // ─────────────────────────────────────────────────────────────
 const MONO = 'monospaced' as const
+const TERM = { bg: '#0D1117', fg: '#C9D1D9', dim: '#6E7681', ok: '#3FB950', warn: '#D29922', bad: '#F85149' }
 
 export function TerminalStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const p = primary(ctx)
   if (!p) return <NoData ctx={ctx} />
   const a = p.account
-  const mark = (ok: boolean, warn: boolean) => (ok ? { s: '✓', c: dyn(GREEN) } : warn ? { s: '!', c: dyn(ORANGE) } : { s: '✗', c: dyn(RED) })
+  const mark = (ok: boolean, warn: boolean) => (ok ? { s: '✓', c: TERM.ok } : warn ? { s: '!', c: TERM.warn } : { s: '✗', c: TERM.bad })
   const rows = [
     { k: 'balance ', v: `¥${a.balance.toFixed(2)}`, m: mark(a.balance >= 10, a.balance >= 0) },
     ...metersOf(a).map(m => ({
-      k: (m.key === 'gen' ? 'general ' : m.key === 'tgt' ? 'targeted' : 'voice   '),
+      k: m.key === 'gen' ? 'general ' : m.key === 'tgt' ? 'targeted' : 'voice   ',
       v: `${amount(m.key, m.remain)} / ${amount(m.key, m.total)}  ${Math.round(m.percent)}%`,
       m: mark(m.percent > 50, m.percent >= 20),
     })),
     { k: 'points  ', v: `${pointsText(a)}  star ${a.user?.starLevel ?? '-'}`, m: mark(true, true) },
   ]
-  const line = (text: string, color: Paint) => <Text font={11} fontDesign={MONO} foregroundStyle={color} lineLimit={1}>{text}</Text>
+  const line = (text: string, color: string) => <Text font={11} fontDesign={MONO} foregroundStyle={color} lineLimit={1}>{text}</Text>
   return (
-    <Root ctx={ctx} spacing={3}>
-      {line(`$ cmcc status --tail ${a.phoneTail}`, ctx.th.t3)}
+    <Root ctx={ctx} spacing={3} bg={TERM.bg}>
+      {line(`$ cmcc status --tail ${a.phoneTail}`, TERM.dim)}
       {rows.slice(0, ctx.size === 'l' ? 8 : 4).map(r => (
         <HStack spacing={6}>
           <Text font={11} fontDesign={MONO} fontWeight="semibold" foregroundStyle={r.m.c}>{r.m.s}</Text>
-          {line(`${r.k}  ${r.v}`, ctx.th.t1)}
+          {line(`${r.k}  ${r.v}`, TERM.fg)}
         </HStack>
       ))}
-      {ctx.size === 'l' && a.ledger ? [line('', ctx.th.t3), line('$ cmcc ledger', ctx.th.t3), ...a.ledger.slice(0, 6).map(x => line(`  ${md(x.time).padEnd(6)} ${x.amount.toFixed(2).padStart(7)}  ${x.name}`, ctx.th.t2))] : null}
+      {ctx.size === 'l' && a.ledger ? [line('', TERM.dim), line('$ cmcc ledger', TERM.dim), ...a.ledger.slice(0, 6).map(x => line(`  ${md(x.time).padEnd(6)} ${x.amount.toFixed(2).padStart(7)}  ${x.name}`, TERM.fg))] : null}
       <Spacer />
-      {line(`updated ${hhmm(a.fetchedAt)}${a.stale ? ' (cached)' : ''}`, ctx.th.t3)}
+      <HStack spacing={0}>
+        {line(`updated ${hhmm(a.fetchedAt)}${a.stale ? ' (cached)' : ''} `, TERM.dim)}
+        <Rectangle fill={TERM.fg} frame={{ width: 7, height: 13 }} />
+      </HStack>
     </Root>
   )
 }
 
 // ─────────────────────────────────────────────────────────────
-// P 话费小票: 虚线票据, 余额 / 本月 / 各项剩余
+// P 话费小票: 一张票据纸, 上下两边是锯齿, 余额 / 本月 / 各项剩余
 // ─────────────────────────────────────────────────────────────
-function Dashed(props: { ctx: Ctx }) {
-  return <Text font={10} fontDesign={MONO} foregroundStyle={props.ctx.th.t3} lineLimit={1}>{'- '.repeat(40)}</Text>
+const PAPER = dyn({ light: '#FBF8F1', dark: '#2A2824' })
+
+/** 锯齿: 一排和底色一样的小圆, 压在纸边上 */
+function Teeth(props: { ctx: Ctx; y: number }) {
+  return (
+    <HStack spacing={4} offset={{ x: 0, y: props.y }}>
+      {Array.from({ length: 26 }, () => <Circle fill={props.ctx.th.bg} frame={{ width: 7, height: 7 }} />)}
+    </HStack>
+  )
 }
 
 export function ReceiptStyle(props: { ctx: Ctx }) {
@@ -168,25 +179,33 @@ export function ReceiptStyle(props: { ctx: Ctx }) {
     ...metersOf(a).map(m => [`${m.label}剩余`, amount(m.key, m.remain), m.percent < 20] as [string, string, boolean]),
   ]
   if (ctx.size === 'l') rows.push(['积分', pointsText(a)], ['星级', starText(a)], ['网龄', netText(a)])
+  const big = ctx.size === 'l'
   return (
-    <Root ctx={ctx} spacing={ctx.size === 'l' ? 5 : 2}>
-      <HStack><Spacer /><Text font={12} fontDesign={MONO} fontWeight="semibold" foregroundStyle={ctx.th.t1}>中国移动 · 话费单</Text><Spacer /></HStack>
-      <Dashed ctx={ctx} />
-      {rows.map(([k, v, red]) => (
+    <Root ctx={ctx} spacing={0}>
+      <VStack
+        alignment="leading" spacing={big ? 6 : 2}
+        padding={{ horizontal: 14, vertical: 10 }}
+        frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'topLeading' }}
+        background={<Rectangle fill={PAPER} />}
+        overlay={<VStack><Teeth ctx={ctx} y={-3.5} /><Spacer /><Teeth ctx={ctx} y={3.5} /></VStack>}
+        clipped
+      >
+        <HStack><Spacer /><Text font={12} fontDesign={MONO} fontWeight="semibold" foregroundStyle={ctx.th.t1}>中国移动 · 话费单</Text><Spacer /></HStack>
+        <Rectangle fill={ctx.th.t3} frame={{ maxWidth: 'infinity', height: 0.5 }} padding={{ vertical: 2 }} />
+        {rows.map(([k, v, red]) => (
+          <HStack>
+            <Text font={11} fontDesign={MONO} foregroundStyle={ctx.th.t2}>{k}</Text>
+            <Spacer />
+            <Text font={11} fontDesign={MONO} fontWeight="semibold" foregroundStyle={red ? dyn(RED) : ctx.th.t1}>{v}</Text>
+          </HStack>
+        ))}
+        <Spacer minLength={0} />
         <HStack>
-          <Text font={11} fontDesign={MONO} foregroundStyle={ctx.th.t2}>{k}</Text>
+          <Text font={10} fontDesign={MONO} foregroundStyle={ctx.th.t3}>{`尾号 ${a.phoneTail}`}</Text>
           <Spacer />
-          <Text font={11} fontDesign={MONO} fontWeight="semibold" foregroundStyle={red ? dyn(RED) : ctx.th.t1}>{v}</Text>
+          <Text font={10} fontDesign={MONO} foregroundStyle={ctx.th.t3}>{`${md(a.fetchedAt)} ${hhmm(a.fetchedAt)}`}</Text>
         </HStack>
-      ))}
-      <Dashed ctx={ctx} />
-      <Spacer minLength={0} />
-      <HStack>
-        <Text font={10} fontDesign={MONO} foregroundStyle={ctx.th.t3}>{`尾号 ${a.phoneTail}`}</Text>
-        <Spacer />
-        <Text font={10} fontDesign={MONO} foregroundStyle={ctx.th.t3}>{`${md(a.fetchedAt)} ${hhmm(a.fetchedAt)}`}</Text>
-      </HStack>
+      </VStack>
     </Root>
   )
 }
-
