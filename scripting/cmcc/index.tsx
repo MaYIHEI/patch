@@ -47,7 +47,6 @@ const BRANCH = 'testing'
 const REMOTE_META = `https://raw.githubusercontent.com/MaYIHEI/patch/${BRANCH}/scripting/cmcc/script.json`
 const PACKAGE_URL = `https://www.imarkr.com/api/github/download/MaYIHEI/patch/scripting/cmcc.zip?branch=${BRANCH}`
 const HOMEPAGE = 'https://github.com/MaYIHEI/patch/tree/main/scripting/cmcc'
-const PLUGIN_PAGE = 'https://github.com/MaYIHEI/paperclip/tree/main/app/cmcc'
 const BG_PATH = () => Path.join(FileManager.appGroupDocumentsDirectory, 'cmcc', 'background.jpg')
 
 async function main() {
@@ -122,6 +121,8 @@ function Home() {
 
   async function reload(force = false) {
     if (force) clearCache()
+    // 没有账号时 (首次使用, 或脚本被重新导入后 Keychain 清空) 先试着从 BoxJS 取; Loon 没开就走正常的导入引导
+    if (!listAccounts().length) await importFromBoxJS(getData().host).catch(() => {})
     setSlots(listAccounts().length ? await loadSlots(styleById('W')!, []) : [])
     setTick(tick + 1)
     Widget.reloadAll()
@@ -507,7 +508,6 @@ function AccountsTab(props: Shared & { close: any }) {
       >
         <ActionRow icon="square.and.arrow.down" title="从 BoxJS 导入" sub={`BoxJS: ${host}`} disabled={busy} action={doImport} />
         <ActionRow icon="arrow.clockwise" title="立即刷新全部" disabled={busy || !props.slots.length} action={refresh} />
-        <ActionRow icon="puzzlepiece.extension" title="中国移动插件" sub="paperclip · Loon / Surge / QX" action={() => { Safari.openURL(PLUGIN_PAGE) }} />
       </Group>
     </Page>
   )
