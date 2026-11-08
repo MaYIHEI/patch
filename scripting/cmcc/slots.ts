@@ -65,7 +65,7 @@ export function sampleSlots(): Slot[] {
         balance: -12.6, monthFee: 28.3, phoneTail: '0002', stale: false, fetchedAt: now, points: 420,
         general: { totalMB: 5120, usedMB: 1100, remainMB: 4020 },
         voice: { total: 100, used: 62, remain: 38 },
-        user: { brand: '全球通', starLevel: 4, starScore: 1860, channel: '上海移动', netYears: 8.5 },
+        user: { brand: '神州行', starLevel: 2, starScore: 410, channel: '广东移动', netYears: 3.2 },
       },
     },
   ]
