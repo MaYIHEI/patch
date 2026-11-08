@@ -37,7 +37,7 @@ import { Page, Card, Stage, Grid, Block, Panel, NavTile, Group, ActionRow, InfoR
 import { getData, setData, getLook, setLook, getDefaults, setDefault, getNames, setName, RECOMMENDED_BG, type Look, type Family, type DataPrefs } from './settings'
 import { metersOf, amount, starText, pointsText, netText, errorText, hhmm, chunk, type Slot } from './ui'
 import { STYLES, MULTI, NEEDS_HIST, stylesFor, styleById, paramOf, renderStyle, type StyleDef } from './styles/index'
-import { loadSlots, sampleSlots } from './slots'
+import { loadSlots, sampleSlots, cachedSlots } from './slots'
 import { installUpdate } from './update'
 
 declare const Safari: { openURL(url: string): Promise<boolean> }
@@ -113,7 +113,7 @@ const notes = (s: StyleDef, real: boolean) => [!real ? '示例数据' : '', NEED
 // ─────────────────────────────────────────────────────────────
 function Home() {
   const dismiss = Navigation.useDismiss()
-  const [slots, setSlots] = useState<Slot[]>([])
+  const [slots, setSlots] = useState<Slot[]>(cachedSlots())
   const [tick, setTick] = useState(0)
   const tab = useObservable<number>(0)
 

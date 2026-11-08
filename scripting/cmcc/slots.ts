@@ -1,7 +1,7 @@
 // cmcc / slots.ts
 // 按样式和参数决定查哪几个号; 小组件和 App 内预览共用
 
-import { loadAccount, listAccounts, CmccError } from './api'
+import { loadAccount, listAccounts, readCache, CmccError } from './api'
 import { histOf } from './history'
 import { getNames } from './settings'
 import { MULTI, type AccountRef, type StyleDef } from './styles/index'
@@ -26,6 +26,12 @@ export async function loadSlots(style: StyleDef, refs: AccountRef[]): Promise<Sl
       return { name, tel, error: e as Error }
     }
   }))
+}
+
+/** 打开 App 时先显示上次的查询结果, 联网回来再刷新, 免得账号页先空几秒 */
+export function cachedSlots(): Slot[] {
+  const names = getNames()
+  return listAccounts().map(tel => ({ name: names[tel] ?? `尾号 ${tel.slice(-4)}`, tel, account: readCache(tel) ?? undefined, hist: histOf(tel) }))
 }
 
 /** 示例: 样式库预览用; 主号通用、定向、语音都有, 副号欠费且只有通用和语音 */

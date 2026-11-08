@@ -355,7 +355,7 @@ function parseLedger(book: any): LedgerItem[] | undefined {
 // 缓存层 — Storage (NSUserDefaults 底层, 不进 iCloud, 不同步)
 // 只存查询结果, 不存凭证
 // ────────────────────────────────────────────────────────────
-function readCache(tel: string): Account | null {
+export function readCache(tel: string): Account | null {
   try {
     const s = AppStorage.get<string>(CACHE_KEY + tel)
     return s ? JSON.parse(s) as Account : null
