@@ -123,14 +123,31 @@ export function BigBalanceStyle(props: { ctx: Ctx }) {
   if (!p) return <NoData ctx={ctx} />
   const a = p.account
   const foot = metersOf(a).map(m => `${m.label} ${amount(m.key, m.remain)}`).join(' · ')
+  if (ctx.size === 'm') {
+    const m = metersOf(a)[0]
+    return (
+      <Root ctx={ctx} spacing={0}>
+        <HStack spacing={18} frame={{ maxHeight: 'infinity' }}>
+          <VStack alignment="leading" spacing={4} frame={{ maxWidth: 'infinity', alignment: 'leading' }}>
+            <Num value={a.balance.toFixed(2)} size={54} color={balanceColor(ctx, a)} />
+            <Label ctx={ctx} text={balanceLabel(a)} color={a.balance < 0 ? RED : ctx.th.t2} />
+          </VStack>
+          <VStack spacing={8} frame={{ width: 104 }}>
+            <Stat ctx={ctx} label="本月" value={a.monthFee !== undefined ? `¥${a.monthFee.toFixed(2)}` : '-'} />
+            {m ? <Stat ctx={ctx} label={`${m.label}剩`} value={amount(m.key, m.remain)} /> : null}
+          </VStack>
+        </HStack>
+      </Root>
+    )
+  }
   return (
     <Root ctx={ctx} spacing={0}>
       <Spacer />
       <HStack>
         <Spacer />
         <VStack spacing={3}>
-          <Num value={a.balance.toFixed(2)} size={ctx.size === 's' ? 46 : 58} color={balanceColor(ctx, a)} />
-          <Label ctx={ctx} text={ctx.size === 'm' && a.monthFee !== undefined ? `${balanceLabel(a)} · 本月 ¥${a.monthFee.toFixed(2)}` : balanceLabel(a)} color={a.balance < 0 ? RED : ctx.th.t2} />
+          <Num value={a.balance.toFixed(2)} size={46} color={balanceColor(ctx, a)} />
+          <Label ctx={ctx} text={balanceLabel(a)} color={a.balance < 0 ? RED : ctx.th.t2} />
         </VStack>
         <Spacer />
       </HStack>
@@ -158,13 +175,40 @@ export function StatusStyle(props: { ctx: Ctx }) {
   const title = a.balance < 0 ? '已欠费' : a.balance < 10 ? '余额不足' : low.length ? `${low[0].label}快用完` : '一切正常'
   const value = a.balance < 10 ? a.balance.toFixed(2) : low.length ? amount(low[0].key, low[0].remain) : a.balance.toFixed(2)
   const hint = a.balance < 10 ? '打开中国移动 App 缴费' : low.length ? `剩 ${Math.round(low[0].percent)}% · 省着点用` : `通用剩 ${a.general ? formatFlow(a.general.remainMB) : '-'}`
+  if (ctx.size === 'm') {
+    const items = [
+      { label: '余额', text: a.balance < 0 ? '已欠费' : a.balance < 10 ? '不足' : '正常', bad: a.balance < 10, value: a.balance.toFixed(2) },
+      ...metersOf(a).map(m => ({ label: m.label, text: m.percent < 20 ? '快用完' : '正常', bad: m.percent < 20, value: amount(m.key, m.remain) })),
+    ]
+    return (
+      <Root ctx={ctx} spacing={0} tone={bad ? 'bad' : 'good'}>
+        <HStack spacing={16} frame={{ maxHeight: 'infinity' }}>
+          <VStack alignment="leading" spacing={6} frame={{ width: 104, alignment: 'leading' }}>
+            <Image systemName={bad ? 'exclamationmark.triangle.fill' : 'checkmark.seal.fill'} font={28} foregroundStyle={color} />
+            <Text font={17} fontWeight="semibold" foregroundStyle={color} lineLimit={1} minScaleFactor={0.7}>{title}</Text>
+            <Label ctx={ctx} text={`尾号 ${a.phoneTail}`} />
+          </VStack>
+          <VStack spacing={9} frame={{ maxWidth: 'infinity' }}>
+            {items.map(x => (
+              <HStack spacing={6}>
+                <Label ctx={ctx} text={x.label} />
+                <Text font={11} fontWeight="semibold" foregroundStyle={x.bad ? RED : GREEN} lineLimit={1}>{x.text}</Text>
+                <Spacer minLength={4} />
+                <Num value={x.value} size={13} color={ctx.th.t1} />
+              </HStack>
+            ))}
+          </VStack>
+        </HStack>
+      </Root>
+    )
+  }
   return (
     <Root ctx={ctx} spacing={0} tone={bad ? 'bad' : 'good'}>
       <Header ctx={ctx} title={`尾号 ${a.phoneTail}`} />
       <Spacer />
-      <Image systemName={bad ? 'exclamationmark.triangle.fill' : 'checkmark.seal.fill'} font={ctx.size === 's' ? 24 : 28} foregroundStyle={color} />
-      <Text font={ctx.size === 's' ? 15 : 17} fontWeight="semibold" foregroundStyle={color} padding={{ top: 6 }}>{title}</Text>
-      <Num value={value} size={ctx.size === 's' ? 30 : 36} color={color} />
+      <Image systemName={bad ? 'exclamationmark.triangle.fill' : 'checkmark.seal.fill'} font={24} foregroundStyle={color} />
+      <Text font={15} fontWeight="semibold" foregroundStyle={color} padding={{ top: 6 }}>{title}</Text>
+      <Num value={value} size={30} color={color} />
       <Spacer />
       <Label ctx={ctx} text={hint} />
     </Root>
@@ -212,22 +256,7 @@ export function BillStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const p = primary(ctx)
   if (!p) return <NoData ctx={ctx} />
-  const a = p.account
-  if (ctx.size === 'm') {
-    return <Root ctx={ctx} spacing={0}><BankCard ctx={ctx} a={a} tall /></Root>
-  }
-  return (
-    <Root ctx={ctx} spacing={12}>
-      <BankCard ctx={ctx} a={a} />
-      <VStack spacing={8}>{metersOf(a).map(m => <MeterLine ctx={ctx} m={m} total bar={6} font={15} />)}</VStack>
-      <Spacer />
-      <HStack spacing={6}>
-        <Stat ctx={ctx} label="积分" value={pointsText(a)} />
-        <Stat ctx={ctx} label="星级分" value={a.user?.starScore !== undefined ? String(a.user.starScore) : '-'} />
-        <Stat ctx={ctx} label="网龄" value={netText(a)} />
-      </HStack>
-    </Root>
-  )
+  return <Root ctx={ctx} spacing={0}><BankCard ctx={ctx} a={p.account} tall /></Root>
 }
 
 // ─────────────────────────────────────────────────────────────

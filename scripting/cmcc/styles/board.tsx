@@ -63,7 +63,7 @@ function Top(props: { ctx: Ctx; slot: Slot; a: Account; index: number }) {
 function MiniStat(props: { ctx: Ctx; label: string; value: string; color?: any }) {
   return (
     <VStack alignment="leading" spacing={0} frame={{ maxWidth: 'infinity', alignment: 'leading' }}>
-      <Text font={9} foregroundStyle={props.ctx.th.t3}>{props.label}</Text>
+      <Text font={10} foregroundStyle={props.ctx.th.t3}>{props.label}</Text>
       <Num value={props.value} size={12} color={props.color ?? props.ctx.th.t1} />
     </VStack>
   )
@@ -186,7 +186,7 @@ export function BoardStyle(props: { ctx: Ctx }) {
       <Section ctx={ctx} title="账户" />
       <HStack spacing={6}>
         {[['积分', pointsText(a)], ['星级', starText(a)], ['星级分', a.user?.starScore !== undefined ? String(a.user.starScore) : '-'], ['网龄', netText(a)]].map(([l, v]) => (
-          <Cell ctx={ctx} gap={0}><Text font={9} foregroundStyle={th.t3}>{l}</Text><Num value={v} size={13} color={th.t1} /></Cell>
+          <Cell ctx={ctx} gap={0}><Text font={10} foregroundStyle={th.t3}>{l}</Text><Num value={v} size={13} color={th.t1} /></Cell>
         ))}
       </HStack>
       {roomy ? <Section ctx={ctx} title="近 7 天通用" right={slot.hist?.avg('gen') != null ? `日均 ${amount('gen', slot.hist!.avg('gen')!)}` : '记录中'} /> : null}

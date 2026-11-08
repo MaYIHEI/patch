@@ -1,15 +1,13 @@
 // cmcc / styles/multi.tsx
-// 多个号和能点的: 双号对照 / 谁先用完 / 多号翻页 / 控制台 / 账本记录
+// 多个号: 双号对照 / 谁先用完 / 多号翻页
 
-import { VStack, HStack, ZStack, Text, Spacer, Image, Button, Circle, Rectangle, RoundedRectangle, Link, Script } from 'scripting'
+import { VStack, HStack, Text, Spacer, Image, Button, Rectangle } from 'scripting'
 import type { DynamicShapeStyle } from 'scripting'
 
 import {
-  Root, Header, SyncTap, Tabs, pageIndex, Num, Label, Cell, Stat, Bar, MeterLine, ErrorBox, errorText, primary, metersOf, amount, forecast, md, hhmm,
-  balanceColor, balanceLabel, pointsText, RED, GREEN, ORANGE, type Ctx, type Slot, type Paint,
+  Root, Header, SyncTap, Tabs, pageIndex, Num, Label, Cell, Stat, Bar, MeterLine, ErrorBox, errorText, metersOf, amount, forecast, md, balanceColor, balanceLabel, pointsText, RED, GREEN, ORANGE, type Ctx, type Slot, type Paint,
 } from '../ui'
-import type { Account } from '../api'
-import { PageIntent, RefreshIntent } from '../app_intents'
+import { PageIntent } from '../app_intents'
 import { NoData } from './basic'
 
 const dyn = (x: any) => x as DynamicShapeStyle
@@ -137,13 +135,12 @@ export function QueueStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const rows = rowsOf(ctx.slots)
   if (!rows.length) return <NoData ctx={ctx} />
-  const big = ctx.size === 'l'
   return (
-    <Root ctx={ctx} spacing={big ? 10 : 7}>
+    <Root ctx={ctx} spacing={7}>
       <Header ctx={ctx} title="谁先用完" sub={`${ctx.slots.filter(s => s.account).length} 个号`} />
-      {rows.slice(0, big ? 7 : 3).map((r, i) => (
+      {rows.slice(0, 3).map((r, i) => (
         <HStack spacing={10}>
-          <Num value={i + 1} size={big ? 24 : 20} color={i === 0 ? r.color : ctx.th.t3} />
+          <Num value={i + 1} size={20} color={i === 0 ? r.color : ctx.th.t3} />
           <VStack alignment="leading" spacing={3} frame={{ maxWidth: 'infinity' }}>
             <HStack spacing={5}>
               <Text font={12} fontWeight="semibold" foregroundStyle={ctx.th.t1} lineLimit={1}>{r.who}</Text>
@@ -212,91 +209,6 @@ export function PagerStyle(props: { ctx: Ctx }) {
           <Stat ctx={ctx} label="网龄" value={a.user?.netYears !== undefined ? `${a.user.netYears.toFixed(1)}年` : '-'} size={13} />
         </HStack>
       ) : null}
-    </Root>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────
-// R 控制台: 左边余额, 右边按钮 (刷新 / 换号 / 打开设置)
-// ─────────────────────────────────────────────────────────────
-/** 点了打开 cmcc 的设置页 (Scripting 的运行链接) */
-const settingsURL = () => Script.createRunURLScheme(Script.name)
-
-function Tile(props: { ctx: Ctx; icon: string; title: string; intent?: any; url?: string }) {
-  const { ctx } = props
-  const body = (
-    <VStack spacing={3} frame={{ maxWidth: 'infinity', maxHeight: 'infinity' }} background={<RoundedRectangle cornerRadius={12} fill={ctx.th.card} />}>
-      <Image systemName={props.icon} font={16} foregroundStyle={ctx.th.t1} />
-      <Text font={11} foregroundStyle={ctx.th.t2}>{props.title}</Text>
-    </VStack>
-  )
-  if (ctx.inApp) return body
-  if (props.intent) return <Button intent={props.intent} buttonStyle="plain" frame={{ maxWidth: 'infinity', maxHeight: 'infinity' }}>{body}</Button>
-  if (props.url) return <Link url={props.url} frame={{ maxWidth: 'infinity', maxHeight: 'infinity' }}>{body}</Link>
-  return body
-}
-
-export function ConsoleStyle(props: { ctx: Ctx }) {
-  const { ctx } = props
-  const slots = ctx.slots
-  const n = slots.length
-  const i = ((ctx.page % n) + n) % n
-  const a = slots[i]?.account ?? primary(ctx)?.account
-  if (!a) return <NoData ctx={ctx} />
-  return (
-    <Root ctx={ctx} spacing={0}>
-      <HStack spacing={12} frame={{ maxHeight: 'infinity' }}>
-        <VStack alignment="leading" spacing={0} frame={{ width: 116, maxHeight: 'infinity', alignment: 'topLeading' }}>
-          <Header ctx={ctx} title={`尾号 ${a.phoneTail}`} right={null} />
-          <Spacer />
-          <Num value={a.balance.toFixed(2)} size={28} color={balanceColor(ctx, a)} />
-          <Label ctx={ctx} text={a.general ? `通用 ${amount('gen', a.general.remainMB)}` : balanceLabel(a)} />
-          <Spacer />
-          <Text font={10} foregroundStyle={ctx.th.t3}>{`${hhmm(a.fetchedAt)} 更新`}</Text>
-        </VStack>
-        <VStack spacing={6} frame={{ maxWidth: 'infinity', maxHeight: 'infinity' }}>
-          <HStack spacing={6}>
-            <Tile ctx={ctx} icon="arrow.clockwise" title="刷新" intent={RefreshIntent(undefined)} />
-            <Tile ctx={ctx} icon="arrow.left.arrow.right" title={n > 1 ? `换号 ${i + 1}/${n}` : '换号'} intent={PageIntent({ step: 1 })} />
-          </HStack>
-          <Tile ctx={ctx} icon="gearshape" title="打开设置" url={settingsURL()} />
-        </VStack>
-      </HStack>
-    </Root>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────
-// U 账本记录: 时间线, 账本里的扣费记录 (实时话费、月结扣费等)
-// ─────────────────────────────────────────────────────────────
-export function LedgerStyle(props: { ctx: Ctx }) {
-  const { ctx } = props
-  const p = primary(ctx)
-  if (!p) return <NoData ctx={ctx} />
-  const a: Account = p.account
-  const list = (a.ledger ?? []).slice(0, ctx.size === 'l' ? 10 : 4)
-  return (
-    <Root ctx={ctx} spacing={6}>
-      <Header ctx={ctx} title="账本记录" sub={`余额 ${a.balance.toFixed(2)}`} />
-      {list.length ? (
-        <VStack spacing={0}>
-          {list.map((x, i) => (
-            <HStack spacing={10} frame={{ minHeight: ctx.size === 'l' ? 26 : 22 }}>
-              {/* 时间线: 竖线 + 圆点, 第一条是绿点 */}
-              <ZStack frame={{ width: 10, maxHeight: 'infinity' }}>
-                <Rectangle fill={ctx.th.track} frame={{ width: 2, maxHeight: 'infinity' }} />
-                <Circle fill={i === 0 ? dyn(GREEN) : ctx.th.t3} frame={{ width: 8, height: 8 }} />
-              </ZStack>
-              <Text font={11} foregroundStyle={ctx.th.t3} monospacedDigit frame={{ width: 38, alignment: 'leading' }}>{md(x.time).replace('月', '/').replace('日', '')}</Text>
-              <Text font={12} foregroundStyle={ctx.th.t1} lineLimit={1}>{x.name}</Text>
-              <Spacer minLength={4} />
-              <Num value={`−${x.amount.toFixed(2)}`} size={12} color={ctx.th.t1} />
-            </HStack>
-          ))}
-        </VStack>
-      ) : <Text font={12} foregroundStyle={ctx.th.t2}>账本里暂时没有记录</Text>}
-      <Spacer minLength={0} />
-      {a.monthFee !== undefined ? <Text font={10} foregroundStyle={ctx.th.t3}>{`本月已用 ¥${a.monthFee.toFixed(2)}`}</Text> : null}
     </Root>
   )
 }

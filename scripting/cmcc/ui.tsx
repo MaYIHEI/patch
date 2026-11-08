@@ -205,11 +205,11 @@ export function tightest(ms: Meter[], hist?: Hist): { m: Meter; f: Forecast } | 
 // ─────────────────────────────────────────────────────────────
 const PAD: Record<Size, number> = { s: 14, m: 14, l: 16 }
 
-/** 小组件根视图; tone 让整张变成状态色 (状态色块样式用), bg 固定底色 (终端样式用) */
-export function Root(props: { ctx: Ctx; spacing?: number; tone?: 'good' | 'bad'; bg?: Paint; children?: any }) {
+/** 小组件根视图; tone 让整张变成状态色 (状态色块样式用) */
+export function Root(props: { ctx: Ctx; spacing?: number; tone?: 'good' | 'bad'; children?: any }) {
   const { ctx } = props
   const { th } = ctx
-  const bg: Paint = props.bg ?? (props.tone && !th.custom ? ((props.tone === 'bad' ? RED_TINT : GREEN_TINT) as DynamicShapeStyle) : th.bg)
+  const bg: Paint = props.tone && !th.custom ? ((props.tone === 'bad' ? RED_TINT : GREEN_TINT) as DynamicShapeStyle) : th.bg
   const img = th.image
   const backdrop = img ? (
     <ZStack>
@@ -262,7 +262,7 @@ export function SyncTap(props: { ctx: Ctx; t?: number; stale?: boolean }) {
   const body = (
     <HStack spacing={3}>
       <Text font={11} foregroundStyle={ctx.th.t3} monospacedDigit lineLimit={1}>{text}</Text>
-      <Image systemName="arrow.clockwise" font={9} foregroundStyle={ctx.th.t3} />
+      <Image systemName="arrow.clockwise" font={10} foregroundStyle={ctx.th.t3} />
     </HStack>
   )
   if (ctx.inApp) return body
@@ -424,19 +424,6 @@ export function MeterLine(props: { ctx: Ctx; m: Meter; font?: number; bar?: numb
       </HStack>
       <Bar ctx={ctx} percent={m.percent} height={props.bar ?? 5} tick={props.tick} />
       {props.note ? <Text font={10} foregroundStyle={ctx.th.t3} lineLimit={1}>{props.note}</Text> : null}
-    </VStack>
-  )
-}
-
-/** 没有历史时的占位 */
-export function HistEmpty(props: { ctx: Ctx; need: number; title: string; icon: string }) {
-  const { ctx } = props
-  const have = primary(ctx)?.hist?.days ?? 0
-  return (
-    <VStack spacing={6} frame={{ maxWidth: 'infinity', maxHeight: 'infinity' }}>
-      <Image systemName={props.icon} font={ctx.size === 's' ? 22 : 26} foregroundStyle={ctx.th.t3} />
-      <Text font={12} fontWeight="semibold" foregroundStyle={ctx.th.t1}>{props.title}</Text>
-      <Text font={11} foregroundStyle={ctx.th.t2} multilineTextAlignment="center">{`记录中, 已记 ${have} 天, 满 ${props.need} 天后显示`}</Text>
     </VStack>
   )
 }

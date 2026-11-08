@@ -1,5 +1,5 @@
 // cmcc / styles/forecast.tsx
-// 够不够用: 今日额度 / 倒计时 / 用量预测 / 环比 / 性价比 / 用量月报
+// 够不够用: 今日额度 / 倒计时 / 用量预测 / 用量月报
 // 预测类用本机历史的日均; 历史不够时退回「剩余平均分到月底」
 
 import { VStack, HStack, ZStack, Text, Spacer, Circle, RoundedRectangle, Gauge, AccessoryWidgetBackground } from 'scripting'
@@ -7,7 +7,7 @@ import type { DynamicShapeStyle } from 'scripting'
 
 import { formatFlow, type Account } from '../api'
 import {
-  Root, Header, Num, Label, Cell, Stat, MeterLine, HistEmpty, LockPreview, lockFg, primary, metersOf, amount, month, forecast, md,
+  Root, Header, Num, Label, Cell, Stat, Bar, MeterLine, LockPreview, lockFg, primary, metersOf, amount, month, forecast, tightest, md,
   RED, GREEN, ORANGE, type Ctx, type Meter, type Paint,
 } from '../ui'
 import type { Hist } from '../history'
@@ -33,7 +33,7 @@ export function DailyBars(props: { ctx: Ctx; values: (number | null)[]; height: 
             fill={i === props.values.length - 1 ? (GREEN as DynamicShapeStyle) : ctx.th.track}
             frame={{ maxWidth: 'infinity', height: v === null ? 2 : Math.max(2, (v / max) * props.height) }}
           />
-          {props.labels ? <Text font={9} foregroundStyle={ctx.th.t3}>{props.labels[i]}</Text> : null}
+          {props.labels ? <Text font={10} foregroundStyle={ctx.th.t3}>{props.labels[i]}</Text> : null}
         </VStack>
       ))}
     </HStack>
@@ -151,7 +151,7 @@ function DayRing(props: { ctx: Ctx; size: number; line: number; days: number; el
       <Circle trim={{ from: 0, to: Math.max(0.02, props.elapsed) }} stroke={{ shapeStyle: ctx.th.t1, strokeStyle: { lineWidth: props.line, lineCap: 'round' } }} rotationEffect={-90} frame={{ width: props.size, height: props.size }} />
       <VStack spacing={0}>
         <Num value={props.days} size={props.size * 0.3} color={ctx.th.t1} />
-        <Text font={9} foregroundStyle={ctx.th.t2}>天后重置</Text>
+        <Text font={10} foregroundStyle={ctx.th.t2}>天后重置</Text>
       </VStack>
     </ZStack>
   )
@@ -225,12 +225,34 @@ export function CountdownLock(props: { ctx: Ctx }) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// G 用量预测 · 小号: 只回答一件事, 最紧张的那项够不够用
+// ─────────────────────────────────────────────────────────────
+function ForecastSmall(props: { ctx: Ctx; p: Slot & { account: Account } }) {
+  const { ctx, p } = props
+  const t = tightest(metersOf(p.account), p.hist)
+  if (!t) return <NoData ctx={ctx} />
+  const { m, f } = t
+  return (
+    <Root ctx={ctx} spacing={0}>
+      <Header ctx={ctx} title={f.runOut ? '最紧张' : '够用'} />
+      <Spacer />
+      <Label ctx={ctx} text={f.runOut ? `${m.label}约` : `${m.label}每天可用`} />
+      <Num value={f.runOut ? `${new Date(f.runOut).getDate()} 日` : amount(m.key, f.perDay)} size={36} color={f.runOut ? dyn(RED) : ctx.th.t1} />
+      <Label ctx={ctx} text={f.runOut ? `用完 · 早 ${f.shortDays} 天` : `剩 ${amount(m.key, m.remain)}`} />
+      <Spacer />
+      <Bar ctx={ctx} percent={m.percent} height={6} tick={(1 - month().elapsed) * 100} />
+    </Root>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
 // G 用量预测: 每项一条, 竖线 = 匀速用到月底此刻该剩多少
 // ─────────────────────────────────────────────────────────────
 export function ForecastStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const p = primary(ctx)
   if (!p) return <NoData ctx={ctx} />
+  if (ctx.size === 's') return <ForecastSmall ctx={ctx} p={p} />
   const mo = month()
   const tick = (1 - mo.elapsed) * 100
   const ms = metersOf(p.account)
@@ -253,127 +275,6 @@ export function ForecastStyle(props: { ctx: Ctx }) {
         </VStack>
       ) : null}
       <Text font={10} foregroundStyle={ctx.th.t3} lineLimit={1}>竖线 = 匀速用到月底此刻该剩多少, 条在线左边说明用快了</Text>
-    </Root>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────
-// H 环比: 昨天 / 今天两根柱子, 中间箭头; 下面本周比上周、本月话费比上月
-// ─────────────────────────────────────────────────────────────
-function Delta(props: { ctx: Ctx; label: string; now: number | null; before: number | null; fmt: (v: number) => string }) {
-  const { ctx, now, before } = props
-  const d = now !== null && before !== null ? now - before : null
-  const text = d === null ? '-' : `${d > 0 ? '↑' : d < 0 ? '↓' : '±'} ${props.fmt(Math.abs(d))}`
-  return (
-    <HStack>
-      <Label ctx={ctx} text={props.label} />
-      <Spacer minLength={4} />
-      <Text font={11} fontWeight="semibold" foregroundStyle={d === null ? ctx.th.t3 : dyn(d > 0 ? RED : GREEN)}>{text}</Text>
-    </HStack>
-  )
-}
-
-function TwoBars(props: { ctx: Ctx; y: number | null; t: number | null; height: number }) {
-  const { ctx, y, t } = props
-  const max = Math.max(1e-9, y ?? 0, t ?? 0)
-  const col = (v: number | null, label: string, fill: Paint) => (
-    <VStack spacing={3}>
-      <Text font={10} foregroundStyle={ctx.th.t2} monospacedDigit>{v !== null ? formatFlow(v) : '-'}</Text>
-      <VStack frame={{ height: props.height }}>
-        <Spacer minLength={0} />
-        <RoundedRectangle cornerRadius={6} fill={fill} frame={{ width: 30, height: v !== null ? Math.max(4, (v / max) * props.height) : 4 }} />
-      </VStack>
-      <Text font={10} foregroundStyle={ctx.th.t3}>{label}</Text>
-    </VStack>
-  )
-  const up = y !== null && t !== null && t > y
-  return (
-    <HStack alignment="center" spacing={12}>
-      {col(y, '昨天', ctx.th.track)}
-      <Text font={24} fontWeight="semibold" foregroundStyle={y === null || t === null ? ctx.th.t3 : dyn(up ? RED : GREEN)}>{y === null || t === null ? '·' : up ? '↑' : '↓'}</Text>
-      {col(t, '今天', dyn(up ? RED : GREEN))}
-    </HStack>
-  )
-}
-
-export function CompareStyle(props: { ctx: Ctx }) {
-  const { ctx } = props
-  const p = primary(ctx)
-  if (!p) return <NoData ctx={ctx} />
-  const hist = p.hist
-  if (!hist || hist.days < 2) return <Root ctx={ctx}><HistEmpty ctx={ctx} need={2} title="环比" icon="arrow.left.arrow.right" /></Root>
-  const [y, t] = hist.daily('gen', 2)
-  const d14 = hist.daily('gen', 14)
-  const sum = (xs: (number | null)[]) => (xs.some(x => x !== null) ? xs.reduce<number>((acc, x) => acc + (x ?? 0), 0) : null)
-  const deltas = [
-    <Delta ctx={ctx} label="本周比上周" now={sum(d14.slice(7))} before={sum(d14.slice(0, 7))} fmt={formatFlow} />,
-    <Delta ctx={ctx} label="话费比上月" now={p.account.monthFee ?? null} before={hist.lastMonthFee} fmt={v => `¥${v.toFixed(2)}`} />,
-  ]
-  if (ctx.size === 's') {
-    return (
-      <Root ctx={ctx} spacing={4}>
-        <Label ctx={ctx} text="通用 · 今天比昨天" />
-        <HStack><Spacer /><TwoBars ctx={ctx} y={y} t={t} height={52} /><Spacer /></HStack>
-        <Spacer minLength={0} />
-        {deltas[0]}
-      </Root>
-    )
-  }
-  return (
-    <Root ctx={ctx} spacing={0}>
-      <HStack spacing={18} frame={{ maxHeight: 'infinity' }}>
-        <TwoBars ctx={ctx} y={y} t={t} height={70} />
-        <VStack alignment="leading" spacing={8} frame={{ maxWidth: 'infinity' }}>
-          <Text font={12} fontWeight="semibold" foregroundStyle={ctx.th.t1}>通用 · 今天比昨天</Text>
-          {deltas}
-        </VStack>
-      </HStack>
-    </Root>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────
-// I 性价比: 价签造型, 本月每 G 花了多少钱; 下面剩下的流量还值多少
-// ─────────────────────────────────────────────────────────────
-export function ValueStyle(props: { ctx: Ctx }) {
-  const { ctx } = props
-  const p = primary(ctx)
-  if (!p) return <NoData ctx={ctx} />
-  const a = p.account
-  const usedMB = (a.general?.usedMB ?? 0) + (a.targeted?.usedMB ?? 0)
-  const remainMB = (a.general?.remainMB ?? 0) + (a.targeted?.remainMB ?? 0)
-  const perG = a.monthFee && usedMB > 100 ? a.monthFee / (usedMB / 1024) : null
-  const tag = (
-    <ZStack alignment="topLeading">
-      <VStack
-        alignment="leading" spacing={0}
-        padding={{ top: 14, bottom: 10, horizontal: 12 }}
-        frame={{ maxWidth: 'infinity', alignment: 'leading' }}
-        overlay={<RoundedRectangle cornerRadius={12} stroke={{ shapeStyle: ctx.th.t3, strokeStyle: { lineWidth: 1.5, dash: [5, 3] } }} />}
-      >
-        <Text font={10} foregroundStyle={ctx.th.t3}>本月每 G</Text>
-        <Num value={perG !== null ? `¥${perG.toFixed(2)}` : '-'} size={ctx.size === 's' ? 28 : 32} color={ctx.th.t1} />
-      </VStack>
-      <Circle fill={ctx.th.bg} frame={{ width: 10, height: 10 }} overlay={<Circle stroke={{ shapeStyle: ctx.th.t3, strokeStyle: { lineWidth: 1.5 } }} />} offset={{ x: 12, y: -5 }} />
-    </ZStack>
-  )
-  const lines = (
-    <VStack alignment="leading" spacing={3}>
-      <Label ctx={ctx} text={`已花 ¥${(a.monthFee ?? 0).toFixed(2)} · 用了 ${formatFlow(usedMB)}`} />
-      <HStack>
-        <Label ctx={ctx} text="剩下的还值" />
-        <Spacer minLength={4} />
-        <Num value={perG !== null ? `¥${((remainMB / 1024) * perG).toFixed(0)}` : '-'} size={13} color={ctx.th.t1} />
-      </HStack>
-    </VStack>
-  )
-  if (ctx.size === 's') return <Root ctx={ctx} spacing={0}><Spacer minLength={4} />{tag}<Spacer />{lines}</Root>
-  return (
-    <Root ctx={ctx} spacing={0}>
-      <HStack spacing={16} frame={{ maxHeight: 'infinity' }}>
-        <VStack frame={{ width: 150 }}>{tag}</VStack>
-        <VStack alignment="leading" spacing={6} frame={{ maxWidth: 'infinity' }}>{lines}<Text font={10} foregroundStyle={ctx.th.t3}>按本月消费和已用流量算, 含定向</Text></VStack>
-      </HStack>
     </Root>
   )
 }

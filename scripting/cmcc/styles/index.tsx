@@ -5,9 +5,9 @@
 import { makeTheme, type Ctx, type Size, type Slot } from '../ui'
 import { getDefaults, BUILTIN_DEFAULTS, type Family, type Look } from '../settings'
 import { AdaptiveStyle, BigBalanceStyle, StatusStyle, BillStyle, LockCircular, LockRect, LockInline } from './basic'
-import { TodayStyle, TodayLock, CountdownStyle, CountdownLock, ForecastStyle, CompareStyle, ValueStyle, MonthStyle } from './forecast'
-import { MetroStyle, BadgeStyle, TerminalStyle, ReceiptStyle } from './fun'
-import { DualStyle, QueueStyle, PagerStyle, ConsoleStyle, LedgerStyle } from './multi'
+import { TodayStyle, TodayLock, CountdownStyle, CountdownLock, ForecastStyle, MonthStyle } from './forecast'
+import { ReceiptStyle } from './fun'
+import { DualStyle, QueueStyle, PagerStyle } from './multi'
 import { BoardStyle } from './board'
 
 type View = (props: { ctx: Ctx }) => any
@@ -29,29 +29,22 @@ export const STYLES: StyleDef[] = [
   { id: 'W', name: '全景', icon: 'rectangle.3.group.bubble.fill', desc: '一个组件看全: 余额、本月、每项剩余和预测、积分网龄、近 7 天; 多个号点标签切换', views: SML(BoardStyle) },
   { id: 'B', name: '大字余额', icon: 'textformat.size', desc: '只有一个居中的大余额', views: SM(BigBalanceStyle) },
   { id: 'C', name: '状态色块', icon: 'exclamationmark.triangle.fill', desc: '欠费或快用完整张变红, 一切正常变绿', views: SM(StatusStyle) },
-  { id: 'D', name: '账单卡', icon: 'creditcard.fill', desc: '做成一张银行卡: 余额、尾号、本月消费', views: ML(BillStyle) },
+  { id: 'D', name: '账单卡', icon: 'creditcard.fill', desc: '做成一张银行卡: 余额、尾号、本月消费', views: { systemMedium: BillStyle } },
   { id: 'E', name: '今日额度', icon: 'gauge.with.needle', desc: '今天用了多少 / 今天能用多少, 超了提醒', views: { ...SM(TodayStyle), accessoryCircular: TodayLock } },
   { id: 'F', name: '倒计时', icon: 'calendar', desc: '圆环里写还有几天重置, 每项撑不撑得到', views: { ...SM(CountdownStyle), accessoryCircular: CountdownLock } },
-  { id: 'G', name: '用量预测', icon: 'chart.line.uptrend.xyaxis', desc: '每天可用多少, 照日均几号用完', views: ML(ForecastStyle) },
-  { id: 'H', name: '环比', icon: 'arrow.left.arrow.right', desc: '昨天今天两根柱子, 本周比上周、话费比上月', views: SM(CompareStyle) },
-  { id: 'I', name: '性价比', icon: 'yensign.circle.fill', desc: '价签: 本月每 G 花了多少钱, 剩下的还值多少', views: SM(ValueStyle) },
+  { id: 'G', name: '用量预测', icon: 'chart.line.uptrend.xyaxis', desc: '每天可用多少, 照日均几号用完', views: SML(ForecastStyle) },
   { id: 'J', name: '用量月报', icon: 'square.grid.3x3.fill', desc: '本月合计、日均、最多一天; 大号是每天一格的热力日历', views: ML(MonthStyle) },
-  { id: 'M', name: '地铁线路', icon: 'tram.fill', desc: '本月每天一站, 标出哪项会在哪天断供', views: ML(MetroStyle) },
-  { id: 'N', name: '网龄徽章', icon: 'rosette', desc: '网龄、星级和下一个整数年', views: SM(BadgeStyle) },
-  { id: 'O', name: '终端', icon: 'terminal.fill', desc: '黑底等宽字逐行 ✓ ! ✗; 大号带账本', views: ML(TerminalStyle) },
-  { id: 'P', name: '话费小票', icon: 'scroll.fill', desc: '锯齿边票据纸, 余额、本月、各项剩余', views: ML(ReceiptStyle) },
+  { id: 'P', name: '话费小票', icon: 'scroll.fill', desc: '锯齿边票据纸, 余额、本月、各项剩余', views: { systemMedium: ReceiptStyle } },
   { id: 'Q', name: '多号翻页', icon: 'hand.tap.fill', desc: '顶部号码标签, 点哪个看哪个', views: ML(PagerStyle) },
-  { id: 'R', name: '控制台', icon: 'slider.horizontal.3', desc: '刷新、换号、打开设置', views: { systemMedium: ConsoleStyle } },
   { id: 'S', name: '双号对照', icon: 'rectangle.split.2x1.fill', desc: '两个号左右对照; 参数填两个尾号', views: SML(DualStyle) },
-  { id: 'T', name: '谁先用完', icon: 'list.number', desc: '所有号的所有项按紧张程度排名', views: ML(QueueStyle) },
-  { id: 'U', name: '账本记录', icon: 'list.bullet.rectangle.fill', desc: '时间线: 账本里的扣费记录', views: ML(LedgerStyle) },
+  { id: 'T', name: '谁先用完', icon: 'list.number', desc: '所有号的所有项按紧张程度排名', views: { systemMedium: QueueStyle } },
   { id: 'V', name: '锁屏', icon: 'lock.fill', desc: '圆形: 通用剩余; 长条: 余额 + 通用; 单行', views: { accessoryCircular: LockCircular, accessoryRectangular: LockRect, accessoryInline: LockInline } },
 ]
 
 /** 用到多个号的样式: 参数没写尾号时用全部已导入的号 */
-export const MULTI = ['Q', 'R', 'S', 'T', 'W']
+export const MULTI = ['Q', 'S', 'T', 'W']
 /** 要本机历史才准的样式, 样式库里标注 */
-export const NEEDS_HIST = ['E', 'H', 'J']
+export const NEEDS_HIST = ['E', 'J']
 
 export const FAMILY_PREFIX: Record<Family, string> = {
   systemSmall: '小', systemMedium: '中', systemLarge: '大', accessoryCircular: '锁屏圆', accessoryRectangular: '锁屏条', accessoryInline: '锁屏行',
