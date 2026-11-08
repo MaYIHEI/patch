@@ -25,6 +25,16 @@ export const getData = () => read<DataPrefs>(DATA_KEY, { host: 'boxjs.com', refr
 export const setData = (p: DataPrefs) => write(DATA_KEY, { ...p, host: p.host.trim() || 'boxjs.com' })
 
 // ────────────────────────────────────────────────────────────
+// 账号备注: 手机号 → 备注名
+// ────────────────────────────────────────────────────────────
+const NAMES_KEY = 'cmcc.names'
+export const getNames = () => read<Record<string, string>>(NAMES_KEY, {})
+export function setName(tel: string, name: string) {
+  const { [tel]: _, ...rest } = getNames()
+  write(NAMES_KEY, name ? { ...rest, [tel]: name } : rest)
+}
+
+// ────────────────────────────────────────────────────────────
 // 外观: 素净 (跟随系统) / 自定义 (纯色或图片), 和 loon-panel 相同
 // ────────────────────────────────────────────────────────────
 export type Look = {

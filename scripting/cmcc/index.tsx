@@ -34,7 +34,7 @@ import type { Color } from 'scripting'
 
 import { importFromBoxJS, removeAccount, clearCache, listAccounts, feeRaw, CmccError } from './api'
 import { Page, Card, Stage, Grid, Block, Panel, NavTile, Group, ActionRow, InfoRow, PickerRow, Chip, SmallButton } from './kit'
-import { getData, setData, getLook, setLook, getDefaults, setDefault, RECOMMENDED_BG, type Look, type Family, type DataPrefs } from './settings'
+import { getData, setData, getLook, setLook, getDefaults, setDefault, getNames, setName, RECOMMENDED_BG, type Look, type Family, type DataPrefs } from './settings'
 import { metersOf, amount, starText, pointsText, netText, errorText, hhmm, chunk, type Slot } from './ui'
 import { STYLES, MULTI, NEEDS_HIST, stylesFor, styleById, paramOf, renderStyle, type StyleDef } from './styles/index'
 import { loadSlots, sampleSlots } from './slots'
@@ -441,8 +441,8 @@ function AccountCard(props: { slot: Slot }) {
       <VStack alignment="leading" spacing={10}>
         <HStack spacing={12}>
           <VStack alignment="leading" spacing={2}>
-            <Text font={16} fontWeight="semibold" foregroundStyle="label">{`尾号 ${a.phoneTail}`}</Text>
-            <Text font={12} foregroundStyle="secondaryLabel">{[a.user?.brand, a.user?.starLevel ? starText(a) : '', a.user?.netYears !== undefined ? `网龄 ${netText(a)}` : ''].filter(Boolean).join(' · ')}</Text>
+            <Text font={16} fontWeight="semibold" foregroundStyle="label">{slot.name}</Text>
+            <Text font={12} foregroundStyle="secondaryLabel">{[slot.name.endsWith(a.phoneTail) ? '' : `尾号 ${a.phoneTail}`, a.user?.brand, a.user?.starLevel ? starText(a) : '', a.user?.netYears !== undefined ? `网龄 ${netText(a)}` : ''].filter(Boolean).join(' · ')}</Text>
           </VStack>
           <Spacer />
           <VStack alignment="trailing" spacing={1}>
@@ -518,6 +518,14 @@ function AccountDetail(props: { slot: Slot; reload: (force?: boolean) => Promise
   const a = slot.account
   const [raw, setRaw] = useState('')
 
+  async function rename() {
+    const name = await Dialog.prompt({ title: '备注', message: '小组件和账号页显示这个名字; 留空恢复显示尾号', defaultValue: getNames()[slot.tel] ?? '', placeholder: '主号' })
+    if (name === null) return
+    setName(slot.tel, name.trim())
+    await props.reload()
+    dismiss()
+  }
+
   async function diag() {
     setRaw('查询中...')
     try {
@@ -552,6 +560,9 @@ function AccountDetail(props: { slot: Slot; reload: (force?: boolean) => Promise
           <InfoRow icon="exclamationmark.triangle" color="systemOrange" title={errorText(slot.error).title} />
         </Group>
       )}
+      <Group title="备注" note="小组件参数里写了备注时, 以参数为准。">
+        <ActionRow icon="pencil" title="备注" value={getNames()[slot.tel] || '未设置'} action={rename} />
+      </Group>
       <Group title="诊断" note={raw || '查看话费接口的原始返回 (只有金额字段), 余额显示不对时截图给开发者。'}>
         <ActionRow icon="ladybug" title="话费原始数据" action={diag} />
       </Group>

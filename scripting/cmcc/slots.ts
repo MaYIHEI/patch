@@ -3,12 +3,14 @@
 
 import { loadAccount, listAccounts, CmccError } from './api'
 import { histOf } from './history'
+import { getNames } from './settings'
 import { MULTI, type AccountRef, type StyleDef } from './styles/index'
 import type { Slot } from './ui'
 
 /** 单号样式取参数里第一个号 (没写取第一个导入的号); 多号样式取参数里的号, 没写取全部 */
 export async function loadSlots(style: StyleDef, refs: AccountRef[]): Promise<Slot[]> {
   const tels = listAccounts()
+  const names = getNames()
   if (!tels.length) return [{ name: '中国移动', tel: '', error: new CmccError('no_cred', '未导入登录凭证') }]
   const multi = MULTI.includes(style.id)
   const want: AccountRef[] = multi
@@ -16,7 +18,8 @@ export async function loadSlots(style: StyleDef, refs: AccountRef[]): Promise<Sl
     : [refs[0] ?? { tail: tels[0] }]
   return Promise.all(want.map(async (r): Promise<Slot> => {
     const tel = tels.find(t => t.endsWith(r.tail)) ?? ''
-    const name = r.name ?? `尾号 ${(tel || r.tail).slice(-4)}`
+    // 参数里写的备注优先, 其次设置页的备注
+    const name = r.name ?? names[tel] ?? `尾号 ${(tel || r.tail).slice(-4)}`
     try {
       return { name, tel, account: await loadAccount(r.tail), hist: tel ? histOf(tel) : undefined }
     } catch (e) {

@@ -10,6 +10,7 @@
 import { fetch } from 'scripting'
 import { md5hex, encB64, decStr, nonce8, cellNumFor } from './crypto'
 import { record, clearHistory } from './history'
+import { setName } from './settings'
 
 // DOM 的 Storage class 类型与 Scripting 全局 Storage 冲突，手动 cast
 const AppStorage = Storage as unknown as {
@@ -430,6 +431,7 @@ export async function removeAccount(tel: string): Promise<void> {
   Keychain.remove(KEYCHAIN_SESSION + tel)
   AppStorage.remove(CACHE_KEY + tel)
   clearHistory(tel)
+  setName(tel, '')
 }
 
 /** 清掉所有账号的查询缓存, 下次刷新实时查询 */
