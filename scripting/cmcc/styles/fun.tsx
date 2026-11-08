@@ -40,7 +40,7 @@ export function ReceiptStyle(props: { ctx: Ctx }) {
     <Root ctx={ctx} spacing={0}>
       <VStack
         alignment="leading" spacing={2}
-        padding={{ horizontal: 14, vertical: 10 }}
+        padding={{ horizontal: 14, vertical: rows.length > 4 ? 6 : 10 }}
         frame={{ maxWidth: 'infinity', maxHeight: 'infinity', alignment: 'topLeading' }}
         background={<Rectangle fill={PAPER} />}
         overlay={<VStack><Teeth ctx={ctx} y={-3.5} /><Spacer /><Teeth ctx={ctx} y={3.5} /></VStack>}
@@ -56,11 +56,11 @@ export function ReceiptStyle(props: { ctx: Ctx }) {
           </HStack>
         ))}
         <Spacer minLength={0} />
-        <HStack>
+        {rows.length > 4 ? null : <HStack>
           <Text font={10} fontDesign={MONO} foregroundStyle={ctx.th.t3}>{`尾号 ${a.phoneTail}`}</Text>
           <Spacer />
           <Text font={10} fontDesign={MONO} foregroundStyle={ctx.th.t3}>{`${md(a.fetchedAt)} ${hhmm(a.fetchedAt)}`}</Text>
-        </HStack>
+        </HStack>}
       </VStack>
     </Root>
   )

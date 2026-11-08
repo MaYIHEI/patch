@@ -28,7 +28,7 @@ export async function loadSlots(style: StyleDef, refs: AccountRef[]): Promise<Sl
   }))
 }
 
-/** 示例: 还没导入账号时样式库预览用; 一个正常号, 一个欠费且只有通用和语音的号 */
+/** 示例: 样式库预览用; 主号通用、定向、语音都有, 副号欠费且只有通用和语音 */
 export function sampleSlots(): Slot[] {
   const now = Date.now()
   const hist = {
@@ -45,6 +45,7 @@ export function sampleSlots(): Slot[] {
         balance: 128.5, monthFee: 46, phoneTail: '0001', stale: false, fetchedAt: now, points: 2680,
         general: { totalMB: 102400, usedMB: 36000, remainMB: 66400 },
         targeted: { totalMB: 20480, usedMB: 16000, remainMB: 4480 },
+        voice: { total: 300, used: 120, remain: 180 },
         user: { brand: '全球通', starLevel: 4, starScore: 1860, channel: '上海移动', netYears: 8.5 },
         ledger: [
           { name: '本月实时话费', amount: 46, time: now - 3600_000 },

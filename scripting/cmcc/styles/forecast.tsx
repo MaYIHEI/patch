@@ -175,14 +175,17 @@ export function CountdownStyle(props: { ctx: Ctx }) {
   if (ctx.size === 's') {
     return (
       <Root ctx={ctx} spacing={0}>
-        <HStack><Spacer /><DayRing ctx={ctx} size={84} line={8} days={days} elapsed={mo.elapsed} /><Spacer /></HStack>
+        <HStack><Spacer /><DayRing ctx={ctx} size={rows.length > 2 ? 64 : 78} line={7} days={days} elapsed={mo.elapsed} /><Spacer /></HStack>
         <Spacer />
-        <HStack spacing={4}>
-          {rows.slice(0, 2).map((r, i) => [
-            i ? <Spacer /> : null,
-            <Text font={10} fontWeight="semibold" foregroundStyle={r.color} lineLimit={1}>{`${r.m.label} ${r.text}`}</Text>,
-          ])}
-        </HStack>
+        <VStack spacing={3}>
+          {rows.map(r => (
+            <HStack>
+              <Label ctx={ctx} text={r.m.label} />
+              <Spacer minLength={4} />
+              <Text font={11} fontWeight="semibold" foregroundStyle={r.color} lineLimit={1}>{r.text}</Text>
+            </HStack>
+          ))}
+        </VStack>
       </Root>
     )
   }
@@ -264,7 +267,7 @@ export function ForecastStyle(props: { ctx: Ctx }) {
     return big ? <Cell ctx={ctx} gap={5}>{line}{note}</Cell> : <VStack alignment="leading" spacing={2}>{line}{note}</VStack>
   })
   return (
-    <Root ctx={ctx} spacing={big ? 10 : 8}>
+    <Root ctx={ctx} spacing={big ? 10 : ms.length > 2 ? 4 : 8}>
       <Header ctx={ctx} title={`本月第 ${mo.day} 天`} sub={`已过 ${Math.round(mo.elapsed * 100)}%`} />
       {rows}
       <Spacer />
@@ -274,7 +277,7 @@ export function ForecastStyle(props: { ctx: Ctx }) {
           <DailyBars ctx={ctx} values={p.hist?.daily('gen', 7) ?? []} height={60} labels={weekLabels(7)} />
         </VStack>
       ) : null}
-      <Text font={10} foregroundStyle={ctx.th.t3} lineLimit={1}>竖线 = 匀速用到月底此刻该剩多少, 条在线左边说明用快了</Text>
+      {!big && ms.length > 2 ? null : <Text font={10} foregroundStyle={ctx.th.t3} lineLimit={1}>竖线 = 匀速用到月底此刻该剩多少, 条在线左边说明用快了</Text>}
     </Root>
   )
 }

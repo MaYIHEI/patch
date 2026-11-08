@@ -6,7 +6,7 @@ import type { DynamicShapeStyle } from 'scripting'
 
 import { formatFlow, type Account } from '../api'
 import {
-  Root, Header, SyncTap, Logo, Num, Label, Balance, Cell, Stat, Bar, MeterLine, ErrorBox, LockPreview, lockFg, primary, metersOf, amount,
+  Root, Header, SyncTap, Logo, Num, Label, Balance, Cell, Stat, Bar, MeterStack, ErrorBox, LockPreview, lockFg, primary, metersOf, amount,
   starText, pointsText, netText, balanceColor, balanceLabel, RED, GREEN, type Ctx, type Meter,
 } from '../ui'
 
@@ -34,6 +34,34 @@ function MeterCard(props: { ctx: Ctx; m: Meter; detail?: boolean; big?: boolean 
   )
 }
 
+/** 中号右侧三项时的矮卡, 撑满高度平分 */
+function SlimCard(props: { ctx: Ctx; m: Meter }) {
+  const { ctx, m } = props
+  return (
+    <Cell ctx={ctx} gap={3} fill>
+      <HStack alignment="lastTextBaseline" spacing={2}>
+        <Label ctx={ctx} text={m.label} />
+        <Spacer />
+        <Num value={amount(m.key, m.remain)} size={14} color={ctx.th.t1} />
+        <Text font={10} foregroundStyle={ctx.th.t3}>{`/${amount(m.key, m.total)}`}</Text>
+      </HStack>
+      <Bar ctx={ctx} percent={m.percent} height={4} />
+    </Cell>
+  )
+}
+
+/** 一行的小胶囊: 标签 + 值 */
+function Chip(props: { ctx: Ctx; label: string; value: string }) {
+  const { ctx } = props
+  return (
+    <HStack padding={{ horizontal: 10, vertical: 5 }} frame={{ maxWidth: 'infinity' }} background={<RoundedRectangle cornerRadius={12} fill={ctx.th.card} />}>
+      <Label ctx={ctx} text={props.label} />
+      <Spacer minLength={4} />
+      <Num value={props.value} size={11} color={ctx.th.t1} />
+    </HStack>
+  )
+}
+
 export function AdaptiveStyle(props: { ctx: Ctx }) {
   const { ctx } = props
   const p = primary(ctx)
@@ -47,9 +75,7 @@ export function AdaptiveStyle(props: { ctx: Ctx }) {
         <Spacer />
         <Balance ctx={ctx} a={a} size={30} />
         <Spacer />
-        <VStack spacing={6}>
-          {ms.length === 1 ? <MeterLine ctx={ctx} m={ms[0]} total bar={6} note={`已用 ${amount(ms[0].key, ms[0].used)} · 剩 ${Math.round(ms[0].percent)}%`} /> : ms.slice(0, 2).map(m => <MeterLine ctx={ctx} m={m} />)}
-        </VStack>
+        <MeterStack ctx={ctx} ms={ms} />
       </Root>
     )
   }
@@ -67,12 +93,12 @@ export function AdaptiveStyle(props: { ctx: Ctx }) {
       right = [
         ...ms.map(m => <MeterCard ctx={ctx} m={m} />),
         <HStack spacing={6}>
-          <Stat ctx={ctx} label="积分" value={pointsText(a)} size={13} />
-          <Stat ctx={ctx} label={a.user?.brand ?? '星级'} value={starText(a)} size={13} />
+          <Chip ctx={ctx} label="积分" value={pointsText(a)} />
+          <Chip ctx={ctx} label={a.user?.brand ?? '星级'} value={starText(a)} />
         </HStack>,
       ]
     } else {
-      right = ms.map(m => <MeterCard ctx={ctx} m={m} />)
+      right = ms.map(m => <SlimCard ctx={ctx} m={m} />)
     }
     return (
       <Root ctx={ctx} spacing={0}>
@@ -124,7 +150,10 @@ export function BigBalanceStyle(props: { ctx: Ctx }) {
   const a = p.account
   const foot = metersOf(a).map(m => `${m.label} ${amount(m.key, m.remain)}`).join(' · ')
   if (ctx.size === 'm') {
-    const m = metersOf(a)[0]
+    const rows: [string, string][] = [
+      ...(a.monthFee !== undefined ? [['本月', `¥${a.monthFee.toFixed(2)}`] as [string, string]] : []),
+      ...metersOf(a).map(m => [m.label, amount(m.key, m.remain)] as [string, string]),
+    ]
     return (
       <Root ctx={ctx} spacing={0}>
         <HStack spacing={18} frame={{ maxHeight: 'infinity' }}>
@@ -132,9 +161,16 @@ export function BigBalanceStyle(props: { ctx: Ctx }) {
             <Num value={a.balance.toFixed(2)} size={54} color={balanceColor(ctx, a)} />
             <Label ctx={ctx} text={balanceLabel(a)} color={a.balance < 0 ? RED : ctx.th.t2} />
           </VStack>
-          <VStack spacing={8} frame={{ width: 104 }}>
-            <Stat ctx={ctx} label="本月" value={a.monthFee !== undefined ? `¥${a.monthFee.toFixed(2)}` : '-'} />
-            {m ? <Stat ctx={ctx} label={`${m.label}剩`} value={amount(m.key, m.remain)} /> : null}
+          <VStack frame={{ width: 112 }}>
+            <Cell ctx={ctx} gap={9}>
+              {rows.map(([l, v]) => (
+                <HStack>
+                  <Label ctx={ctx} text={l} />
+                  <Spacer minLength={4} />
+                  <Num value={v} size={13} color={ctx.th.t1} />
+                </HStack>
+              ))}
+            </Cell>
           </VStack>
         </HStack>
       </Root>

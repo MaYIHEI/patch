@@ -283,6 +283,20 @@ export function Header(props: { ctx: Ctx; title?: string; sub?: string; right?: 
   )
 }
 
+/** 额度区, 按项数排: 1 项带总量和说明, 2 项两行, 3 项通用整行 + 另两项半行 */
+export function MeterStack(props: { ctx: Ctx; ms: Meter[]; total?: boolean }) {
+  const { ctx, ms, total } = props
+  if (ms.length === 0) return null
+  if (ms.length === 1) return <MeterLine ctx={ctx} m={ms[0]} total bar={6} note={`已用 ${amount(ms[0].key, ms[0].used)} · 剩 ${Math.round(ms[0].percent)}%`} />
+  if (ms.length === 2) return <VStack spacing={6}>{ms.map(m => <MeterLine ctx={ctx} m={m} total={total} />)}</VStack>
+  return (
+    <VStack spacing={6}>
+      <MeterLine ctx={ctx} m={ms[0]} total={total} />
+      <HStack spacing={8}>{ms.slice(1, 3).map(m => <MeterLine ctx={ctx} m={m} font={11} bar={4} />)}</HStack>
+    </VStack>
+  )
+}
+
 /** 分区小标题: 灰字 + 一条细线 (+ 右侧灰字), 同 loon-panel 全景看板 */
 export function Section(props: { ctx: Ctx; title: string; right?: string }) {
   const { th } = props.ctx

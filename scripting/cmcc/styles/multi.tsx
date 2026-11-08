@@ -5,7 +5,7 @@ import { VStack, HStack, Text, Spacer, Image, Button, Rectangle } from 'scriptin
 import type { DynamicShapeStyle } from 'scripting'
 
 import {
-  Root, Header, SyncTap, Tabs, pageIndex, Num, Label, Cell, Stat, Bar, MeterLine, ErrorBox, errorText, metersOf, amount, forecast, md, balanceColor, balanceLabel, pointsText, RED, GREEN, ORANGE, type Ctx, type Slot, type Paint,
+  Root, Header, SyncTap, Tabs, pageIndex, Num, Label, Cell, Stat, Bar, MeterLine, MeterStack, ErrorBox, errorText, metersOf, amount, forecast, md, balanceColor, balanceLabel, pointsText, RED, GREEN, ORANGE, type Ctx, type Slot, type Paint,
 } from '../ui'
 import { PageIntent } from '../app_intents'
 import { NoData } from './basic'
@@ -56,8 +56,8 @@ export function DualStyle(props: { ctx: Ctx }) {
           <Num value={a.balance.toFixed(2)} size={19} color={balanceColor(ctx, a)} />
           <Text font={10} foregroundStyle={a.balance < 0 ? dyn(RED) : ctx.th.t3}>{a.balance < 0 ? '已欠费' : '余额'}</Text>
           <Spacer />
-          <VStack alignment="leading" spacing={5}>
-            {ms.slice(0, 2).map(m => (
+          <VStack alignment="leading" spacing={ms.length > 2 ? 2 : 5}>
+            {ms.map(m => (
               <VStack alignment="leading" spacing={3}>
                 <Text font={10} foregroundStyle={ctx.th.t2} lineLimit={1} minScaleFactor={0.8}>{`${m.label} ${amount(m.key, m.remain)}`}</Text>
                 <Bar ctx={ctx} percent={m.percent} height={4} />
@@ -80,11 +80,11 @@ export function DualStyle(props: { ctx: Ctx }) {
           {big ? <Label ctx={ctx} text={balanceLabel(a)} color={a.balance < 0 ? dyn(RED) : ctx.th.t2} /> : null}
         </VStack>
         <Spacer />
-        <VStack spacing={6}>
-          {ms.map(m => big
-            ? <Cell ctx={ctx}><MeterLine ctx={ctx} m={m} font={15} note={`共 ${amount(m.key, m.total)} · 剩 ${Math.round(m.percent)}%`} /></Cell>
-            : <MeterLine ctx={ctx} m={m} total={ms.length < 3} font={12} bar={4} />)}
-        </VStack>
+        {big ? (
+          <VStack spacing={6}>
+            {ms.map(m => <Cell ctx={ctx}><MeterLine ctx={ctx} m={m} font={15} note={`共 ${amount(m.key, m.total)} · 剩 ${Math.round(m.percent)}%`} /></Cell>)}
+          </VStack>
+        ) : <MeterStack ctx={ctx} ms={ms} total={ms.length < 3} />}
         {big ? [<Spacer />, (
           <HStack spacing={6}>
             <Stat ctx={ctx} label="本月" value={a.monthFee !== undefined ? `¥${a.monthFee.toFixed(2)}` : '-'} size={13} />
@@ -192,7 +192,7 @@ export function PagerStyle(props: { ctx: Ctx }) {
           <Num value={a.balance.toFixed(2)} size={big ? 40 : 32} color={balanceColor(ctx, a)} />
           <Label ctx={ctx} text={balanceLabel(a)} color={a.balance < 0 ? dyn(RED) : ctx.th.t2} />
         </VStack>
-        {big ? <Spacer /> : <VStack spacing={6} frame={{ maxWidth: 'infinity' }}>{ms.slice(0, 2).map(m => <MeterLine ctx={ctx} m={m} font={12} total />)}</VStack>}
+        {big ? <Spacer /> : <VStack frame={{ maxWidth: 'infinity' }}><MeterStack ctx={ctx} ms={ms} total={ms.length < 3} /></VStack>}
         {big && a.monthFee !== undefined ? (
           <VStack alignment="trailing" spacing={1}>
             <Num value={`¥${a.monthFee.toFixed(2)}`} size={18} color={ctx.th.t1} />

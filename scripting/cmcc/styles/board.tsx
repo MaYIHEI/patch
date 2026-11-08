@@ -94,7 +94,7 @@ export function BoardStyle(props: { ctx: Ctx }) {
           <Num value={a.balance.toFixed(2)} size={26} color={balanceColor(ctx, a)} />
           <Text font={10} foregroundStyle={a.balance < 0 ? dyn(RED) : th.t3}>{a.balance < 0 ? '欠费' : '元'}</Text>
         </HStack>
-        <Text font={10} foregroundStyle={th.t3} lineLimit={1}>{[a.monthFee !== undefined ? `本月 ¥${a.monthFee.toFixed(0)}` : '', a.points !== undefined ? `${a.points} 积分` : ''].filter(Boolean).join(' · ')}</Text>
+        {ms.length > 2 ? null : <Text font={10} foregroundStyle={th.t3} lineLimit={1}>{[a.monthFee !== undefined ? `本月 ¥${a.monthFee.toFixed(0)}` : '', a.points !== undefined ? `${a.points} 积分` : ''].filter(Boolean).join(' · ')}</Text>}
         <Spacer />
         <VStack spacing={5}>
           {ms.slice(0, 3).map(m => {
