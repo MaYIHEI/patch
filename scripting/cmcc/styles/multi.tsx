@@ -1,11 +1,11 @@
 // cmcc / styles/multi.tsx
-// 多个号: 双号对照 / 谁先用完 / 多号翻页
+// 多个号: 双号对照 / 多号翻页
 
 import { VStack, HStack, Text, Spacer, Image, Button, Rectangle } from 'scripting'
 import type { DynamicShapeStyle } from 'scripting'
 
 import {
-  Root, Header, SyncTap, Tabs, pageIndex, Num, Label, Cell, Stat, Bar, MeterLine, MeterStack, ErrorBox, errorText, metersOf, amount, forecast, md, balanceColor, balanceLabel, pointsText, RED, GREEN, ORANGE, type Ctx, type Slot, type Paint,
+  Root, Header, SyncTap, Tabs, pageIndex, Num, Label, Cell, Stat, Bar, MeterLine, MeterStack, ErrorBox, errorText, metersOf, amount, balanceColor, balanceLabel, pointsText, RED, ORANGE, type Ctx, type Slot,
 } from '../ui'
 import { PageIntent } from '../app_intents'
 import { NoData } from './basic'
@@ -102,57 +102,6 @@ export function DualStyle(props: { ctx: Ctx }) {
         <VLine ctx={ctx} />
         {column(slots[1])}
       </HStack>
-    </Root>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────
-// T 谁先用完: 所有号的所有项按紧张程度排队, 前面是大号排名
-// ─────────────────────────────────────────────────────────────
-type Row = { who: string; what: string; text: string; color: Paint; percent: number; rank: number }
-
-function rowsOf(slots: Slot[]): Row[] {
-  const out: Row[] = []
-  for (const s of slots) {
-    const a = s.account
-    if (!a) continue
-    if (a.balance < 10) out.push({ who: s.name, what: '余额', text: a.balance < 0 ? `已欠费 ${(-a.balance).toFixed(2)}` : `只剩 ¥${a.balance.toFixed(2)}`, color: dyn(RED), percent: 0, rank: a.balance < 0 ? -2 : -1 })
-    for (const m of metersOf(a)) {
-      const f = forecast(m, s.hist)
-      out.push({
-        who: s.name, what: m.label,
-        text: f.runOut ? `约 ${md(f.runOut)} 用完` : `剩 ${Math.round(m.percent)}% · ${amount(m.key, m.remain)}`,
-        color: f.runOut || m.percent < 20 ? dyn(RED) : m.percent <= 50 ? dyn(ORANGE) : dyn(GREEN),
-        percent: m.percent,
-        rank: f.runOut ? (f.runOut - Date.now()) / 1e12 : m.percent,
-      })
-    }
-  }
-  return out.sort((a, b) => a.rank - b.rank)
-}
-
-export function QueueStyle(props: { ctx: Ctx }) {
-  const { ctx } = props
-  const rows = rowsOf(ctx.slots)
-  if (!rows.length) return <NoData ctx={ctx} />
-  return (
-    <Root ctx={ctx} spacing={7}>
-      <Header ctx={ctx} title="谁先用完" sub={`${ctx.slots.filter(s => s.account).length} 个号`} />
-      {rows.slice(0, 3).map((r, i) => (
-        <HStack spacing={10}>
-          <Num value={i + 1} size={20} color={i === 0 ? r.color : ctx.th.t3} />
-          <VStack alignment="leading" spacing={3} frame={{ maxWidth: 'infinity' }}>
-            <HStack spacing={5}>
-              <Text font={12} fontWeight="semibold" foregroundStyle={ctx.th.t1} lineLimit={1}>{r.who}</Text>
-              <Label ctx={ctx} text={r.what} />
-              <Spacer minLength={4} />
-              <Text font={11} foregroundStyle={r.color} lineLimit={1}>{r.text}</Text>
-            </HStack>
-            <Bar ctx={ctx} percent={Math.max(1, r.percent)} height={4} />
-          </VStack>
-        </HStack>
-      ))}
-      <Spacer minLength={0} />
     </Root>
   )
 }

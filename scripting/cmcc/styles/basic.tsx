@@ -1,13 +1,12 @@
 // cmcc / styles/basic.tsx
-// 一眼看懂: 自适应 (原默认版式) / 大字余额 / 状态色块 / 账单卡 / 锁屏
+// 一眼看懂: 自适应 (原默认版式) / 大字余额 / 账单卡 / 锁屏
 
-import { VStack, HStack, ZStack, Text, Spacer, Image, Gauge, AccessoryWidgetBackground, RoundedRectangle } from 'scripting'
-import type { DynamicShapeStyle } from 'scripting'
+import { VStack, HStack, ZStack, Text, Spacer, Gauge, AccessoryWidgetBackground, RoundedRectangle } from 'scripting'
 
 import { formatFlow, type Account } from '../api'
 import {
   Root, Header, SyncTap, Logo, Num, Label, Balance, Cell, Stat, Bar, MeterStack, ErrorBox, LockPreview, lockFg, primary, metersOf, amount,
-  starText, pointsText, netText, balanceColor, balanceLabel, RED, GREEN, type Ctx, type Meter,
+  starText, pointsText, netText, balanceColor, balanceLabel, RED, type Ctx, type Meter,
 } from '../ui'
 
 /** 没有数据时整张显示错误 */
@@ -193,60 +192,6 @@ export function BigBalanceStyle(props: { ctx: Ctx }) {
         <Text font={10} foregroundStyle={ctx.th.t3} lineLimit={1} minScaleFactor={0.8}>{foot}</Text>
         <Spacer />
       </HStack>
-    </Root>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────
-// C 状态色块: 欠费 / 快用完整张变红, 一切正常变绿, 只说一件事
-// ─────────────────────────────────────────────────────────────
-export function StatusStyle(props: { ctx: Ctx }) {
-  const { ctx } = props
-  const p = primary(ctx)
-  if (!p) return <NoData ctx={ctx} />
-  const a = p.account
-  const low = metersOf(a).filter(m => m.percent < 20)
-  const bad = a.balance < 10 || low.length > 0
-  const color = (bad ? RED : GREEN) as DynamicShapeStyle
-  const title = a.balance < 0 ? '已欠费' : a.balance < 10 ? '余额不足' : low.length ? `${low[0].label}快用完` : '一切正常'
-  const value = a.balance < 10 ? a.balance.toFixed(2) : low.length ? amount(low[0].key, low[0].remain) : a.balance.toFixed(2)
-  const hint = a.balance < 10 ? '打开中国移动 App 缴费' : low.length ? `剩 ${Math.round(low[0].percent)}% · 省着点用` : `通用剩 ${a.general ? formatFlow(a.general.remainMB) : '-'}`
-  if (ctx.size === 'm') {
-    const items = [
-      { label: '余额', text: a.balance < 0 ? '已欠费' : a.balance < 10 ? '不足' : '正常', bad: a.balance < 10, value: a.balance.toFixed(2) },
-      ...metersOf(a).map(m => ({ label: m.label, text: m.percent < 20 ? '快用完' : '正常', bad: m.percent < 20, value: amount(m.key, m.remain) })),
-    ]
-    return (
-      <Root ctx={ctx} spacing={0} tone={bad ? 'bad' : 'good'}>
-        <HStack spacing={16} frame={{ maxHeight: 'infinity' }}>
-          <VStack alignment="leading" spacing={6} frame={{ width: 104, alignment: 'leading' }}>
-            <Image systemName={bad ? 'exclamationmark.triangle.fill' : 'checkmark.seal.fill'} font={28} foregroundStyle={color} />
-            <Text font={17} fontWeight="semibold" foregroundStyle={color} lineLimit={1} minScaleFactor={0.7}>{title}</Text>
-            <Label ctx={ctx} text={`尾号 ${a.phoneTail}`} />
-          </VStack>
-          <VStack spacing={9} frame={{ maxWidth: 'infinity' }}>
-            {items.map(x => (
-              <HStack spacing={6}>
-                <Label ctx={ctx} text={x.label} />
-                <Text font={11} fontWeight="semibold" foregroundStyle={x.bad ? RED : GREEN} lineLimit={1}>{x.text}</Text>
-                <Spacer minLength={4} />
-                <Num value={x.value} size={13} color={ctx.th.t1} />
-              </HStack>
-            ))}
-          </VStack>
-        </HStack>
-      </Root>
-    )
-  }
-  return (
-    <Root ctx={ctx} spacing={0} tone={bad ? 'bad' : 'good'}>
-      <Header ctx={ctx} title={`尾号 ${a.phoneTail}`} />
-      <Spacer />
-      <Image systemName={bad ? 'exclamationmark.triangle.fill' : 'checkmark.seal.fill'} font={24} foregroundStyle={color} />
-      <Text font={15} fontWeight="semibold" foregroundStyle={color} padding={{ top: 6 }}>{title}</Text>
-      <Num value={value} size={30} color={color} />
-      <Spacer />
-      <Label ctx={ctx} text={hint} />
     </Root>
   )
 }

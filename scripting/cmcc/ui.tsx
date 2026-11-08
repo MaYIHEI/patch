@@ -18,8 +18,6 @@ export type Paint = Color | DynamicShapeStyle
 export const GREEN: Pair = { light: '#34C759', dark: '#30D158' }
 export const ORANGE: Pair = { light: '#FF9500', dark: '#FF9F0A' }
 export const RED: Pair = { light: '#FF3B30', dark: '#FF453A' }
-const GREEN_TINT: Pair = { light: '#E8F7EC', dark: '#16301E' }
-const RED_TINT: Pair = { light: '#FDECEA', dark: '#3A1A18' }
 
 const PLAIN = {
   bg: { light: '#FFFFFF', dark: '#1C1C1E' },
@@ -205,11 +203,11 @@ export function tightest(ms: Meter[], hist?: Hist): { m: Meter; f: Forecast } | 
 // ─────────────────────────────────────────────────────────────
 const PAD: Record<Size, number> = { s: 14, m: 14, l: 16 }
 
-/** 小组件根视图; tone 让整张变成状态色 (状态色块样式用) */
-export function Root(props: { ctx: Ctx; spacing?: number; tone?: 'good' | 'bad'; children?: any }) {
+/** 小组件根视图 */
+export function Root(props: { ctx: Ctx; spacing?: number; children?: any }) {
   const { ctx } = props
   const { th } = ctx
-  const bg: Paint = props.tone && !th.custom ? ((props.tone === 'bad' ? RED_TINT : GREEN_TINT) as DynamicShapeStyle) : th.bg
+  const bg = th.bg
   const img = th.image
   const backdrop = img ? (
     <ZStack>

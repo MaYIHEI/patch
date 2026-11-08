@@ -121,7 +121,7 @@ function Home() {
 
   async function reload(force = false) {
     if (force) clearCache()
-    setSlots(listAccounts().length ? await loadSlots(styleById('T')!, []) : [])
+    setSlots(listAccounts().length ? await loadSlots(styleById('W')!, []) : [])
     setTick(tick + 1)
     Widget.reloadAll()
   }
