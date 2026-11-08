@@ -104,7 +104,7 @@ function isNewer(remote: string, local: string): boolean {
 const tailsOf = (slots: Slot[]) => slots.filter(s => s.account).map(s => s.account!.phoneTail)
 
 /** 某个样式的桌面参数: 多号样式带上所有尾号 */
-const paramFor = (s: StyleDef, slots: Slot[]) => paramOf(s, s.id === 'S' ? tailsOf(slots).slice(0, 2) : [])
+const paramFor = (s: StyleDef, slots: Slot[]) => paramOf(s, s.id === 'S' || s.id === 'X' ? tailsOf(slots).slice(0, 2) : [])
 
 const notes = (s: StyleDef, real: boolean) => [!real ? '示例数据' : '', NEEDS_HIST.includes(s.id) ? '需要几天历史' : ''].filter(Boolean).join(' · ')
 

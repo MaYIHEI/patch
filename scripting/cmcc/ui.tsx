@@ -313,7 +313,8 @@ export function Tabs(props: { ctx: Ctx; index: number }) {
   const { th } = ctx
   return (
     <HStack spacing={5}>
-      {ctx.slots.map((s, i) => {
+      {/* 号多时只显示当前号附近的 3 个, 免得挤出去 */}
+      {ctx.slots.map((s, i) => ({ s, i })).slice(Math.max(0, Math.min(props.index - 1, ctx.slots.length - 3)), Math.max(0, Math.min(props.index - 1, ctx.slots.length - 3)) + 3).map(({ s, i }) => {
         const on = i === props.index
         const pill = (
           <Text font={11} fontWeight={on ? 'semibold' : 'regular'} foregroundStyle={on ? th.bg : th.t2} lineLimit={1}
