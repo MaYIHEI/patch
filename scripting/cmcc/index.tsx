@@ -38,13 +38,14 @@ import { getData, setData, getLook, setLook, getDefaults, setDefault, getNames, 
 import { metersOf, amount, starText, pointsText, netText, errorText, hhmm, chunk, type Slot } from './ui'
 import { STYLES, MULTI, NEEDS_HIST, stylesFor, styleById, paramOf, renderStyle, type StyleDef } from './styles/index'
 import { loadSlots, sampleSlots } from './slots'
+import { installUpdate } from './update'
 
 declare const Safari: { openURL(url: string): Promise<boolean> }
 
 // testing 分支: 检查更新读 testing, 合并到 main 时改回 main
 const BRANCH = 'testing'
 const REMOTE_META = `https://raw.githubusercontent.com/MaYIHEI/patch/${BRANCH}/scripting/cmcc/script.json`
-const INSTALL_URL = `https://www.scripting.fun/import_scripts/?urls=${encodeURIComponent(JSON.stringify([`https://www.imarkr.com/api/github/download/MaYIHEI/patch/scripting/cmcc.zip?branch=${BRANCH}`]))}`
+const PACKAGE_URL = `https://www.imarkr.com/api/github/download/MaYIHEI/patch/scripting/cmcc.zip?branch=${BRANCH}`
 const HOMEPAGE = 'https://github.com/MaYIHEI/patch/tree/main/scripting/cmcc'
 const PLUGIN_PAGE = 'https://github.com/MaYIHEI/paperclip/tree/main/app/cmcc'
 const BG_PATH = () => Path.join(FileManager.appGroupDocumentsDirectory, 'cmcc', 'background.jpg')
@@ -595,10 +596,15 @@ function SettingsTab(props: Shared & { close: any }) {
       const remote = String((await res.json() as { version?: string }).version ?? '')
       if (!remote || !isNewer(remote, version)) return setUpdateText('已是最新')
       setUpdateText(`有新版本 ${remote}`)
-      const ok = await Dialog.confirm({ title: `发现新版本 ${remote}`, message: `当前 ${version}, 更新会重新导入脚本, 登录凭证和历史保留`, cancelLabel: '稍后', confirmLabel: '更新' })
-      if (ok) await Safari.openURL(INSTALL_URL)
-    } catch {
-      setUpdateText('检查失败')
+      const ok = await Dialog.confirm({ title: `发现新版本 ${remote}`, message: `当前 ${version}, 账号和历史都会保留`, cancelLabel: '稍后', confirmLabel: '更新' })
+      if (!ok) return
+      setUpdateText('更新中...')
+      await installUpdate(PACKAGE_URL)
+      Widget.reloadAll()
+      await Dialog.alert({ title: `已更新到 ${remote}`, message: '点确定退出, 重新打开 cmcc 生效' })
+      Script.exit()
+    } catch (e) {
+      setUpdateText(`失败: ${(e as Error).message}`.slice(0, 24))
     }
   }
 
