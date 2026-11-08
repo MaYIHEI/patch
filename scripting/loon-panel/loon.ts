@@ -84,13 +84,37 @@ export const MODES = [
 ]
 export const modeName = (m: number) => MODES.find(x => x.id === m)?.short ?? '未知'
 
-async function get(url: string, timeout: number): Promise<LoonData> {
+/** 插件没拦下请求时, 请求会发到真正的 1.1.1.1 (Cloudflare), 它回 404 */
+const NOT_CAUGHT = '请求没被 Loon 面板插件拦下, 到了真正的 1.1.1.1。检查插件是否已添加并开启、Loon 是否 3.5.1(983) 以上, 1.1.1.1 不要放进 skip-proxy 或 bypass-tun'
+const httpError = (status: number) => new Error(status === 404 ? NOT_CAUGHT : `Loon 返回 ${status}`)
+
+/** 第二个入口: 有的环境 1.1.1.1 到不了插件, 这时试 8.8.8.8, 通了就记住 */
+const HOSTS = ['1.1.1.1', '8.8.8.8']
+const HOST_KEY = 'loonpanel.host'
+const currentHost = () => AppStorage.get<string>(HOST_KEY) ?? HOSTS[0]
+const atHost = (url: string, host: string) => url.replace(HOSTS[0], host)
+
+async function getAt(url: string, timeout: number): Promise<LoonData> {
   const res = await fetch(url, { allowInsecureRequest: true, timeout })
-  if (!res.ok) throw new Error(`Loon 返回 ${res.status}`)
+  if (!res.ok) throw httpError(res.status)
   const j = await res.json() as LoonData
   if (!j || !Array.isArray(j.groups)) throw new Error('返回的不是 Loon 面板数据')
   j.nodes = j.nodes ?? {}
   return j
+}
+
+async function get(url: string, timeout: number): Promise<LoonData> {
+  const host = currentHost()
+  try {
+    return await getAt(atHost(url, host), timeout)
+  } catch (e) {
+    if ((e as Error).message !== NOT_CAUGHT) throw e
+    const other = HOSTS.find(h => h !== host)!
+    const data = await getAt(atHost(url, other), Math.min(timeout, 6)).catch(() => null)
+    if (!data) throw e
+    AppStorage.set(HOST_KEY, other)
+    return data
+  }
 }
 
 /** 读数据地址; 连不上就用上次的数据 (stale) */
@@ -147,8 +171,8 @@ export async function deepCheck(node: string, mode: 'basic' | 'speed' | 'full'):
 
 /** 保存插件设置 (POST 正文, 密钥不进 URL); 只传要改的项, 空字符串 = 恢复默认 */
 export async function setOpts(patch: OptsPatch): Promise<LoonData> {
-  const res = await fetch(OPTS_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch), allowInsecureRequest: true, timeout: 10 })
-  if (!res.ok) throw new Error(`Loon 返回 ${res.status}`)
+  const res = await fetch(atHost(OPTS_URL, currentHost()), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch), allowInsecureRequest: true, timeout: 10 })
+  if (!res.ok) throw httpError(res.status)
   const data = await res.json() as LoonData
   if (!data || !Array.isArray(data.groups)) throw new Error('插件版本太旧, 先更新 Loon 面板插件')
   data.nodes = data.nodes ?? {}

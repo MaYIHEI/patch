@@ -13,8 +13,8 @@ cron = input,"*/30 * * * *",tag=体检频率,desc=Cron 表达式，默认每 30 
 cron ${cron} then script("https://raw.githubusercontent.com/MaYIHEI/patch/refs/heads/main/scripting/loon-panel/loon/loon-panel.js") with tag="节点体检", img_url="stethoscope.system", timeout=120
 network-changed then script("https://raw.githubusercontent.com/MaYIHEI/patch/refs/heads/main/scripting/loon-panel/loon/loon-panel.js") with tag="网络切换复测", img_url="wifi.system", timeout=60
 # 小组件数据和操作: 请求 http://1.1.1.1/loon-panel/data 或 /set 时直接返回 JSON
-request if ${url} ~= /^http:\/\/1\.1\.1\.1\/loon-panel\/(data|set|clear)(\?|$)/i then script("https://raw.githubusercontent.com/MaYIHEI/patch/refs/heads/main/scripting/loon-panel/loon/loon-panel.js") with tag="Loon 面板数据", img_url="gauge.with.dots.needle.67percent.system", timeout=30
+request if ${url} ~= /^http:\/\/(1\.1\.1\.1|8\.8\.8\.8)\/loon-panel\/(data|set|clear)(\?|$)/i then script("https://raw.githubusercontent.com/MaYIHEI/patch/refs/heads/main/scripting/loon-panel/loon/loon-panel.js") with tag="Loon 面板数据", img_url="gauge.with.dots.needle.67percent.system", timeout=30
 # 深度检测: App 手动触发, 耗时较长
-request if ${url} ~= /^http:\/\/1\.1\.1\.1\/loon-panel\/deep(\?|$)/i then script("https://raw.githubusercontent.com/MaYIHEI/patch/refs/heads/main/scripting/loon-panel/loon/loon-panel.js") with tag="Loon 面板深度检测", img_url="shield.lefthalf.filled.system", timeout=90
+request if ${url} ~= /^http:\/\/(1\.1\.1\.1|8\.8\.8\.8)\/loon-panel\/deep(\?|$)/i then script("https://raw.githubusercontent.com/MaYIHEI/patch/refs/heads/main/scripting/loon-panel/loon/loon-panel.js") with tag="Loon 面板深度检测", img_url="shield.lefthalf.filled.system", timeout=90
 # 保存 App 里的设置: 密钥放在正文里, 不进 URL
-request if ${url} ~= /^http:\/\/1\.1\.1\.1\/loon-panel\/opts$/i && ${request.method} == "POST" then script("https://raw.githubusercontent.com/MaYIHEI/patch/refs/heads/main/scripting/loon-panel/loon/loon-panel.js") with tag="Loon 面板设置", img_url="gearshape.system", timeout=30, requires_body=true
+request if ${url} ~= /^http:\/\/(1\.1\.1\.1|8\.8\.8\.8)\/loon-panel\/opts$/i && ${request.method} == "POST" then script("https://raw.githubusercontent.com/MaYIHEI/patch/refs/heads/main/scripting/loon-panel/loon/loon-panel.js") with tag="Loon 面板设置", img_url="gearshape.system", timeout=30, requires_body=true
