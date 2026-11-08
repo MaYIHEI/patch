@@ -85,7 +85,7 @@ export function TodayStyle(props: { ctx: Ctx }) {
     <HalfGauge ctx={ctx} ratio={ratio} size={ctx.size === 's' ? 108 : 120} line={10}>
       <VStack spacing={0} offset={{ x: 0, y: 10 }}>
         <Num value={used !== null ? amount(m.key, used) : '-'} size={20} color={used !== null && ratio > 1 ? RED : ctx.th.t1} />
-        <Text font={10} foregroundStyle={ctx.th.t2}>{`今天已用`}</Text>
+        <Text font={10} foregroundStyle={ctx.th.t2} lineLimit={1}>{`${m.label}今天已用`}</Text>
       </VStack>
     </HalfGauge>
   )
@@ -100,7 +100,7 @@ export function TodayStyle(props: { ctx: Ctx }) {
   if (ctx.size === 's') {
     return (
       <Root ctx={ctx} spacing={6}>
-        <Header ctx={ctx} title={m.label} />
+        <Header ctx={ctx} />
         <HStack><Spacer />{gauge}<Spacer /></HStack>
         <Spacer />
         {lines}
@@ -110,7 +110,7 @@ export function TodayStyle(props: { ctx: Ctx }) {
   const d = p.hist?.daily(m.key, 7) ?? []
   return (
     <Root ctx={ctx} spacing={6}>
-      <Header ctx={ctx} title={`${m.label}流量 · 今日额度`} />
+      <Header ctx={ctx} sub={`${m.label} · 今日额度`} />
       <HStack spacing={14} frame={{ maxHeight: 'infinity' }}>
         <VStack spacing={8}>{gauge}{lines}</VStack>
         <VStack alignment="leading" spacing={4} frame={{ maxWidth: 'infinity' }}>
@@ -177,10 +177,11 @@ export function CountdownStyle(props: { ctx: Ctx }) {
   const rows = countdownRows(ctx, p)
   if (ctx.size === 's') {
     return (
-      <Root ctx={ctx} spacing={0}>
-        <HStack><Spacer /><DayRing ctx={ctx} size={rows.length > 2 ? 64 : 78} line={7} days={days} elapsed={mo.elapsed} /><Spacer /></HStack>
+      <Root ctx={ctx} spacing={2}>
+        <Header ctx={ctx} />
+        <HStack><Spacer /><DayRing ctx={ctx} size={rows.length > 2 ? 56 : 68} line={7} days={days} elapsed={mo.elapsed} /><Spacer /></HStack>
         <Spacer />
-        <VStack spacing={3}>
+        <VStack spacing={2}>
           {rows.map(r => (
             <HStack>
               <Label ctx={ctx} text={r.m.label} />
@@ -193,9 +194,10 @@ export function CountdownStyle(props: { ctx: Ctx }) {
     )
   }
   return (
-    <Root ctx={ctx} spacing={0}>
+    <Root ctx={ctx} spacing={4}>
+      <Header ctx={ctx} />
       <HStack spacing={16} frame={{ maxHeight: 'infinity' }}>
-        <DayRing ctx={ctx} size={100} line={9} days={days} elapsed={mo.elapsed} />
+        <DayRing ctx={ctx} size={88} line={8} days={days} elapsed={mo.elapsed} />
         <VStack alignment="leading" spacing={7} frame={{ maxWidth: 'infinity' }}>
           <Text font={12} fontWeight="semibold" foregroundStyle={ctx.th.t1}>{`${md(mo.reset)}重置 · 已过 ${Math.round(mo.elapsed * 100)}%`}</Text>
           {rows.map(r => (
@@ -240,7 +242,7 @@ function ForecastSmall(props: { ctx: Ctx; p: Slot & { account: Account } }) {
   const { m, f } = t
   return (
     <Root ctx={ctx} spacing={0}>
-      <Header ctx={ctx} title={f.runOut ? '最紧张' : '够用'} />
+      <Header ctx={ctx} />
       <Spacer />
       <Label ctx={ctx} text={f.runOut ? `${m.label}约` : `${m.label}每天可用`} />
       <Num value={f.runOut ? `${new Date(f.runOut).getDate()} 日` : amount(m.key, f.perDay)} size={36} color={f.runOut ? dyn(RED) : ctx.th.t1} />
@@ -271,7 +273,7 @@ export function ForecastStyle(props: { ctx: Ctx }) {
   })
   return (
     <Root ctx={ctx} spacing={big ? 10 : ms.length > 2 ? 4 : 8}>
-      <Header ctx={ctx} title={`本月第 ${mo.day} 天`} sub={`已过 ${Math.round(mo.elapsed * 100)}%`} />
+      <Header ctx={ctx} sub={`第 ${mo.day} 天 · 已过 ${Math.round(mo.elapsed * 100)}%`} />
       {rows}
       <Spacer />
       {big && ms.length < 3 ? (
@@ -307,7 +309,7 @@ export function MonthStyle(props: { ctx: Ctx }) {
   if (ctx.size !== 'l') {
     return (
       <Root ctx={ctx} spacing={8}>
-        <Header ctx={ctx} title={`${new Date().getMonth() + 1} 月通用用量`} />
+        <Header ctx={ctx} sub={`${new Date().getMonth() + 1} 月通用用量`} />
         {stats}
         <DailyBars ctx={ctx} values={p.hist?.daily('gen', 14) ?? []} height={34} />
       </Root>
@@ -322,7 +324,7 @@ export function MonthStyle(props: { ctx: Ctx }) {
   for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7))
   return (
     <Root ctx={ctx} spacing={10}>
-      <Header ctx={ctx} title={`${new Date().getMonth() + 1} 月通用用量`} />
+      <Header ctx={ctx} sub={`${new Date().getMonth() + 1} 月通用用量`} />
       {stats}
       <HStack spacing={5}>{'一二三四五六日'.split('').map(w => <Text font={10} foregroundStyle={ctx.th.t3} frame={{ maxWidth: 'infinity' }}>{w}</Text>)}</HStack>
       <VStack spacing={5}>

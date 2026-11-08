@@ -5,7 +5,7 @@ import { VStack, HStack, Text, Spacer, Image, Button, Rectangle } from 'scriptin
 import type { DynamicShapeStyle } from 'scripting'
 
 import {
-  Root, Header, SyncTap, Tabs, pageIndex, Num, Label, Cell, Stat, Bar, MeterLine, MeterStack, ErrorBox, errorText, metersOf, amount, totalText, balanceColor, balanceLabel, pointsText, RED, ORANGE, type Ctx, type Slot,
+  Root, Header, Logo, SyncTap, Tabs, pageIndex, Num, Label, Cell, Stat, Bar, MeterLine, MeterStack, ErrorBox, errorText, metersOf, amount, totalText, balanceColor, balanceLabel, pointsText, RED, ORANGE, type Ctx, type Slot,
 } from '../ui'
 import { PageIntent } from '../app_intents'
 import { NoData } from './basic'
@@ -96,7 +96,7 @@ export function DualStyle(props: { ctx: Ctx }) {
   }
   return (
     <Root ctx={ctx} spacing={ctx.size === 'l' ? 12 : 6}>
-      <Header ctx={ctx} title={ctx.size === 's' ? undefined : '中国移动'} right={<SyncTap ctx={ctx} t={sync.t} stale={sync.stale} />} />
+      <Header ctx={ctx} right={<SyncTap ctx={ctx} t={sync.t} stale={sync.stale} />} />
       <HStack alignment="top" spacing={ctx.size === 's' ? 10 : 14} frame={{ maxHeight: 'infinity' }}>
         {column(slots[0])}
         <VLine ctx={ctx} />
@@ -124,6 +124,8 @@ export function PagerStyle(props: { ctx: Ctx }) {
   const a = s.account
   const top = (
     <HStack spacing={6}>
+      <Logo size={16} />
+      <Text font={12} fontWeight="semibold" foregroundStyle={ctx.th.t1} lineLimit={1}>中国移动</Text>
       <Tabs ctx={ctx} index={i} />
       <Spacer minLength={4} />
       {slots.length > 1 ? <PageTap ctx={ctx} step={1} icon="chevron.right" /> : null}

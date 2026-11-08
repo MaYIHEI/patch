@@ -153,14 +153,15 @@ export function BigBalanceStyle(props: { ctx: Ctx }) {
       ...metersOf(a).map(m => [m.label, amount(m.key, m.remain)] as [string, string]),
     ]
     return (
-      <Root ctx={ctx} spacing={0}>
+      <Root ctx={ctx} spacing={4}>
+        <Header ctx={ctx} />
         <HStack spacing={18} frame={{ maxHeight: 'infinity' }}>
           <VStack alignment="leading" spacing={4} frame={{ maxWidth: 'infinity', alignment: 'leading' }}>
             <Num value={a.balance.toFixed(2)} size={54} color={balanceColor(ctx, a)} />
             <Label ctx={ctx} text={balanceLabel(a)} color={a.balance < 0 ? RED : ctx.th.t2} />
           </VStack>
           <VStack frame={{ width: 112 }}>
-            <Cell ctx={ctx} gap={9}>
+            <Cell ctx={ctx} gap={7}>
               {rows.map(([l, v]) => (
                 <HStack>
                   <Label ctx={ctx} text={l} />
@@ -176,6 +177,7 @@ export function BigBalanceStyle(props: { ctx: Ctx }) {
   }
   return (
     <Root ctx={ctx} spacing={0}>
+      <Header ctx={ctx} />
       <Spacer />
       <HStack>
         <Spacer />
@@ -215,6 +217,7 @@ function BankCard(props: { ctx: Ctx; a: Account; tall?: boolean }) {
     >
       <HStack spacing={6}>
         <Logo size={20} />
+        <Text font={12} fontWeight="semibold" foregroundStyle={ctx.th.t1} lineLimit={1}>中国移动</Text>
         <Spacer />
         <Text font={11} foregroundStyle={ctx.th.t2} lineLimit={1}>{[a.user?.brand, a.user?.starLevel ? starText(a) : ''].filter(Boolean).join(' · ')}</Text>
       </HStack>

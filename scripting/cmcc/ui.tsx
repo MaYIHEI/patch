@@ -276,7 +276,7 @@ export function Header(props: { ctx: Ctx; title?: string; sub?: string; right?: 
   return (
     <HStack spacing={5}>
       <Logo size={18} />
-      {props.title ? <Text font={12} fontWeight="semibold" foregroundStyle={th.t1} lineLimit={1}>{props.title}</Text> : null}
+      <Text font={12} fontWeight="semibold" foregroundStyle={th.t1} lineLimit={1} minScaleFactor={0.85}>{props.title ?? '中国移动'}</Text>
       {props.sub ? <Text font={11} foregroundStyle={th.t3} lineLimit={1}>{props.sub}</Text> : null}
       <Spacer minLength={4} />
       {props.right === undefined ? <SyncTap ctx={props.ctx} /> : props.right}

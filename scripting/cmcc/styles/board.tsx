@@ -6,7 +6,7 @@ import { VStack, HStack, Text, Spacer } from 'scripting'
 import type { DynamicShapeStyle } from 'scripting'
 
 import {
-  Root, Logo, SyncTap, Section, Tabs, Num, Label, Cell, Bar, ErrorBox, errorText, pageIndex, metersOf, amount, totalText, month, forecast, md, starText, pointsText, netText,
+  Root, Header, Logo, SyncTap, Section, Tabs, Num, Label, Cell, Bar, ErrorBox, errorText, pageIndex, metersOf, amount, totalText, month, forecast, md, starText, pointsText, netText,
   balanceColor, balanceLabel, RED, type Ctx, type Meter, type Slot,
 } from '../ui'
 import type { Account } from '../api'
@@ -121,9 +121,8 @@ function Top(props: { ctx: Ctx; a: Account; index: number }) {
   return (
     <HStack spacing={6}>
       <Logo size={16} />
-      {ctx.slots.length > 1
-        ? <Tabs ctx={ctx} index={props.index} />
-        : [<Text font={12} fontWeight="semibold" foregroundStyle={ctx.th.t1} lineLimit={1}>中国移动</Text>, <Text font={11} foregroundStyle={ctx.th.t3} lineLimit={1}>{sub}</Text>]}
+      <Text font={12} fontWeight="semibold" foregroundStyle={ctx.th.t1} lineLimit={1}>中国移动</Text>
+      {ctx.slots.length > 1 ? <Tabs ctx={ctx} index={props.index} /> : <Text font={11} foregroundStyle={ctx.th.t3} lineLimit={1}>{sub}</Text>}
       <Spacer minLength={4} />
       <SyncTap ctx={ctx} t={a.fetchedAt} stale={a.stale} />
     </HStack>
@@ -136,19 +135,13 @@ function Top(props: { ctx: Ctx; a: Account; index: number }) {
 function Small(props: { ctx: Ctx; slot: Slot; a: Account; ms: Meter[] }) {
   const { ctx, slot, a, ms } = props
   const { th } = ctx
-  const head = ctx.slots.length > 1 ? slot.name : `${resetDays()} 天后重置`
   return (
     <Root ctx={ctx} spacing={0}>
-      <HStack spacing={4}>
-        <Logo size={14} />
-        <Text font={10} foregroundStyle={th.t3} lineLimit={1}>{head}</Text>
-        <Spacer minLength={2} />
-        <SyncTap ctx={ctx} />
-      </HStack>
+      <Header ctx={ctx} />
       <HStack alignment="bottom" spacing={8} padding={{ top: 6 }}>
         <VStack alignment="leading" spacing={1}>
           <Num value={a.balance.toFixed(2)} size={25} color={balanceColor(ctx, a)} />
-          <Text font={10} foregroundStyle={a.balance < 0 ? dyn(RED) : th.t3} lineLimit={1}>{a.balance < 0 ? '已欠费' : `本月 ${feeText(a)}`}</Text>
+          <Text font={10} foregroundStyle={a.balance < 0 ? dyn(RED) : th.t3} lineLimit={1}>{[ctx.slots.length > 1 ? slot.name : '', a.balance < 0 ? '已欠费' : `本月 ${feeText(a)}`].filter(Boolean).join(' · ')}</Text>
         </VStack>
         <VStack frame={{ maxWidth: 'infinity' }}><Chart ctx={ctx} slot={slot} m={ms[0]} height={26} /></VStack>
       </HStack>
@@ -287,7 +280,7 @@ function DualTop(props: { ctx: Ctx; slots: Slot[] }) {
   return (
     <HStack spacing={6}>
       <Logo size={16} />
-      {ctx.size === 'l' ? <Text font={12} fontWeight="semibold" foregroundStyle={ctx.th.t1}>双号全景</Text> : null}
+      <Text font={12} fontWeight="semibold" foregroundStyle={ctx.th.t1} lineLimit={1}>中国移动</Text>
       <Text font={10} foregroundStyle={ctx.th.t3} lineLimit={1}>{`${resetDays()} 天后重置`}</Text>
       <Spacer minLength={4} />
       <SyncTap ctx={ctx} t={Math.min(...loaded.map(a => a.fetchedAt))} stale={loaded.some(a => a.stale)} />
