@@ -6,7 +6,7 @@ import { makeTheme, type Ctx, type Size, type Slot } from '../ui'
 import { getDefaults, BUILTIN_DEFAULTS, type Family, type Look } from '../settings'
 import { AdaptiveStyle, BigBalanceStyle, StatusStyle, BillStyle, LockCircular, LockRect, LockInline } from './basic'
 import { TodayStyle, TodayLock, CountdownStyle, ForecastStyle, CompareStyle, ValueStyle, MonthStyle } from './forecast'
-import { WeatherStyle, HealthStyle, MetroStyle, BadgeStyle, TerminalStyle, ReceiptStyle } from './fun'
+import { MetroStyle, BadgeStyle, TerminalStyle, ReceiptStyle } from './fun'
 import { DualStyle, QueueStyle, PagerStyle, ConsoleStyle, LedgerStyle } from './multi'
 
 type View = (props: { ctx: Ctx }) => any
@@ -34,8 +34,6 @@ export const STYLES: StyleDef[] = [
   { id: 'H', name: '环比', icon: 'arrow.left.arrow.right', desc: '今天比昨天、本周比上周、本月话费比上月', views: SM(CompareStyle) },
   { id: 'I', name: '性价比', icon: 'yensign.circle.fill', desc: '本月每 G 花了多少钱, 剩下的还值多少', views: SM(ValueStyle) },
   { id: 'J', name: '用量月报', icon: 'square.grid.3x3.fill', desc: '本月合计、日均、最多一天; 大号是每天一格的热力日历', views: ML(MonthStyle) },
-  { id: 'K', name: '话费天气', icon: 'cloud.sun.fill', desc: '够用晴, 偏紧多云, 月底前用完下雨, 欠费雷暴', views: SM(WeatherStyle) },
-  { id: 'L', name: '账户体检', icon: 'heart.text.square.fill', desc: '100 分往下扣, 每条扣分写清原因', views: SM(HealthStyle) },
   { id: 'M', name: '地铁线路', icon: 'tram.fill', desc: '本月每天一站, 标出哪项会在哪天断供', views: ML(MetroStyle) },
   { id: 'N', name: '网龄徽章', icon: 'rosette', desc: '网龄、星级和下一个整数年', views: SM(BadgeStyle) },
   { id: 'O', name: '终端', icon: 'terminal.fill', desc: '等宽字逐行 ✓ ! ✗; 大号带账本', views: ML(TerminalStyle) },

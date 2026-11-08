@@ -1,138 +1,16 @@
 // cmcc / styles/fun.tsx
-// 换个说法: 话费天气 / 账户体检 / 地铁线路 / 网龄徽章 / 终端 / 话费小票
+// 换个说法: 地铁线路 / 网龄徽章 / 终端 / 话费小票
 
-import { VStack, HStack, ZStack, Text, Spacer, Image, Circle, Rectangle } from 'scripting'
+import { VStack, HStack, ZStack, Text, Spacer, Circle, Rectangle } from 'scripting'
 import type { DynamicShapeStyle } from 'scripting'
 
-import type { Account } from '../api'
-import type { Hist } from '../history'
 import {
   Root, Header, Num, Label, primary, metersOf, amount, month, forecast, md, hhmm, starText, pointsText, netText,
-  RED, GREEN, ORANGE, type Ctx, type Meter, type Paint,
+  RED, GREEN, ORANGE, type Ctx, type Paint,
 } from '../ui'
 import { NoData } from './basic'
 
 const dyn = (x: any) => x as DynamicShapeStyle
-
-// ─────────────────────────────────────────────────────────────
-// K 话费天气: 够用晴, 偏紧多云, 月底前用完下雨, 欠费雷暴
-// ─────────────────────────────────────────────────────────────
-type Sky = { icon: string; word: string; color: Paint; rank: number }
-const SUN: Sky = { icon: 'sun.max.fill', word: '晴', color: dyn(ORANGE), rank: 0 }
-const CLOUD: Sky = { icon: 'cloud.sun.fill', word: '多云', color: dyn({ light: '#8E8E93', dark: '#98989F' }), rank: 1 }
-const RAIN: Sky = { icon: 'cloud.rain.fill', word: '有雨', color: dyn({ light: '#636366', dark: '#AEAEB2' }), rank: 2 }
-const STORM: Sky = { icon: 'cloud.bolt.rain.fill', word: '雷暴', color: dyn(RED), rank: 3 }
-
-function skyOf(m: Meter, hist?: Hist): Sky {
-  const f = forecast(m, hist)
-  if (f.runOut || m.percent < 20) return RAIN
-  if (m.percent <= 50) return CLOUD
-  return SUN
-}
-
-const balanceSky = (a: Account): Sky => (a.balance < 0 ? STORM : a.balance < 10 ? RAIN : SUN)
-
-export function WeatherStyle(props: { ctx: Ctx }) {
-  const { ctx } = props
-  const p = primary(ctx)
-  if (!p) return <NoData ctx={ctx} />
-  const a = p.account
-  const items = [
-    { label: '余额', sky: balanceSky(a), text: a.balance < 0 ? `欠费 ${(-a.balance).toFixed(2)}` : `¥${a.balance.toFixed(2)}` },
-    ...metersOf(a).map(m => {
-      const f = forecast(m, p.hist)
-      return { label: m.label, sky: skyOf(m, p.hist), text: f.runOut ? `约 ${md(f.runOut)} 用完` : `剩 ${Math.round(m.percent)}%` }
-    }),
-  ]
-  const worst = items.reduce((w, x) => (x.sky.rank > w.sky.rank ? x : w), items[0])
-  const headline = worst.sky.rank === 0 ? '全部晴' : `${worst.label}${worst.sky.word}`
-  const icon = <Image systemName={worst.sky.icon} font={ctx.size === 's' ? 40 : 52} foregroundStyle={worst.sky.color} />
-  if (ctx.size === 's') {
-    return (
-      <Root ctx={ctx} spacing={0}>
-        <Header ctx={ctx} title="话费天气" />
-        <Spacer />
-        {icon}
-        <Text font={17} fontWeight="semibold" foregroundStyle={ctx.th.t1} padding={{ top: 6 }}>{headline}</Text>
-        <Label ctx={ctx} text={worst.text} />
-      </Root>
-    )
-  }
-  return (
-    <Root ctx={ctx} spacing={0}>
-      <HStack spacing={16} frame={{ maxHeight: 'infinity' }}>
-        <VStack spacing={6} frame={{ width: 104 }}>
-          {icon}
-          <Text font={17} fontWeight="semibold" foregroundStyle={ctx.th.t1} lineLimit={1} minScaleFactor={0.7}>{headline}</Text>
-        </VStack>
-        <VStack alignment="leading" spacing={7} frame={{ maxWidth: 'infinity' }}>
-          <Header ctx={ctx} title="话费天气" />
-          {items.map(x => (
-            <HStack spacing={6}>
-              <Image systemName={x.sky.icon} font={12} foregroundStyle={x.sky.color} frame={{ width: 18 }} />
-              <Label ctx={ctx} text={`${x.label}${x.sky.word}`} color={ctx.th.t1} />
-              <Spacer minLength={4} />
-              <Text font={11} foregroundStyle={ctx.th.t2} lineLimit={1}>{x.text}</Text>
-            </HStack>
-          ))}
-          <Spacer minLength={0} />
-          <Text font={10} foregroundStyle={ctx.th.t3} lineLimit={1}>晴 够用 · 多云 偏紧 · 雨 月底前用完 · 雷暴 欠费</Text>
-        </VStack>
-      </HStack>
-    </Root>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────
-// L 账户体检: 100 分往下扣, 每一条扣分写清原因
-// ─────────────────────────────────────────────────────────────
-function checkup(a: Account, hist?: Hist): { score: number; items: { pts: number; text: string }[] } {
-  const items: { pts: number; text: string }[] = []
-  if (a.balance < 0) items.push({ pts: 40, text: `已欠费 ${(-a.balance).toFixed(2)} 元` })
-  else if (a.balance < 10) items.push({ pts: 20, text: `余额只剩 ${a.balance.toFixed(2)} 元` })
-  for (const m of metersOf(a)) {
-    const f = forecast(m, hist)
-    if (f.runOut) items.push({ pts: 15, text: `${m.label}约 ${md(f.runOut)} 用完` })
-    else if (m.percent < 20) items.push({ pts: 10, text: `${m.label}只剩 ${Math.round(m.percent)}%` })
-    else if (m.percent <= 50) items.push({ pts: 5, text: `${m.label}剩 ${Math.round(m.percent)}%, 偏紧` })
-  }
-  const today = hist?.today('gen') ?? null
-  const avg = hist?.avg('gen') ?? null
-  if (today !== null && avg !== null && today > avg * 1.5) items.push({ pts: 5, text: `通用今天比平时多用 ${amount('gen', today - avg)}` })
-  return { score: Math.max(0, 100 - items.reduce((s, x) => s + x.pts, 0)), items: items.sort((x, y) => y.pts - x.pts) }
-}
-
-export function HealthStyle(props: { ctx: Ctx }) {
-  const { ctx } = props
-  const p = primary(ctx)
-  if (!p) return <NoData ctx={ctx} />
-  const { score, items } = checkup(p.account, p.hist)
-  const color = dyn(score >= 80 ? GREEN : score >= 60 ? ORANGE : RED)
-  const list = items.length
-    ? items.slice(0, ctx.size === 's' ? 3 : 4).map(x => (
-      <HStack spacing={4}>
-        <Text font={10} fontWeight="semibold" foregroundStyle={dyn(RED)} monospacedDigit frame={{ width: 24, alignment: 'leading' }}>{`−${x.pts}`}</Text>
-        <Text font={10} foregroundStyle={ctx.th.t2} lineLimit={1}>{x.text}</Text>
-      </HStack>
-    ))
-    : [<Text font={11} foregroundStyle={dyn(GREEN)}>没有扣分项, 余额和流量都够</Text>]
-  const big = (
-    <HStack alignment="lastTextBaseline" spacing={3}>
-      <Num value={score} size={ctx.size === 's' ? 44 : 52} color={color} />
-      <Label ctx={ctx} text="分" />
-    </HStack>
-  )
-  if (ctx.size === 's') return <Root ctx={ctx} spacing={0}><Header ctx={ctx} title="账户体检" /><Spacer />{big}<Spacer /><VStack alignment="leading" spacing={2}>{list}</VStack></Root>
-  return (
-    <Root ctx={ctx} spacing={0}>
-      <Header ctx={ctx} title="账户体检" sub={`尾号 ${p.account.phoneTail}`} />
-      <HStack spacing={18} frame={{ maxHeight: 'infinity' }}>
-        <VStack alignment="leading" spacing={2}>{big}<Label ctx={ctx} text={score >= 80 ? '状态良好' : score >= 60 ? '有点紧张' : '需要处理'} /></VStack>
-        <VStack alignment="leading" spacing={4} frame={{ maxWidth: 'infinity' }}>{list}</VStack>
-      </HStack>
-    </Root>
-  )
-}
 
 // ─────────────────────────────────────────────────────────────
 // M 地铁线路: 本月每天一站, 走到今天; 哪项会在哪天「断供」标红站
