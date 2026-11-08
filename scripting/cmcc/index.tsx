@@ -42,8 +42,7 @@ import { installUpdate } from './update'
 
 declare const Safari: { openURL(url: string): Promise<boolean> }
 
-// testing 分支: 检查更新读 testing, 合并到 main 时改回 main
-const BRANCH = 'testing'
+const BRANCH = 'main'
 const REMOTE_META = `https://raw.githubusercontent.com/MaYIHEI/patch/${BRANCH}/scripting/cmcc/script.json`
 const PACKAGE_URL = `https://www.imarkr.com/api/github/download/MaYIHEI/patch/scripting/cmcc.zip?branch=${BRANCH}`
 const HOMEPAGE = 'https://github.com/MaYIHEI/patch/tree/main/scripting/cmcc'
@@ -626,7 +625,7 @@ function SettingsTab(props: Shared & { close: any }) {
           <TextField title="boxjs.com" value={prefs.host} onChanged={(v: string) => update({ host: v })} multilineTextAlignment="trailing" />
         </HStack>
       </Group>
-      <Group title="关于" note={BRANCH === 'testing' ? '测试版: 检查更新会装 testing 分支的最新版。' : undefined}>
+      <Group title="关于">
         <InfoRow icon="info.circle" title="版本" value={version} />
         <ActionRow icon="arrow.down.circle" title="检查更新" value={updateText || undefined} action={checkUpdate} />
         <ActionRow icon="link" title="项目主页" action={() => { Safari.openURL(HOMEPAGE) }} />
