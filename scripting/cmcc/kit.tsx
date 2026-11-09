@@ -255,6 +255,6 @@ export function PickerRow<T extends string | number>(props: Label & { value: T; 
 }
 
 /** 行尾的小按钮 */
-export function SmallButton(props: { title: string; action: () => void; disabled?: boolean }) {
-  return <Button title={props.title} buttonStyle={HAS_GLASS ? 'glass' : 'bordered'} controlSize="small" disabled={props.disabled} action={props.action} />
+export function SmallButton(props: { title: string; icon?: string; action: () => void; disabled?: boolean }) {
+  return <Button title={props.title} systemImage={props.icon} buttonStyle={HAS_GLASS ? 'glass' : 'bordered'} controlSize="small" disabled={props.disabled} action={props.action} />
 }

@@ -195,12 +195,8 @@ function WidgetTab(props: { shared: Shared; close: any; onChanged: () => void; t
         <Stage>
           <Preview style={style} family={family} slots={data} />
           <Text font={12} foregroundStyle="secondaryLabel">{[`${style.name} · ${FAMILY_NAME[family]}`, notes(style, real)].filter(Boolean).join(' · ')}</Text>
+          {listAccounts().length ? <SmallButton icon="arrow.clockwise" title={refreshText || '立即刷新'} disabled={refreshText === '刷新中...'} action={refreshNow} /> : null}
         </Stage>
-        {listAccounts().length ? (
-          <Group>
-            <ActionRow icon="arrow.clockwise" title="立即刷新小组件" value={refreshText || undefined} disabled={refreshText === '刷新中...'} action={refreshNow} />
-          </Group>
-        ) : null}
       </VStack>
       {more.length ? (
         <Block title="这个尺寸还有">
@@ -640,7 +636,7 @@ function SettingsTab(props: Shared & { close: any }) {
 
   return (
     <Page title="设置" large bar={{ cancellationAction: props.close }}>
-      <Group title="数据" note="小组件按这个间隔请系统刷新, 实际由系统决定; 想马上看, 到小组件页点「立即刷新小组件」, 或点小组件右上角的时间。">
+      <Group title="数据" note="小组件按这个间隔请系统刷新, 实际由系统决定; 想马上看, 到小组件页点「立即刷新」, 或点小组件右上角的时间。">
         <PickerRow icon="clock" title="刷新间隔" value={prefs.refresh} options={[[60, '1 小时'], [120, '2 小时'], [240, '4 小时']]} onChanged={v => update({ refresh: v as DataPrefs['refresh'] })} />
         <HStack spacing={14} padding={{ horizontal: 14, vertical: 11 }} frame={{ maxWidth: 'infinity', minHeight: 48 }}>
           <Chip icon="shippingbox" />
