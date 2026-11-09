@@ -62,7 +62,7 @@ export const RECOMMENDED_ACCENT: Color[] = ['#0A84FF', '#30D158', '#FF9F0A', '#B
 export type Family = 'systemSmall' | 'systemMedium' | 'systemLarge' | 'accessoryCircular' | 'accessoryRectangular' | 'accessoryInline'
 const DEFAULTS_KEY = 'cmcc.defaults'
 export const BUILTIN_DEFAULTS: Record<Family, string> = {
-  systemSmall: 'A', systemMedium: 'A', systemLarge: 'A', accessoryCircular: 'V', accessoryRectangular: 'V', accessoryInline: 'V',
+  systemSmall: 'W', systemMedium: 'W', systemLarge: 'W', accessoryCircular: 'V', accessoryRectangular: 'V', accessoryInline: 'V',
 }
 export const getDefaults = () => read<Record<Family, string>>(DEFAULTS_KEY, BUILTIN_DEFAULTS)
 export const setDefault = (f: Family, style: string) => write(DEFAULTS_KEY, { ...getDefaults(), [f]: style })

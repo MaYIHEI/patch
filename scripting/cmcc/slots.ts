@@ -34,8 +34,8 @@ export function cachedSlots(): Slot[] {
   return listAccounts().map(tel => ({ name: names[tel] ?? `尾号 ${tel.slice(-4)}`, tel, account: readCache(tel) ?? undefined, hist: histOf(tel) }))
 }
 
-/** 示例: 样式库预览用; 主号通用、定向、语音都有, 副号欠费且只有通用和语音 */
-export function sampleSlots(): Slot[] {
+/** 示例: 样式库预览用; 主号通用、定向、语音都有, 副号欠费且只有通用和语音. 传 items 时两个号都只留这么多项 */
+export function sampleSlots(items?: 1 | 2 | 3): Slot[] {
   const now = Date.now()
   const hist = {
     days: 7,
@@ -44,7 +44,7 @@ export function sampleSlots(): Slot[] {
     avg: (key: string) => (key === 'voice' ? 1 : key === 'tgt' ? 1100 : 3200),
     lastMonthFee: 52,
   } as any
-  return [
+  const slots: Slot[] = [
     {
       name: '主号', tel: '13800000001', hist,
       account: {
@@ -69,4 +69,10 @@ export function sampleSlots(): Slot[] {
       },
     },
   ]
+  if (!items) return slots
+  for (const { account: a } of slots) {
+    a!.targeted = items === 3 ? { totalMB: 20480, usedMB: 16000, remainMB: 4480 } : undefined
+    if (items === 1) a!.voice = undefined
+  }
+  return slots
 }

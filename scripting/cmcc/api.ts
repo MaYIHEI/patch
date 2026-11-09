@@ -400,6 +400,11 @@ export function listAccounts(): string[] {
   return [tel]
 }
 
+/** 保存拖动后的账号顺序 */
+export function setAccountOrder(tels: string[]): void {
+  Keychain.set(KEYCHAIN_ACCOUNTS, JSON.stringify(tels))
+}
+
 /**
  * 导入 BoxJS 里的全部账号; 同号覆盖, 新号追加. 返回导入的手机号
  * cmcc_login 是登录信封数组 (paperclip r5 起); 旧版是单个信封

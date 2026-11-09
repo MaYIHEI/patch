@@ -5,6 +5,10 @@
 
 import {
   Button,
+  EditButton,
+  ForEach,
+  List,
+  Section,
   Tab,
   TabView,
   useObservable,
@@ -32,8 +36,8 @@ import {
 } from 'scripting'
 import type { Color } from 'scripting'
 
-import { importFromBoxJS, removeAccount, clearCache, listAccounts, feeRaw, CmccError } from './api'
-import { Page, Card, Stage, Grid, Block, Panel, NavTile, Group, ActionRow, InfoRow, PickerRow, Chip, SmallButton } from './kit'
+import { importFromBoxJS, removeAccount, clearCache, listAccounts, setAccountOrder, feeRaw, CmccError } from './api'
+import { Page, Card, Stage, Grid, Block, Panel, NavTile, Group, ActionRow, InfoRow, PickerRow, Chip, SmallButton, NavRow } from './kit'
 import { getData, setData, getLook, setLook, getDefaults, setDefault, getNames, setName, RECOMMENDED_BG, type Look, type Family, type DataPrefs } from './settings'
 import { metersOf, amount, starText, pointsText, netText, errorText, hhmm, chunk, type Slot } from './ui'
 import { STYLES, MULTI, NEEDS_HIST, stylesFor, styleById, paramOf, renderStyle, type StyleDef } from './styles/index'
@@ -218,7 +222,8 @@ function StyleLibrary(props: Shared & { start: SizeTab; onChanged: () => void })
   const real = props.slots.some(s => s.account)
   const [sample, setSample] = useState(!real)
   const [tick, setTick] = useState(0)
-  const data = sample ? sampleSlots() : previewSlots(props)
+  const [items, setItems] = useState<1 | 2 | 3>(3)
+  const data = sample ? sampleSlots(items) : previewSlots(props)
   const defaults = getDefaults()
   const changed = () => { setTick(tick + 1); props.onChanged() }
 
@@ -260,6 +265,13 @@ function StyleLibrary(props: Shared & { start: SizeTab; onChanged: () => void })
           <Text tag="lock">锁屏</Text>
         </Picker>
         <Toggle title="示例预览" value={sample} onChanged={setSample} />
+        {sample ? (
+          <Picker title="套餐项数" value={items} onChanged={(v: any) => setItems(v as 1 | 2 | 3)} pickerStyle="segmented">
+            <Text tag={1}>1 项</Text>
+            <Text tag={2}>2 项</Text>
+            <Text tag={3}>3 项</Text>
+          </Picker>
+        ) : null}
         {tab === 'lock' ? (
           <VStack alignment="leading" spacing={24}>
             <VStack alignment="leading" spacing={12}><Text font={17} fontWeight="semibold" padding={{ horizontal: 4 }}>圆形</Text>{grid('accessoryCircular')}</VStack>
@@ -501,6 +513,11 @@ function AccountsTab(props: Shared & { close: any }) {
           ))}
         </VStack>
       ) : null}
+      {props.slots.length > 1 ? (
+        <Group>
+          <NavRow icon="arrow.up.arrow.down" title="调整号码顺序" destination={<AccountOrder reload={props.reload} />} />
+        </Group>
+      ) : null}
       <Group
         title="导入"
         note={note || '1) Loon 装好 paperclip 中国移动插件和 BoxJS\n2) 划掉中国移动 App 再重开, 收到「获取成功」通知; 多个号用 App 的「切换账号」各抓一次\n3) 保持 Loon 开启, 点「从 BoxJS 导入」, 插件里存的号一次全部导入'}
@@ -509,6 +526,28 @@ function AccountsTab(props: Shared & { close: any }) {
         <ActionRow icon="arrow.clockwise" title="立即刷新全部" disabled={busy || !props.slots.length} action={refresh} />
       </Group>
     </Page>
+  )
+}
+
+function AccountOrder(props: { reload: () => Promise<void> }) {
+  const [tels, setTels] = useState(listAccounts())
+  const names = getNames()
+
+  function onMove(indices: number[], newOffset: number) {
+    const moving = indices.map(i => tels[i])
+    const next = tels.filter((_, i) => !indices.includes(i))
+    next.splice(newOffset, 0, ...moving)
+    setTels(next)
+    setAccountOrder(next)
+    props.reload()
+  }
+
+  return (
+    <List navigationTitle="调整号码顺序" navigationBarTitleDisplayMode="inline" toolbar={{ topBarTrailing: <EditButton /> }}>
+      <Section footer={<Text>点右上角「编辑」后拖动。排第一的是单号样式默认显示的号, 全景和多号翻页也按这个顺序切换; 小组件参数里写了尾号的, 以参数为准。</Text>}>
+        <ForEach count={tels.length} itemBuilder={(i: number) => <Text key={tels[i]}>{names[tels[i]] || `尾号 ${tels[i].slice(-4)}`}</Text>} onMove={onMove} />
+      </Section>
+    </List>
   )
 }
 
@@ -579,6 +618,7 @@ function AccountDetail(props: { slot: Slot; reload: (force?: boolean) => Promise
 function SettingsTab(props: Shared & { close: any }) {
   const [prefs, setPrefsState] = useState<DataPrefs>(getData())
   const [updateText, setUpdateText] = useState('')
+  const [refreshText, setRefreshText] = useState('')
   const version = Script.metadata.version ?? '-'
 
   function update(patch: Partial<DataPrefs>) {
@@ -607,6 +647,12 @@ function SettingsTab(props: Shared & { close: any }) {
     }
   }
 
+  async function refreshNow() {
+    setRefreshText('刷新中...')
+    await props.reload(true)
+    setRefreshText(`已刷新 ${hhmm(Date.now())}`)
+  }
+
   async function clearAll() {
     const ok = await Dialog.confirm({ title: '清除全部账号?', message: '会删除 Keychain 里所有号的登录凭证和本机历史', cancelLabel: '取消', confirmLabel: '清除' })
     if (!ok) return
@@ -616,7 +662,8 @@ function SettingsTab(props: Shared & { close: any }) {
 
   return (
     <Page title="设置" large bar={{ cancellationAction: props.close }}>
-      <Group title="数据" note="小组件按这个间隔请系统刷新, 实际由系统决定; 想马上看点小组件右上角的时间。">
+      <Group title="数据" note="小组件按这个间隔请系统刷新, 实际由系统决定; 想马上看点下面的按钮, 或小组件右上角的时间。">
+        <ActionRow icon="arrow.clockwise" title="立即刷新小组件" value={refreshText || undefined} disabled={!props.slots.length || refreshText === '刷新中...'} action={refreshNow} />
         <PickerRow icon="clock" title="刷新间隔" value={prefs.refresh} options={[[60, '1 小时'], [120, '2 小时'], [240, '4 小时']]} onChanged={v => update({ refresh: v as DataPrefs['refresh'] })} />
         <HStack spacing={14} padding={{ horizontal: 14, vertical: 11 }} frame={{ maxWidth: 'infinity', minHeight: 48 }}>
           <Chip icon="shippingbox" />
