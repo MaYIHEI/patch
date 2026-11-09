@@ -267,7 +267,7 @@ function toMB(v: string | undefined, unit: string | undefined): number {
 /** 185935 → "181.58G", 512 → "512M" */
 export function formatFlow(mb: number): string {
   if (mb >= 1024) return `${(mb / 1024).toFixed(2)}G`
-  return `${Math.round(mb)}M`
+  return `${Number(mb.toFixed(1))}M`
 }
 
 // 品牌码: "03" "09" 已对照套餐名确认 (都是动感地带), 其余按中国移动通用编码; 未知代码不显示
@@ -398,6 +398,11 @@ export function listAccounts(): string[] {
   Keychain.remove(LEGACY_LOGIN)
   Keychain.remove('cmcc.session')
   return [tel]
+}
+
+/** 保存拖动后的账号顺序 */
+export function setAccountOrder(tels: string[]): void {
+  Keychain.set(KEYCHAIN_ACCOUNTS, JSON.stringify(tels))
 }
 
 /**
