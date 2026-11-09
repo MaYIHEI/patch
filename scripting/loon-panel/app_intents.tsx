@@ -3,7 +3,7 @@
 
 import { AppIntentManager, AppIntentProtocol, Widget, ControlWidget } from 'scripting'
 
-import { setLoon, loadLoon, mainGroup, ownerGroup, switchTarget, turnGroupPage, turnPickPage, enterPick, leavePick, openPick, closePick, type Hop } from './loon'
+import { setLoon, loadLoon, activeGroup, ownerGroup, switchTarget, turnGroupPage, turnPickPage, enterPick, leavePick, openPick, closePick, type Hop } from './loon'
 import { loadSubs } from './subs'
 import { getPrefs } from './settings'
 
@@ -141,10 +141,10 @@ export const TurnPickPageIntent = AppIntentManager.register({
   },
 })
 
-/** 主策略组切到体检最快的节点 */
+/** 现在实际走的策略组切到体检最快的节点 */
 async function fastest() {
   const { data } = await loadLoon()
-  const main = data && !data.stale ? mainGroup(data, getPrefs()) : undefined
+  const main = data && !data.stale ? activeGroup(data, getPrefs()) : undefined
   const g = main && data ? ownerGroup(data, main) : undefined
   const target = g && data ? switchTarget(data, g) : undefined
   if (g && target) await run({ group: g.name, node: target }, `${g.name} → ${target}`)

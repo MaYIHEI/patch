@@ -3,7 +3,7 @@
 
 import { VStack, HStack, Text, Spacer, Image } from 'scripting'
 
-import { mainGroup, rankedNodes, healthCount, availability, type NodeResult } from '../loon'
+import { activeGroup, rankedNodes, healthCount, availability, type NodeResult } from '../loon'
 import { Root, ModeTap, Header, Num, Empty, Cell, Pill, Spark, RefreshButton, latencyInk, latencyText, nodeLabel, asnText, flag, ago, syncText, chunk, withAlpha, type Ctx } from '../ui'
 
 const NO_LOON = '读不到 Loon 数据\n打开 App 看排查步骤'
@@ -11,7 +11,7 @@ const NO_LOON = '读不到 Loon 数据\n打开 App 看排查步骤'
 /** 主策略组和它当前用的节点 */
 export function mainGroupLeaf(ctx: Ctx): { group: string; name: string; r?: NodeResult } | undefined {
   if (!ctx.loon) return undefined
-  const g = mainGroup(ctx.loon, ctx.prefs)
+  const g = activeGroup(ctx.loon, ctx.prefs)
   return g ? { group: g.name, name: g.leaf, r: g.gone ? undefined : ctx.loon.nodes[g.leaf] } : undefined
 }
 

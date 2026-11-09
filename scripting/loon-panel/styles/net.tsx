@@ -6,7 +6,7 @@ import { VStack, HStack, ZStack, Text, Spacer, Image, Button, Link, Capsule, Rec
 import type { Color } from 'scripting'
 
 import { dnsServers,
-  MODES, groupPage, pickerView, focusOf, pathTo, isAuto, mainGroup, rankedNodes, healthCount, availability, unlockNode, latestDeep, loonStatus,
+  MODES, groupPage, pickerView, focusOf, pathTo, isAuto, activeGroup, rankedNodes, healthCount, availability, unlockNode, latestDeep, loonStatus,
   type Deep, type Group, type Isp,
 } from '../loon'
 import { fmtBytes, md, type SubView } from '../subs'
@@ -213,7 +213,7 @@ export function RankStyle(props: { ctx: Ctx }) {
   const list = rankedNodes(loon).filter(x => x.r.ok).sort((a, b) => a.r.ms - b.r.ms).slice(0, 5)
   if (!list.length) return <Root ctx={ctx}><Header ctx={ctx} title="最快节点" /><Empty ctx={ctx} icon="stethoscope" text="还没有体检结果" /></Root>
   const max = Math.max(...list.map(x => x.r.ms))
-  const main = mainGroup(loon, ctx.prefs)
+  const main = activeGroup(loon, ctx.prefs)
   return (
     <Root ctx={ctx} spacing={5}>
       <Header ctx={ctx} title="最快节点" right={`${checkText(ctx)}`} />

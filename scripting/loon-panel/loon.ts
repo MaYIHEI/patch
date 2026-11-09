@@ -190,6 +190,11 @@ export function mainGroup(d: LoonData, prefs: Prefs): Group | undefined {
   return d.groups.find(g => g.name === prefs.main) ?? d.groups.find(g => g.name === d.final) ?? d.groups[0]
 }
 
+/** 现在实际走的策略组: 全局代理模式走全局策略, 其他模式走主策略组 */
+export function activeGroup(d: LoonData, prefs: Prefs): Group | undefined {
+  return (d.mode === 2 ? d.groups.find(g => g.name === d.global) : undefined) ?? mainGroup(d, prefs)
+}
+
 /** 看板列的策略组: 设置里选的 (按选的顺序), 没选用前 4 个 */
 export function shownGroups(d: LoonData, prefs: Prefs): Group[] {
   const picked = prefs.groups.map(n => d.groups.find(g => g.name === n)).filter((g): g is Group => !!g)
@@ -305,7 +310,7 @@ const UNLOCK_NAMES = ['Netflix', 'YouTube', 'Disney+', 'ChatGPT', 'Claude', 'Gem
 
 /** 解锁样式看的节点: 设置里选的策略组, 没选用主策略组 */
 export function unlockNode(d: LoonData, prefs: Prefs): { group: string; node: string; list: Media[]; t: number } | undefined {
-  const g = d.groups.find(x => x.name === prefs.unlock) ?? mainGroup(d, prefs)
+  const g = d.groups.find(x => x.name === prefs.unlock) ?? activeGroup(d, prefs)
   if (!g) return undefined
   const m = d.media?.[g.leaf]
   const list = UNLOCK_NAMES.map(n => m?.list.find(x => x.name === n)).filter((x): x is Media => !!x)
@@ -314,7 +319,7 @@ export function unlockNode(d: LoonData, prefs: Prefs): { group: string; node: st
 
 /** 最近一次深度检测: 优先主策略组当前节点, 否则取最新的一份 */
 export function latestDeep(d: LoonData, prefs: Prefs): { node: string; data: Deep } | undefined {
-  const leaf = mainGroup(d, prefs)?.leaf
+  const leaf = activeGroup(d, prefs)?.leaf
   const all = Object.entries(d.deep ?? {})
   const hit = all.find(([n]) => n === leaf) ?? all.sort((a, b) => b[1].t - a[1].t)[0]
   return hit ? { node: hit[0], data: hit[1] } : undefined
