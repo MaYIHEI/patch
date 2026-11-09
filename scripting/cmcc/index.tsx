@@ -5,7 +5,6 @@
 
 import {
   Button,
-  EditButton,
   ForEach,
   List,
   Section,
@@ -163,8 +162,16 @@ function WidgetTab(props: { shared: Shared; close: any; onChanged: () => void; t
   const look = getLook()
   const style = styleById(getDefaults()[family]) ?? stylesFor(family)[0]
   const more = stylesFor(family).filter(x => x.id !== style.id)
+  const [refreshText, setRefreshText] = useState('')
+
+  async function refreshNow() {
+    setRefreshText('刷新中...')
+    await shared.reload(true)
+    setRefreshText(`已刷新 ${hhmm(Date.now())}`)
+  }
+
   return (
-    <Page title="小组件" large bar={{ cancellationAction: props.close, topBarTrailing: <Button title="刷新" systemImage="arrow.clockwise" action={() => shared.reload(true)} /> }}>
+    <Page title="小组件" large bar={{ cancellationAction: props.close }}>
       {!listAccounts().length ? (
         <Card inner={14}>
           <HStack spacing={12}>
@@ -189,6 +196,11 @@ function WidgetTab(props: { shared: Shared; close: any; onChanged: () => void; t
           <Preview style={style} family={family} slots={data} />
           <Text font={12} foregroundStyle="secondaryLabel">{[`${style.name} · ${FAMILY_NAME[family]}`, notes(style, real)].filter(Boolean).join(' · ')}</Text>
         </Stage>
+        {listAccounts().length ? (
+          <Group>
+            <ActionRow icon="arrow.clockwise" title="立即刷新小组件" value={refreshText || undefined} disabled={refreshText === '刷新中...'} action={refreshNow} />
+          </Group>
+        ) : null}
       </VStack>
       {more.length ? (
         <Block title="这个尺寸还有">
@@ -490,14 +502,6 @@ function AccountsTab(props: Shared & { close: any }) {
     setBusy(false)
   }
 
-  async function refresh() {
-    setBusy(true)
-    setNote('查询中...')
-    await props.reload(true)
-    setNote(`已刷新 ${hhmm(Date.now())}`)
-    setBusy(false)
-  }
-
   function onMove(indices: number[], newOffset: number) {
     const moving = indices.map(i => props.slots[i])
     const next = props.slots.filter((_, i) => !indices.includes(i))
@@ -518,7 +522,7 @@ function AccountsTab(props: Shared & { close: any }) {
     <List
       navigationTitle="账号"
       navigationBarTitleDisplayMode="large"
-      toolbar={props.slots.length ? { cancellationAction: props.close, confirmationAction: [<EditButton />] } : { cancellationAction: props.close }}
+      toolbar={{ cancellationAction: props.close }}
     >
       {props.slots.length ? (
         <Section footer={<Text>长按拖动调整顺序, 左滑删除。全景和多号翻页按这个顺序切换; 小组件参数里写了尾号的, 以参数为准。</Text>}>
@@ -538,7 +542,6 @@ function AccountsTab(props: Shared & { close: any }) {
         footer={<Text>{note || '1) Loon 装好 paperclip 中国移动插件和 BoxJS\n2) 划掉中国移动 App 再重开, 收到「获取成功」通知; 多个号用 App 的「切换账号」各抓一次\n3) 保持 Loon 开启, 点「从 BoxJS 导入」, 插件里存的号一次全部导入'}</Text>}
       >
         <Button title="从 BoxJS 导入" systemImage="square.and.arrow.down" disabled={busy} action={doImport} />
-        <Button title="立即刷新全部" systemImage="arrow.clockwise" disabled={busy || !props.slots.length} action={refresh} />
       </Section>
     </List>
   )
@@ -567,14 +570,6 @@ function AccountDetail(props: { slot: Slot; reload: (force?: boolean) => Promise
     }
   }
 
-  async function remove() {
-    const ok = await Dialog.confirm({ title: `删除${slot.name}?`, message: '会删除 Keychain 里这个号的登录凭证和本机历史', cancelLabel: '取消', confirmLabel: '删除' })
-    if (!ok) return
-    await removeAccount(slot.tel)
-    await props.reload()
-    dismiss()
-  }
-
   return (
     <Page title={slot.name}>
       {a ? (
@@ -598,9 +593,6 @@ function AccountDetail(props: { slot: Slot; reload: (force?: boolean) => Promise
       <Group title="诊断" note={raw || '查看话费接口的原始返回 (只有金额字段), 余额显示不对时截图给开发者。'}>
         <ActionRow icon="ladybug" title="话费原始数据" action={diag} />
       </Group>
-      <Group>
-        <ActionRow icon="trash" color="systemRed" title={`删除${slot.name}`} destructive action={remove} />
-      </Group>
     </Page>
   )
 }
@@ -611,7 +603,6 @@ function AccountDetail(props: { slot: Slot; reload: (force?: boolean) => Promise
 function SettingsTab(props: Shared & { close: any }) {
   const [prefs, setPrefsState] = useState<DataPrefs>(getData())
   const [updateText, setUpdateText] = useState('')
-  const [refreshText, setRefreshText] = useState('')
   const version = Script.metadata.version ?? '-'
 
   function update(patch: Partial<DataPrefs>) {
@@ -640,12 +631,6 @@ function SettingsTab(props: Shared & { close: any }) {
     }
   }
 
-  async function refreshNow() {
-    setRefreshText('刷新中...')
-    await props.reload(true)
-    setRefreshText(`已刷新 ${hhmm(Date.now())}`)
-  }
-
   async function clearAll() {
     const ok = await Dialog.confirm({ title: '清除全部账号?', message: '会删除 Keychain 里所有号的登录凭证和本机历史', cancelLabel: '取消', confirmLabel: '清除' })
     if (!ok) return
@@ -655,8 +640,7 @@ function SettingsTab(props: Shared & { close: any }) {
 
   return (
     <Page title="设置" large bar={{ cancellationAction: props.close }}>
-      <Group title="数据" note="小组件按这个间隔请系统刷新, 实际由系统决定; 想马上看点下面的按钮, 或小组件右上角的时间。">
-        <ActionRow icon="arrow.clockwise" title="立即刷新小组件" value={refreshText || undefined} disabled={!props.slots.length || refreshText === '刷新中...'} action={refreshNow} />
+      <Group title="数据" note="小组件按这个间隔请系统刷新, 实际由系统决定; 想马上看, 到小组件页点「立即刷新小组件」, 或点小组件右上角的时间。">
         <PickerRow icon="clock" title="刷新间隔" value={prefs.refresh} options={[[60, '1 小时'], [120, '2 小时'], [240, '4 小时']]} onChanged={v => update({ refresh: v as DataPrefs['refresh'] })} />
         <HStack spacing={14} padding={{ horizontal: 14, vertical: 11 }} frame={{ maxWidth: 'infinity', minHeight: 48 }}>
           <Chip icon="shippingbox" />
