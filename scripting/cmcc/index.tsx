@@ -230,8 +230,7 @@ function StyleLibrary(props: Shared & { start: SizeTab; onChanged: () => void })
   const real = props.slots.some(s => s.account)
   const [sample, setSample] = useState(!real)
   const [tick, setTick] = useState(0)
-  const [items, setItems] = useState<1 | 2 | 3>(3)
-  const data = sample ? sampleSlots(items) : previewSlots(props)
+  const data = sample ? sampleSlots() : previewSlots(props)
   const defaults = getDefaults()
   const changed = () => { setTick(tick + 1); props.onChanged() }
 
@@ -273,13 +272,6 @@ function StyleLibrary(props: Shared & { start: SizeTab; onChanged: () => void })
           <Text tag="lock">锁屏</Text>
         </Picker>
         <Toggle title="示例预览" value={sample} onChanged={setSample} />
-        {sample ? (
-          <Picker title="套餐项数" value={items} onChanged={(v: any) => setItems(v as 1 | 2 | 3)} pickerStyle="segmented">
-            <Text tag={1}>1 项</Text>
-            <Text tag={2}>2 项</Text>
-            <Text tag={3}>3 项</Text>
-          </Picker>
-        ) : null}
         {tab === 'lock' ? (
           <VStack alignment="leading" spacing={24}>
             <VStack alignment="leading" spacing={12}><Text font={17} fontWeight="semibold" padding={{ horizontal: 4 }}>圆形</Text>{grid('accessoryCircular')}</VStack>
