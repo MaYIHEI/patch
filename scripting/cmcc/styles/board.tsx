@@ -141,7 +141,7 @@ function Small(props: { ctx: Ctx; slot: Slot; a: Account; ms: Meter[] }) {
       <HStack alignment="bottom" spacing={8} padding={{ top: 6 }}>
         <VStack alignment="leading" spacing={1}>
           <Num value={a.balance.toFixed(2)} size={25} color={balanceColor(ctx, a)} />
-          <Text font={10} foregroundStyle={a.balance < 0 ? dyn(RED) : th.t3} lineLimit={1}>{[ctx.slots.length > 1 ? slot.name : '', a.balance < 0 ? '已欠费' : `本月 ${feeText(a)}`].filter(Boolean).join(' · ')}</Text>
+          <Text font={10} foregroundStyle={a.balance < 0 ? dyn(RED) : th.t3} lineLimit={1} minScaleFactor={0.8}>{[ctx.slots.length > 1 ? slot.name : '', a.balance < 0 ? '已欠费' : ctx.slots.length > 1 ? '' : `本月 ${feeText(a)}`].filter(Boolean).join(' · ')}</Text>
         </VStack>
         <VStack frame={{ maxWidth: 'infinity' }}><Chart ctx={ctx} slot={slot} m={ms[0]} height={26} /></VStack>
       </HStack>
