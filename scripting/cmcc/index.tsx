@@ -37,7 +37,7 @@ import {
 import type { Color } from 'scripting'
 
 import { importFromBoxJS, removeAccount, clearCache, listAccounts, setAccountOrder, feeRaw, CmccError } from './api'
-import { Page, Card, Stage, Grid, Block, Panel, NavTile, Group, ActionRow, InfoRow, PickerRow, Chip, SmallButton, NavRow } from './kit'
+import { Page, Card, Stage, Grid, Block, Panel, NavTile, Group, ActionRow, InfoRow, PickerRow, Chip, SmallButton } from './kit'
 import { getData, setData, getLook, setLook, getDefaults, setDefault, getNames, setName, RECOMMENDED_BG, type Look, type Family, type DataPrefs } from './settings'
 import { metersOf, amount, starText, pointsText, netText, errorText, hhmm, chunk, type Slot } from './ui'
 import { STYLES, MULTI, NEEDS_HIST, stylesFor, styleById, paramOf, renderStyle, type StyleDef } from './styles/index'
@@ -60,7 +60,7 @@ async function main() {
 // ─────────────────────────────────────────────────────────────
 // 共用
 // ─────────────────────────────────────────────────────────────
-type Shared = { slots: Slot[]; reload: (force?: boolean) => Promise<void> }
+type Shared = { slots: Slot[]; setSlots: (s: Slot[]) => void; reload: (force?: boolean) => Promise<void> }
 
 const BOX: Record<Family, { width: number; height: number }> = {
   systemSmall: { width: 158, height: 158 },
@@ -131,7 +131,7 @@ function Home() {
     Widget.reloadAll()
   }
 
-  const shared: Shared = { slots, reload }
+  const shared: Shared = { slots, setSlots, reload }
   const close = <Button title="关闭" action={dismiss} />
   const onChanged = () => setTick(tick + 1)
 
@@ -440,18 +440,15 @@ function AccountCard(props: { slot: Slot }) {
   if (!a) {
     const msg = errorText(slot.error)
     return (
-      <Card inner={14}>
-        <VStack alignment="leading" spacing={4}>
+        <VStack alignment="leading" spacing={4} padding={{ vertical: 4 }}>
           <Text font={16} fontWeight="semibold" foregroundStyle="label">{slot.name}</Text>
           <Text font={13} foregroundStyle="systemOrange">{msg.title}</Text>
           <Text font={12} foregroundStyle="secondaryLabel">{msg.hint}</Text>
         </VStack>
-      </Card>
     )
   }
   return (
-    <Card inner={14}>
-      <VStack alignment="leading" spacing={10}>
+      <VStack alignment="leading" spacing={10} padding={{ vertical: 4 }}>
         <HStack spacing={12}>
           <VStack alignment="leading" spacing={2}>
             <Text font={16} fontWeight="semibold" foregroundStyle="label">{slot.name}</Text>
@@ -472,7 +469,6 @@ function AccountCard(props: { slot: Slot }) {
           ))}
         </HStack>
       </VStack>
-    </Card>
   )
 }
 
@@ -502,50 +498,47 @@ function AccountsTab(props: Shared & { close: any }) {
     setBusy(false)
   }
 
-  return (
-    <Page title="账号" large bar={{ cancellationAction: props.close, topBarTrailing: <Button title="刷新" systemImage="arrow.clockwise" disabled={busy} action={refresh} /> }}>
-      {props.slots.length ? (
-        <VStack spacing={12}>
-          {props.slots.map(s => (
-            <NavigationLink destination={<AccountDetail slot={s} reload={props.reload} />} buttonStyle="plain">
-              <AccountCard slot={s} />
-            </NavigationLink>
-          ))}
-        </VStack>
-      ) : null}
-      {props.slots.length > 1 ? (
-        <Group>
-          <NavRow icon="arrow.up.arrow.down" title="调整号码顺序" destination={<AccountOrder reload={props.reload} />} />
-        </Group>
-      ) : null}
-      <Group
-        title="导入"
-        note={note || '1) Loon 装好 paperclip 中国移动插件和 BoxJS\n2) 划掉中国移动 App 再重开, 收到「获取成功」通知; 多个号用 App 的「切换账号」各抓一次\n3) 保持 Loon 开启, 点「从 BoxJS 导入」, 插件里存的号一次全部导入'}
-      >
-        <ActionRow icon="square.and.arrow.down" title="从 BoxJS 导入" sub={`BoxJS: ${host}`} disabled={busy} action={doImport} />
-        <ActionRow icon="arrow.clockwise" title="立即刷新全部" disabled={busy || !props.slots.length} action={refresh} />
-      </Group>
-    </Page>
-  )
-}
-
-function AccountOrder(props: { reload: () => Promise<void> }) {
-  const [tels, setTels] = useState(listAccounts())
-  const names = getNames()
-
   function onMove(indices: number[], newOffset: number) {
-    const moving = indices.map(i => tels[i])
-    const next = tels.filter((_, i) => !indices.includes(i))
+    const moving = indices.map(i => props.slots[i])
+    const next = props.slots.filter((_, i) => !indices.includes(i))
     next.splice(newOffset, 0, ...moving)
-    setTels(next)
-    setAccountOrder(next)
-    props.reload()
+    props.setSlots(next)
+    setAccountOrder(next.map(s => s.tel))
+    Widget.reloadAll()
+  }
+
+  async function onDelete(indices: number[]) {
+    const gone = indices.map(i => props.slots[i].tel)
+    props.setSlots(props.slots.filter((_, i) => !indices.includes(i)))
+    for (const tel of gone) await removeAccount(tel)
+    Widget.reloadAll()
   }
 
   return (
-    <List navigationTitle="调整号码顺序" navigationBarTitleDisplayMode="inline" toolbar={{ topBarTrailing: <EditButton /> }}>
-      <Section footer={<Text>点右上角「编辑」后拖动。排第一的是单号样式默认显示的号, 全景和多号翻页也按这个顺序切换; 小组件参数里写了尾号的, 以参数为准。</Text>}>
-        <ForEach count={tels.length} itemBuilder={(i: number) => <Text key={tels[i]}>{names[tels[i]] || `尾号 ${tels[i].slice(-4)}`}</Text>} onMove={onMove} />
+    <List
+      navigationTitle="账号"
+      navigationBarTitleDisplayMode="large"
+      toolbar={props.slots.length ? { cancellationAction: props.close, confirmationAction: [<EditButton />] } : { cancellationAction: props.close }}
+    >
+      {props.slots.length ? (
+        <Section footer={<Text>长按拖动调整顺序, 左滑删除。全景和多号翻页按这个顺序切换; 小组件参数里写了尾号的, 以参数为准。</Text>}>
+          <ForEach
+            count={props.slots.length}
+            itemBuilder={(i: number) => {
+              const s = props.slots[i]
+              return <NavigationLink key={s.tel} destination={<AccountDetail slot={s} reload={props.reload} />}><AccountCard slot={s} /></NavigationLink>
+            }}
+            onMove={onMove}
+            onDelete={onDelete}
+          />
+        </Section>
+      ) : null}
+      <Section
+        header={<Text>导入</Text>}
+        footer={<Text>{note || '1) Loon 装好 paperclip 中国移动插件和 BoxJS\n2) 划掉中国移动 App 再重开, 收到「获取成功」通知; 多个号用 App 的「切换账号」各抓一次\n3) 保持 Loon 开启, 点「从 BoxJS 导入」, 插件里存的号一次全部导入'}</Text>}
+      >
+        <Button title="从 BoxJS 导入" systemImage="square.and.arrow.down" disabled={busy} action={doImport} />
+        <Button title="立即刷新全部" systemImage="arrow.clockwise" disabled={busy || !props.slots.length} action={refresh} />
       </Section>
     </List>
   )
