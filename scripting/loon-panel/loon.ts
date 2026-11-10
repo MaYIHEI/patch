@@ -398,6 +398,6 @@ export function sampleLoon(): LoonData {
         bgp: { prefix: '103.151.172.0/24', rpki: 'valid', holder: 'HKT' },
       },
     },
-    opts: { notify: true, auto: false, net: true, timeout: 5000, test_url: 'http://cp.cloudflare.com/generate_204', ip_url: 'https://api.ipify.org', push: false, full: [] },
+    opts: { notify: true, auto: false, net: true, timeout: 5000, test_url: 'http://www.gstatic.com/generate_204', ip_url: 'https://api.ipify.org', push: false, full: [] },
   }
 }
