@@ -7,7 +7,7 @@
 // 请求 http://1.1.1.1/loon-panel/clear?node=…: 清掉这个节点的深度检测结果; ?all=1 清掉全部检测结果、体检历史、解锁和事件, 设置和锁定不动
 // POST http://1.1.1.1/loon-panel/opts: 保存 App 里的设置, 正文是要改的项 (JSON); 空字符串 = 恢复默认
 
-const VERSION = '0.3.37'
+const VERSION = '0.3.38'
 const STORE_KEY = 'loon_panel'
 
 // 设置都在 Scripting 的 App 里改, 存在 store.opts; 插件参数只留体检频率 (cron 只能写在规则里)
@@ -1635,6 +1635,24 @@ async function handleClear(q) {
   return snapshot(await readState(), store, { ok: true })
 }
 
+/** 读数据时顺便补测: 自动类策略组自己换了节点后, 新节点要等下次定时体检才有结果, 小组件会显示未测.
+ *  只补测在用但没有任何记录的节点, 最多 3 个, 5 秒内测完多少算多少, 小组件那边最多等 8 秒 */
+async function handleData() {
+  const state = await readState()
+  const store = readStore()
+  const missing = leaves(state).filter(n => !store.nodes[n]).slice(0, 3)
+  if (missing.length) {
+    await Promise.race([Promise.all(missing.map(async name => {
+      const r = await probe(name)
+      r.h = [r.ok ? r.ms : -1]
+      r.fail = r.ok ? 0 : 1
+      store.nodes[name] = r
+    })), sleep(5000)])
+    writeStore(store)
+  }
+  return snapshot(state, store)
+}
+
 async function handleRequest() {
   const url = $request.url
   const path = url.replace(/^https?:\/\/[^/]+/i, '').split(/[?#]/)[0].replace(/\/+$/, '')
@@ -1642,7 +1660,7 @@ async function handleRequest() {
   if (path === '/loon-panel/clear') return respond(200, await handleClear(parseQuery(url)))
   if (path === '/loon-panel/deep') return respond(200, await handleDeep(parseQuery(url)))
   if (path === '/loon-panel/opts') return respond(200, await handleOpts())
-  if (path === '/loon-panel/data') return respond(200, snapshot(await readState(), readStore()))
+  if (path === '/loon-panel/data') return respond(200, await handleData())
   respond(404, { v: 1, error: 'not found' })
 }
 
