@@ -52,6 +52,7 @@ import {
   getPrefs, setPrefs, getLook, setLook, getDefaults, setDefault, getRemoteTargets, setRemoteTargets,
   DEFAULT_LOOK, RECOMMENDED_BG, RECOMMENDED_ACCENT, type Look, type Family, type Prefs,
 } from './settings'
+import { installUpdate } from './update'
 import { makeTheme, Bar, UsageRing, DailyBars, HourBars, Spark, mediaColor, mediaWord, latencyColor, latencyText, nodeLabel, fullLabel, asnText, ago, hhmm, chunk, usageColor, OK, BAD, WARN, type Ctx } from './ui'
 import { ipTags } from './styles/net'
 import { rateText } from './styles/flow'
@@ -60,7 +61,7 @@ import { TRAFFIC_STYLES, NEEDS_SUBS, stylesFor, styleById, paramOf, renderStyle,
 declare const Safari: { openURL(url: string): Promise<boolean> }
 
 const REMOTE_META = 'https://raw.githubusercontent.com/MaYIHEI/patch/main/scripting/loon-panel/script.json'
-const INSTALL_URL = 'https://www.scripting.fun/import_scripts/?urls=%5B%22https%3A%2F%2Fwww.imarkr.com%2Fapi%2Fgithub%2Fdownload%2FMaYIHEI%2Fpatch%2Fscripting%2Floon-panel.zip%22%5D'
+const PACKAGE_URL = 'https://www.imarkr.com/api/github/download/MaYIHEI/patch/scripting/loon-panel.zip?branch=main'
 const PLUGIN_URL = 'https://raw.githubusercontent.com/MaYIHEI/patch/refs/heads/main/scripting/loon-panel/loon/loon-panel.lpx'
 const LOON_IMPORT = `loon://import?plugin=${encodeURIComponent(PLUGIN_URL)}`
 const BG_PATH = () => Path.join(FileManager.appGroupDocumentsDirectory, 'loon-panel', 'background.jpg')
@@ -191,6 +192,13 @@ const GALLERY: Partial<Record<Family, number>> = { systemSmall: 0.8, systemMediu
 function WidgetTab(props: { shared: Shared; act: (q: {}, label: string) => Promise<void>; busy: string; close: any; onChanged: () => void; toSubs: () => void }) {
   const { shared } = props
   const [family, setFamily] = useState<Family>('systemMedium')
+  const [refreshText, setRefreshText] = useState('')
+  /** 重新读 Loon 和订阅, 再让桌面小组件马上重画 */
+  async function refreshNow() {
+    setRefreshText('刷新中...')
+    await shared.reload(true)
+    setRefreshText(`已刷新 ${hhmm(Date.now())}`)
+  }
   const { loon, subs } = shared
   const live = !!loon && !loon.stale
   const look = getLook()
@@ -210,6 +218,7 @@ function WidgetTab(props: { shared: Shared; act: (q: {}, label: string) => Promi
         <Stage>
           <Preview style={style} family={family} loon={data.loon} subs={data.subs} />
           <Text font={12} foregroundStyle="secondaryLabel">{`${style.name} · ${FAMILY_NAME[family]}${sampleNote(style.id, loon, subs)}`}</Text>
+          <SmallButton title={refreshText || '立即刷新桌面小组件'} disabled={refreshText === '刷新中...'} action={refreshNow} />
         </Stage>
       </VStack>
       {more.length ? (
@@ -1310,6 +1319,7 @@ function SettingsPage(props: Shared & { close: any; onChanged: () => void }) {
     await props.reload()
   }
 
+  /** 就地更新: 下载新版本覆盖脚本文件. 不走浏览器重新导入, 那样会换掉整个脚本, 钥匙串里的订阅链接会被清掉 */
   async function checkUpdate() {
     setUpdateText('检查中...')
     try {
@@ -1317,10 +1327,15 @@ function SettingsPage(props: Shared & { close: any; onChanged: () => void }) {
       const remote = String((await res.json() as { version?: string }).version ?? '')
       if (!remote || !isNewer(remote, version)) return setUpdateText('已是最新')
       setUpdateText(`有新版本 ${remote}`)
-      const ok = await Dialog.confirm({ title: `发现新版本 ${remote}`, message: `当前 ${version}, 更新会重新导入脚本, 设置和订阅保留`, cancelLabel: '稍后', confirmLabel: '更新' })
-      if (ok) await Safari.openURL(INSTALL_URL)
-    } catch {
-      setUpdateText('检查失败')
+      const ok = await Dialog.confirm({ title: `发现新版本 ${remote}`, message: `当前 ${version}, 设置和订阅都会保留`, cancelLabel: '稍后', confirmLabel: '更新' })
+      if (!ok) return
+      setUpdateText('更新中...')
+      await installUpdate(PACKAGE_URL)
+      Widget.reloadAll()
+      await Dialog.alert({ title: `已更新到 ${remote}`, message: '点确定退出, 重新打开 Loon 面板生效' })
+      Script.exit()
+    } catch (e) {
+      setUpdateText(`失败: ${(e as Error).message}`.slice(0, 24))
     }
   }
 
