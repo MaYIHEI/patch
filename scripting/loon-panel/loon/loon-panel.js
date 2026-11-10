@@ -7,7 +7,7 @@
 // 请求 http://1.1.1.1/loon-panel/clear?node=…: 清掉这个节点的深度检测结果; ?all=1 清掉全部检测结果、体检历史、解锁和事件, 设置和锁定不动
 // POST http://1.1.1.1/loon-panel/opts: 保存 App 里的设置, 正文是要改的项 (JSON); 空字符串 = 恢复默认
 
-const VERSION = '0.3.38'
+const VERSION = '0.3.39'
 const STORE_KEY = 'loon_panel'
 
 // 设置都在 Scripting 的 App 里改, 存在 store.opts; 插件参数只留体检频率 (cron 只能写在规则里)
@@ -17,7 +17,7 @@ const DEFAULT_OPTS = {
   notify: false,    // 节点异常发通知; Loon 自己也会提示节点问题, 默认关
   auto: false,      // 挂了自动切到最快
   timeout: 5000,    // 单次超时 (毫秒)
-  test_url: 'http://www.gstatic.com/generate_204',
+  test_url: 'http://cp.cloudflare.com/generate_204',   // 和 Loon 文档里 proxy-test-url 的示例一样, 脚本读不到 Loon 实际设的地址
   ip_url: 'https://api.ipify.org',
   lookup_direct: false,  // 按 IP 查数据库时先从手机直连, 失败再走节点; 查得更全, 但这些服务会看到手机 IP
   push_key: '',     // 体检完推送刷新小组件; 只存在这里, 不返回给数据地址
