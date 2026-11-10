@@ -7,7 +7,7 @@
 // 请求 http://1.1.1.1/loon-panel/clear?node=…: 清掉这个节点的深度检测结果; ?all=1 清掉全部检测结果、体检历史、解锁和事件, 设置和锁定不动
 // POST http://1.1.1.1/loon-panel/opts: 保存 App 里的设置, 正文是要改的项 (JSON); 空字符串 = 恢复默认
 
-const VERSION = '0.3.40'
+const VERSION = '0.3.41'
 const STORE_KEY = 'loon_panel'
 
 // 设置都在 Scripting 的 App 里改, 存在 store.opts; 插件参数只留体检频率 (cron 只能写在规则里)
@@ -224,7 +224,9 @@ async function probe(node) {
     return r
   }
   r.ok = true
-  r.ms = a.ms
+  // 第一次要新建连接、和节点握手, 比 Loon 显示的高好几倍; 通了再测一次, 取快的那次
+  const b = await get(OPT.test_url, node)
+  r.ms = !b.error && b.response ? Math.min(a.ms, b.ms) : a.ms
   const ip = await readIP(node)
   if (ip) exitInfo(r, ip)
   return r
@@ -235,11 +237,11 @@ async function runChecks(store, targets, current, budget) {
   const start = Date.now()
   let tested = 0
   for (const name of targets) {
-    if (Date.now() - start + 2 * OPT.timeout > budget) break
+    if (Date.now() - start + 3 * OPT.timeout > budget) break
     const prev = store.nodes[name] || {}
     let r = await probe(name)
     let fails = r.ok ? 0 : 1
-    for (let i = 1; !r.ok && current.has(name) && i < FAIL_LIMIT && Date.now() - start + 2 * OPT.timeout <= budget; i++) {
+    for (let i = 1; !r.ok && current.has(name) && i < FAIL_LIMIT && Date.now() - start + 3 * OPT.timeout <= budget; i++) {
       r = await probe(name)
       fails = r.ok ? 0 : fails + 1
     }
