@@ -62,7 +62,7 @@ export function BoardStyle(props: { ctx: Ctx }) {
   return (
     <Root ctx={ctx} spacing={6}>
       <HStack spacing={6}>
-        <Logo size={18} />
+        <Logo size={18} ctx={ctx} />
         <Text font={15} fontWeight="bold" foregroundStyle={th.t1}>Loon 面板</Text>
         <Spacer minLength={4} />
         <Text font={11} foregroundStyle={note ? (note.ok ? OK : BAD) : status.level === 'ok' ? th.t3 : status.level === 'warn' ? WARN : BAD} lineLimit={1}>{note ? note.text : status.level === 'ok' ? syncText(ctx) : status.text}</Text>

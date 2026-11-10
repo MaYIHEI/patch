@@ -28,6 +28,7 @@ import {
   Toggle,
   VStack,
   ZStack,
+  WebView,
   Menu,
   Widget,
   Path,
@@ -953,7 +954,7 @@ function SubDetail(props: { sub: SubView; onChanged: () => Promise<void> }) {
     let text = ''
     try {
       await web.loadURL(site)
-      await web.present({ navigationTitle: s.name })
+      await Navigation.present({ element: <SitePage web={web} title={s.name} /> })
       text = String(await web.evaluateJavaScript('return document.body ? document.body.innerText : ""') ?? '')
     } catch (e) {
       setNote(`网页出错: ${(e as Error).message}`)
@@ -1421,6 +1422,21 @@ function AlertsPage() {
         </Grid>
       </Block>
     </Page>
+  )
+}
+
+/** 官网窗口: 自己放标题栏, 网页排在下面. 用 WebViewController.present 时网页顶在导航栏下面, 有的官网顶栏被盖住点不了 */
+function SitePage(props: { web: WebViewController; title: string }) {
+  const dismiss = Navigation.useDismiss()
+  return (
+    <VStack spacing={0}>
+      <HStack padding={{ horizontal: 16, vertical: 12 }}>
+        <Text font={17} fontWeight="semibold" lineLimit={1}>{props.title}</Text>
+        <Spacer />
+        <Button title="完成" action={dismiss} />
+      </HStack>
+      <WebView controller={props.web} />
+    </VStack>
   )
 }
 

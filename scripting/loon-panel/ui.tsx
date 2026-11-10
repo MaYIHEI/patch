@@ -2,7 +2,7 @@
 // 外观 (素净 / 自定义) + 各样式共用的部件, 写法和 checkin 一致. 小组件和 App 内预览共用同一套视图
 // 背景图只放在背景层 (background), 不参与内容布局
 
-import { VStack, HStack, ZStack, Text, Spacer, Image, Button, Circle, Capsule, Rectangle, RoundedRectangle } from 'scripting'
+import { VStack, HStack, ZStack, Text, Spacer, Image, Button, Link, Circle, Capsule, Rectangle, RoundedRectangle } from 'scripting'
 import type { Color, DynamicShapeStyle } from 'scripting'
 
 import type { Look, Prefs } from './settings'
@@ -217,15 +217,17 @@ export function Dot(props: { color: Paint; size?: number }) {
 /** 标题行: 左标题, 右灰字 */
 const LOGO_URL = 'https://raw.githubusercontent.com/Loon0x00/Loon0x00.github.io/main/static/img/loon.png'
 
-export function Logo(props: { size: number }) {
-  return <Image imageUrl={LOGO_URL} resizable frame={{ width: props.size, height: props.size }} clipShape={{ type: 'rect', cornerRadius: props.size * 0.24 }} />
+/** Loon 图标; 在桌面上点一下打开 Loon */
+export function Logo(props: { size: number; ctx?: Ctx }) {
+  const img = <Image imageUrl={LOGO_URL} resizable frame={{ width: props.size, height: props.size }} clipShape={{ type: 'rect', cornerRadius: props.size * 0.24 }} />
+  return props.ctx && !props.ctx.inApp ? <Link url="loon://">{img}</Link> : img
 }
 
 export function Header(props: { ctx: Ctx; title: string; right?: string; rightColor?: Paint; font?: number; trailing?: any }) {
   const { th } = props.ctx
   return (
     <HStack spacing={5}>
-      <Logo size={(props.font ?? 13) + 3} />
+      <Logo size={(props.font ?? 13) + 3} ctx={props.ctx} />
       <Text font={props.font ?? 13} fontWeight="semibold" foregroundStyle={th.t1} lineLimit={1}>{props.title}</Text>
       <Spacer minLength={4} />
       {props.right ? <Text font={11} foregroundStyle={props.rightColor ?? th.t3} lineLimit={1}>{props.right}</Text> : null}
